@@ -1,0 +1,36 @@
+# macOS system files
+.DS_Store
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE directories
+.idea/
+.vscode/
+
+# Virtual environment directories
+venv/
+env/
+ENV/
+venv.bak/
+
+# Byte-compiled / optimized / DLL files
+*.pyc
+*.pyo
+*.pyd
+
+# Logs and databases
+*.log
+*.sqlite3
+
+# Test output
+.coverage
+.tox/
+nosetests.xml
+coverage.xml
+
+# OS generated files
+Thumbs.db
+.DS_Store
