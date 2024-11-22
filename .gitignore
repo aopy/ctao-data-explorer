@@ -34,3 +34,16 @@ coverage.xml
 # OS generated files
 Thumbs.db
 .DS_Store
+
+# Python (Backend) Ignored Files
+api/__pycache__/
+api/*.py[cod]
+api/venv/
+api/env/
+api/*.sqlite3
+api/.env
+
+# Node.js (Frontend) Ignored Files
+js/node_modules/
+js/build/
+js/.env
