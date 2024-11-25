@@ -27,14 +27,18 @@ app.add_middleware(
 # API endpoint
 @app.get("/api/search", response_model=SearchResult, tags=["Search"])
 async def api_search(
-    target_raj2000: float = Query(..., ge=0.0, le=360.0),
-    target_dej2000: float = Query(..., ge=-90.0, le=90.0),
-    search_radius: float = Query(..., ge=0.0, le=90.0)
+    target_raj2000: float = Query(..., ge=0.0, le=360.0, example=83.6331),
+    target_dej2000: float = Query(..., ge=-90.0, le=90.0, example=22.0145),
+    search_radius: float = Query(..., ge=0.0, le=90.0, example=0.1),
+    tap_url: str = Query('http://voparis-tap-he.obspm.fr/tap', title="TAP Server URL"),
+    obscore_table: str = Query('hess_dr.obscore_sdc', title="ObsCore Table Name")
 ):
     form_data = {
         'target_raj2000': {'value': target_raj2000},
         'target_dej2000': {'value': target_dej2000},
         'search_radius': {'value': search_radius},
+        'tap_url': {'value': tap_url},
+        'obscore_table': {'value': obscore_table},
     }
     error, res_table = perform_query(form_data)
 

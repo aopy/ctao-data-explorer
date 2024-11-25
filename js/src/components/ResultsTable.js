@@ -1,5 +1,3 @@
-// src/components/ResultsTable.js
-
 import React from 'react';
 
 function ResultsTable({ results }) {

@@ -74,10 +74,10 @@ def perform_query(fields):
     """
     Perform TAP query and return error (None if OK) and result table
     """
-    # URL of TAP server
-    url = 'http://voparis-tap-he.obspm.fr/tap'
-    # Name of obscore table on the TAP server
-    obscore_table = 'hess_dr.obscore_sdc'
+    # Get URL of TAP server from fields
+    url = fields['tap_url']['value']
+    # Get name of obscore table from fields
+    obscore_table = fields['obscore_table']['value']
     # Timeout for TAP server connection
     timeout = 5
 
