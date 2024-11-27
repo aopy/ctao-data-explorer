@@ -1,24 +1,32 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import DataTable from 'react-data-table-component';
 
 const ResultsTable = ({ results, onRowSelected }) => {
   const { columns, data } = results;
 
-  // Define table columns
-  const tableColumns = columns.map((col) => ({
-    name: col,
-    selector: (row) => row[col],
-    sortable: true,
-  }));
+  // Memoize columns
+  const tableColumns = useMemo(
+    () =>
+      columns.map((col) => ({
+        name: col,
+        selector: (row) => row[col],
+        sortable: true,
+      })),
+    [columns]
+  );
 
-  // Transform data into array of objects
-  const tableData = data.map((row) => {
-    const rowData = {};
-    columns.forEach((col, index) => {
-      rowData[col] = row[index];
-    });
-    return rowData;
-  });
+  // Memoize data
+  const tableData = useMemo(
+    () =>
+      data.map((row) => {
+        const rowData = {};
+        columns.forEach((col, index) => {
+          rowData[col] = row[index];
+        });
+        return rowData;
+      }),
+    [data, columns]
+  );
 
   return (
     <DataTable
@@ -27,7 +35,7 @@ const ResultsTable = ({ results, onRowSelected }) => {
       data={tableData}
       pagination
       selectableRows
-      onSelectedRowsChange={({ selectedRows }) => onRowSelected(selectedRows)}
+      onSelectedRowsChange={onRowSelected}
       onRowClicked={(row) => console.log('Row clicked:', row)}
       pointerOnHover
       highlightOnHover
