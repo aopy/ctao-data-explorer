@@ -44,15 +44,16 @@ This project is a web application designed to access, visualize, and analyze dat
 
    ```bash
    git clone https://gitlab.obspm.fr/oates/ctao-data-explorer.git
-   cd yourrepository/api
+   cd ctao-data-explorer/api
    conda create -n ctao-backend python=3.8
    conda activate ctao-backend
    conda install -c conda-forge fastapi uvicorn aiofiles pyvo numpy requests
+   uvicorn main:app --reload
    ```
 ### Frontend Setup
 
    ```bash
-   cd yourrepository/js
+   cd ctao-data-explorer/js
    npm install
    npm install axios
    npm install react-data-table-component styled-components
@@ -62,4 +63,4 @@ This project is a web application designed to access, visualize, and analyze dat
 # About CTAO
 
 The Cherenkov Telescope Array Observatory (CTAO) is a ground-based observatory for gamma-ray astronomy. This project interacts with CTAO data to provide users with tools for visualization and analysis, enhancing the accessibility and understanding of gamma-ray observations.
-- Website: [CTAO website](https://www.ctao.org/)
+- [CTAO website](https://www.ctao.org/)
