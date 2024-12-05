@@ -20,8 +20,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_methods=["*"],  # Allow all HTTP methods
+    allow_headers=["*"],  # Allow all headers
 )
 
 # API endpoint
@@ -43,9 +43,8 @@ async def api_search(
     error, res_table = perform_query(form_data)
 
     if error is None:
-        colnames = res_table.fieldnames
-        rows = astropy_table_to_list(res_table)
-        result = SearchResult(columns=colnames, data=rows)
+        columns, data = astropy_table_to_list(res_table)
+        result = SearchResult(columns=columns, data=data)
         return result
     else:
         raise HTTPException(status_code=400, detail=error)

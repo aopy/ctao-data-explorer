@@ -49,12 +49,15 @@ class Tap:
 
 def astropy_table_to_list(table):
     """
-    Convert an astropy table to a list of lists suitable for JSON conversion
+    Convert a TAPResults table to a list of lists suitable for JSON conversion,
+    along with the list of column names.
     """
+    # print("Available attributes:", dir(table))
+    columns = table.fieldnames
     rows = []
     for row in table:
         row_data = []
-        for col in table.fieldnames:
+        for col in columns:
             cell = row[col]
             if isinstance(cell, (bytes, np.bytes_)):
                 cell = cell.decode('utf-8')
@@ -68,7 +71,7 @@ def astropy_table_to_list(table):
                 cell = str(cell)
             row_data.append(cell)
         rows.append(row_data)
-    return rows
+    return columns, rows
 
 def perform_query(fields):
     """
