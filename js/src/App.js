@@ -3,6 +3,7 @@ import SearchForm from './components/SearchForm';
 import ResultsTable from './components/ResultsTable';
 import AladinLiteViewer from './components/AladinLiteViewer';
 import TimelineChart from './components/TimelineChart';
+import EmRangeChart from './components/EmRangeChart';
 
 function App() {
   const [results, setResults] = useState(null);
@@ -42,6 +43,7 @@ const handleRowSelected = useCallback(
           <ResultsTable results={results} onRowSelected={handleRowSelected} />
           <AladinLiteViewer overlays={selectedCoordinates} />
           <TimelineChart results={results} selectedIds={selectedIds} />
+          <EmRangeChart results={results} selectedIds={selectedIds} />
         </>
       )}
     </div>
