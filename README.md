@@ -17,6 +17,7 @@ This project is a web application designed to access, visualize, and analyze dat
 - Access and query CTAO data with customizable parameters.
 - Display search results in a data table with selectable rows.
 - Visualize selected data points on an interactive sky map using **Aladin Lite**.
+- Visualize selected data points with timeline chart and electromagnetic range chart
 
 ## Requirements
 
@@ -55,8 +56,6 @@ This project is a web application designed to access, visualize, and analyze dat
    ```bash
    cd ctao-data-explorer/js
    npm install
-   npm install axios
-   npm install react-data-table-component styled-components
    npm start
    ```
 
