@@ -33,11 +33,11 @@ function SearchForm({ setResults }) {
 
   return (
     <form onSubmit={handleSubmit}>
-      {/* Existing form fields */}
-      <div>
-        <label>Target RA (J2000):</label>
+      <div className="mb-3">
+        <label className="form-label">Target RA (J2000):</label>
         <input
           type="number"
+          className="form-control"
           value={targetRAJ2000}
           onChange={(e) => setTargetRAJ2000(e.target.value)}
           required
@@ -46,10 +46,11 @@ function SearchForm({ setResults }) {
           step="any"
         />
       </div>
-      <div>
-        <label>Target DEC (J2000):</label>
+      <div className="mb-3">
+        <label className="form-label">Target DEC (J2000):</label>
         <input
           type="number"
+          className="form-control"
           value={targetDEJ2000}
           onChange={(e) => setTargetDEJ2000(e.target.value)}
           required
@@ -58,10 +59,11 @@ function SearchForm({ setResults }) {
           step="any"
         />
       </div>
-      <div>
-        <label>Search Radius (degrees):</label>
+      <div className="mb-3">
+        <label className="form-label">Search Radius (degrees):</label>
         <input
           type="number"
+          className="form-control"
           value={searchRadius}
           onChange={(e) => setSearchRadius(e.target.value)}
           required
@@ -70,27 +72,27 @@ function SearchForm({ setResults }) {
           step="any"
         />
       </div>
-
-      {/* New form fields */}
-      <div>
-        <label>TAP Server URL:</label>
+      <div className="mb-3">
+        <label className="form-label">TAP Server URL:</label>
         <input
           type="text"
+          className="form-control"
           value={tapUrl}
           onChange={(e) => setTapUrl(e.target.value)}
           required
         />
       </div>
-      <div>
-        <label>ObsCore Table Name:</label>
+      <div className="mb-3">
+        <label className="form-label">ObsCore Table Name:</label>
         <input
           type="text"
+          className="form-control"
           value={obscoreTable}
           onChange={(e) => setObscoreTable(e.target.value)}
           required
         />
       </div>
-      <button type="submit">Search</button>
+      <button type="submit" className="btn btn-primary w-100">Search</button>
     </form>
   );
 }
