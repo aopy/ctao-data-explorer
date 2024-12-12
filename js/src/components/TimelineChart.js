@@ -103,7 +103,7 @@ const TimelineChart = ({ results, selectedIds }) => {
         type: 'date',
         // Let Plotly automatically determine the range
         autorange: true,
-        // Ror fixed range:
+        // For fixed range:
         // range: [
         //   earliest_t_min.toISOString(),
         //   latest_t_max.toISOString()
@@ -157,8 +157,8 @@ const TimelineChart = ({ results, selectedIds }) => {
   const [revision, setRevision] = useState(0);
 
   useEffect(() => {
-    setRevision((prev) => prev + 1);
-  }, [layout]);
+    setRevision(rev => rev + 1);
+  }, [results]);
 
   if (timelineData.length === 0) {
     return <div>No data available for the timeline.</div>;
