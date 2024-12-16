@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import SearchForm from './components/SearchForm';
 import ResultsTable from './components/ResultsTable';
 import AladinLiteViewer from './components/AladinLiteViewer';
@@ -6,42 +6,61 @@ import TimelineChart from './components/TimelineChart';
 import EmRangeChart from './components/EmRangeChart';
 
 function App() {
+  // The entire search results from the backend
   const [results, setResults] = useState(null);
-  const [selectedCoordinates, setSelectedCoordinates] = useState([]);
+
+  // allCoordinates = all the RA/Dec points from the entire result set
+  const [allCoordinates, setAllCoordinates] = useState([]);
+  // selectedIds = only the IDs that the user has highlighted in the table
   const [selectedIds, setSelectedIds] = useState([]);
 
-  // State for which main tab is active: "search" or "results"
+  // The search and results tabs logic
   const [activeTab, setActiveTab] = useState('search');
 
+  /**
+   * Called when user submits the search form.
+   * This sets 'results' and automatically switches to the "results" tab.
+   */
+  const handleSearchResults = (data) => {
+    setResults(data);
+    setActiveTab('results');
+
+    // Once we have the entire result set, parse them into allCoordinates.
+    // We want to show ALL of them in the sky map by default.
+    if (data?.columns && data?.data) {
+      const s_ra_index = data.columns.indexOf('s_ra');
+      const s_dec_index = data.columns.indexOf('s_dec');
+      const id_index = data.columns.indexOf('obs_id');
+      if (s_ra_index !== -1 && s_dec_index !== -1 && id_index !== -1) {
+        const coords = data.data.map((row) => ({
+          ra: parseFloat(row[s_ra_index]),
+          dec: parseFloat(row[s_dec_index]),
+          id: row[id_index].toString().trim(),
+        }));
+        setAllCoordinates(coords);
+      }
+    }
+  };
+
+  /**
+   * Called whenever the user selects or unselects rows in the ResultsTable.
+   * We store the selectedIds in state. The actual coordinate changes for selection
+   * are not needed anymore, because 'allCoordinates' holds every row’s coordinates.
+   */
   const handleRowSelected = useCallback(
     (selectedRowsChange) => {
       const { selectedRows } = selectedRowsChange || {};
-      console.log('Selected Rows:', selectedRows);
-
       if (!selectedRows || !Array.isArray(selectedRows)) {
         console.error('selectedRows is not an array');
         return;
       }
 
-      const coordinates = selectedRows.map((row) => ({
-        ra: parseFloat(row['s_ra']),
-        dec: parseFloat(row['s_dec']),
-        id: row['obs_id'].toString(),
-      }));
-      console.log('Coordinates:', coordinates);
-      setSelectedCoordinates(coordinates);
-
+      // Just store the selected IDs
       const ids = selectedRows.map((row) => row['obs_id'].toString());
       setSelectedIds(ids);
     },
-    [setSelectedCoordinates, setSelectedIds]
+    []
   );
-
-  const handleSearchResults = (data) => {
-    setResults(data);
-    // Switch to results tab
-    setActiveTab('results');
-  };
 
   return (
     <div className="container-fluid p-3">
@@ -91,7 +110,7 @@ function App() {
         >
           {results ? (
             <>
-              {/* Top row: Sky map (left, wider) and Charts (right) */}
+              {/* Top row: Sky map (left) and Charts (right) */}
               <div className="row">
                 {/* Sky map: Make it wider (7/12 columns) */}
                 <div className="col-md-7 mb-3">
@@ -101,7 +120,11 @@ function App() {
                       className="card-body p-0"
                       style={{ height: '400px', overflow: 'hidden' }}
                     >
-                      <AladinLiteViewer overlays={selectedCoordinates} />
+                      {/* Instead of selectedCoordinates, we pass ALL rows to overlays */}
+                      <AladinLiteViewer
+                        overlays={allCoordinates}
+                        selectedIds={selectedIds}
+                      />
                     </div>
                   </div>
                 </div>
