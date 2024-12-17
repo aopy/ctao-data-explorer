@@ -5,28 +5,42 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [] }) => {
   const aladinInstance = useRef(null);
   const allCatalogRef = useRef(null);
   const selectedCatalogRef = useRef(null);
+  const circleOverlayRef = useRef(null);
 
   useEffect(() => {
     if (!window.A || !window.A.init) {
-      console.error('Aladin Lite v3 is not loaded.');
+      console.error('Aladin Lite v3 not loaded.');
       return;
     }
 
-    // Wait for Aladin Lite to initialize
     window.A.init.then(() => {
       aladinInstance.current = window.A.aladin(aladinRef.current, {
-        survey: 'P/DSS2/color',
-        fov: 60,
-        projection: 'AIT',
+        // survey: 'P/DSS2/color', // Might cause IRSA CORS logs
+        survey: 'CDS/P/Fermi/color',
+        fov: 30,
+        projection: 'AIT'
       });
 
-      // Create two catalogs, letting Aladin defaults apply
-      allCatalogRef.current = window.A.catalog({ name: 'allCatalog' });
-      selectedCatalogRef.current = window.A.catalog({ name: 'selectedCatalog' });
+      // Two catalogs, both shaped like 'triangle'
+      allCatalogRef.current = window.A.catalog({
+        name: 'allCatalog',
+        shape: 'triangle', // unselected markers
+        color: 'yellow',
+        sourceSize: 16
+      });
+      selectedCatalogRef.current = window.A.catalog({
+        name: 'selectedCatalog',
+        shape: 'triangle', // selected markers
+        color: 'red',
+        sourceSize: 16
+      });
 
-      // Add them so that 'selectedCatalog' is on top
       aladinInstance.current.addCatalog(allCatalogRef.current);
       aladinInstance.current.addCatalog(selectedCatalogRef.current);
+
+      // Overlay for circles based on s_fov
+      circleOverlayRef.current = window.A.graphicOverlay({ name: 'circlesOverlay' });
+      aladinInstance.current.addOverlay(circleOverlayRef.current);
 
       updateMarkers();
     });
@@ -38,43 +52,41 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [] }) => {
   }, [overlays, selectedIds]);
 
   const updateMarkers = () => {
-    if (
-      !aladinInstance.current ||
-      !allCatalogRef.current ||
-      !selectedCatalogRef.current
-    ) {
+    if (!aladinInstance.current ||
+        !allCatalogRef.current ||
+        !selectedCatalogRef.current ||
+        !circleOverlayRef.current) {
       return;
     }
 
     const allCatalog = allCatalogRef.current;
     const selectedCatalog = selectedCatalogRef.current;
+    const circleOverlay = circleOverlayRef.current;
 
-    // Clear out old markers
+    // Clear old markers & circles
     allCatalog.removeAll();
     selectedCatalog.removeAll();
+    circleOverlay.removeAll();
 
     const raValues = [];
     const decValues = [];
 
-    // Add each coordinate to exactly ONE catalog
     overlays.forEach((coord) => {
-      const { ra, dec, id } = coord;
+      const { ra, dec, id, s_fov } = coord;
+
       if (isNaN(ra) || isNaN(dec)) {
-        console.error('Invalid RA/Dec:', coord);
+        console.error('Invalid RA/Dec for overlay:', coord);
         return;
       }
 
+      // Create one marker (triangle shape as set by catalog default)
       const isSelected = selectedIds.includes(id);
-
-      // Create a basic source with default styling (no color/shape/size)
-      // Only attach popup info once so there's no duplicate info
       const source = window.A.source(ra, dec, {
         popupTitle: `Obs ID: ${id}`,
-        popupDesc: `RA: ${ra}, DEC: ${dec}`,
+        popupDesc: `RA: ${ra}, DEC: ${dec}`
       });
 
-      // If it's in selectedIds, put it only in 'selectedCatalog'
-      // Else, put it only in 'allCatalog'
+      // Put marker in the correct catalog so no duplicates
       if (isSelected) {
         selectedCatalog.addSources([source]);
       } else {
@@ -83,6 +95,21 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [] }) => {
 
       raValues.push(ra);
       decValues.push(dec);
+
+      // If s_fov numeric, draw a circle of radius s_fov degrees
+      if (!isNaN(s_fov)) {
+        console.log(`Drawing circle for ID=${id}, s_fov=${s_fov} deg`);
+        // A.circle(ra, dec, radiusDeg, style)
+        const circle = window.A.circle(ra, dec, parseFloat(s_fov), {
+          color: 'blue',
+          lineWidth: 2,
+          popupTitle: `FOV Circle (ID: ${id})`,
+          popupDesc: `Radius: ${s_fov} deg`
+        });
+        circleOverlay.add(circle);
+      } else {
+        console.log(`No valid s_fov for ID=${id}`);
+      }
     });
 
     // Auto-zoom if we have any markers
@@ -112,16 +139,18 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [] }) => {
       centerRa = adjustedCenterRa > 360 ? adjustedCenterRa - 360 : adjustedCenterRa;
     }
 
-    const fov = Math.min(Math.max(maxDiff * 1.2, 0.1), 180);
+    // Original bounding logic
+    const baseFov = Math.min(Math.max(maxDiff * 1.2, 0.1), 180);
+
+    // Apply an extra multiplier to zoom out more
+    const finalFov = Math.min(baseFov * 6, 180);
+
     aladinInstance.current.gotoRaDec(centerRa, centerDec);
-    aladinInstance.current.setFov(fov);
+    aladinInstance.current.setFov(finalFov);
   };
 
   return (
-    <div
-      style={{ width: '100%', height: '100%' }}
-      ref={aladinRef}
-    />
+    <div style={{ width: '100%', height: '100%' }} ref={aladinRef} />
   );
 };
 

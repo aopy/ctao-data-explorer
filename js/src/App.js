@@ -31,11 +31,13 @@ function App() {
       const s_ra_index = data.columns.indexOf('s_ra');
       const s_dec_index = data.columns.indexOf('s_dec');
       const id_index = data.columns.indexOf('obs_id');
-      if (s_ra_index !== -1 && s_dec_index !== -1 && id_index !== -1) {
+      const s_fov_index = data.columns.indexOf('s_fov');
+      if (s_ra_index !== -1 && s_dec_index !== -1 && id_index !== -1 && s_fov_index !== -1) {
         const coords = data.data.map((row) => ({
           ra: parseFloat(row[s_ra_index]),
           dec: parseFloat(row[s_dec_index]),
           id: row[id_index].toString().trim(),
+          s_fov: parseFloat(row[s_fov_index]),
         }));
         setAllCoordinates(coords);
       }
