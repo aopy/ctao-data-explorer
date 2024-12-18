@@ -4,7 +4,7 @@ import axios from 'axios';
 function SearchForm({ setResults }) {
   const [targetRAJ2000, setTargetRAJ2000] = useState('');
   const [targetDEJ2000, setTargetDEJ2000] = useState('');
-  const [searchRadius, setSearchRadius] = useState('');
+  const [searchRadius, setSearchRadius] = useState('5');
   const [tapUrl, setTapUrl] = useState('http://voparis-tap-he.obspm.fr/tap');
   const [obscoreTable, setObscoreTable] = useState('hess_dr.obscore_sdc');
 
@@ -34,7 +34,7 @@ function SearchForm({ setResults }) {
   return (
     <form onSubmit={handleSubmit}>
       <div className="mb-3">
-        <label className="form-label">Target RA (J2000):</label>
+        <label className="form-label">Target RA (J2000) [deg]:</label>
         <input
           type="number"
           className="form-control"
@@ -47,7 +47,7 @@ function SearchForm({ setResults }) {
         />
       </div>
       <div className="mb-3">
-        <label className="form-label">Target DEC (J2000):</label>
+        <label className="form-label">Target Dec (J2000) [deg]:</label>
         <input
           type="number"
           className="form-control"
@@ -60,7 +60,7 @@ function SearchForm({ setResults }) {
         />
       </div>
       <div className="mb-3">
-        <label className="form-label">Search Radius (degrees):</label>
+        <label className="form-label">Search Radius [deg]:</label>
         <input
           type="number"
           className="form-control"
