@@ -45,11 +45,11 @@ This project is a web application designed to access, visualize, and analyze dat
 
    ```bash
    git clone https://gitlab.obspm.fr/oates/ctao-data-explorer.git
-   cd ctao-data-explorer/api
+   cd ctao-data-explorer
    conda create -n ctao-backend python=3.8
    conda activate ctao-backend
    conda install -c conda-forge fastapi uvicorn aiofiles pyvo numpy requests
-   uvicorn main:app --reload
+   uvicorn api.main:app --reload
    ```
 ### Frontend Setup
 
