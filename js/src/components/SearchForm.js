@@ -3,6 +3,7 @@ import axios from 'axios';
 
 function SearchForm({ setResults }) {
   const [objectName, setObjectName] = useState('');
+  const [warningMessage, setWarningMessage] = useState('');
   const [targetRAJ2000, setTargetRAJ2000] = useState('');
   const [targetDEJ2000, setTargetDEJ2000] = useState('');
   const [searchRadius, setSearchRadius] = useState('5');
@@ -11,6 +12,7 @@ function SearchForm({ setResults }) {
 
   const handleResolve = () => {
     if (!objectName) return;
+    setWarningMessage(''); // clear any existing warning
     axios.post('/api/simbad_resolve', { object_name: objectName })
       .then(response => {
         const res = response.data;
@@ -19,18 +21,18 @@ function SearchForm({ setResults }) {
           setTargetRAJ2000(first.ra);
           setTargetDEJ2000(first.dec);
         } else {
-          alert('No match found for this object name.');
+          setWarningMessage('No match found for this object name.');
         }
       })
       .catch(error => {
         console.error('Error resolving object:', error);
-        alert('Error resolving object name. Check console/logs.');
+        setWarningMessage('Error resolving object name. Please try again.');
       });
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    // Make API call to /api/search
+    setWarningMessage(''); // clear warnings on a new search
     axios.get('/api/search', {
       params: {
         target_raj2000: targetRAJ2000,
@@ -45,12 +47,13 @@ function SearchForm({ setResults }) {
     })
     .catch(error => {
       console.error('There was an error making the request:', error);
+      setWarningMessage('An error occurred while searching. Check console for details.');
     });
   };
 
   return (
     <form onSubmit={handleSubmit}>
-      {/* Optional object name field */}
+      {/* Object name field with Resolve button */}
         <div className="mb-3">
           <label className="form-label">Object Name (optional):</label>
           <div className="input-group">
@@ -65,7 +68,14 @@ function SearchForm({ setResults }) {
               Resolve
             </button>
           </div>
-        </div>
+      {/* Display a warning alert if needed */}
+        {warningMessage && (
+          <div className="alert alert-warning mt-2" role="alert">
+            {warningMessage}
+          </div>
+        )}
+      </div>
+      {/* RA/Dec fields */}
       <div className="mb-3">
         <label className="form-label">Target RA (J2000) [deg]:</label>
         <input
@@ -92,6 +102,7 @@ function SearchForm({ setResults }) {
           step="any"
         />
       </div>
+      {/* Search radius, TAP server, and table name fields */}
       <div className="mb-3">
         <label className="form-label">Search Radius [deg]:</label>
         <input
