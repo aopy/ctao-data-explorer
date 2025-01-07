@@ -114,21 +114,6 @@ const EmRangeChart = ({ results, selectedIds }) => {
         title: 'Energy (TeV)',
           tickformat: '.1e',
       },
-       xaxis2: {
-          type: 'log',
-            overlaying: 'x',
-             side: 'top',
-              title: 'Wavelength (m)',
-             autorange: true,
-             tickformat: '.1e',
-            // Define a static range based on minimum and maximum values from original input
-             tickvals: [1e-14, 1e-12, 1e-10, 1e-8, 1e-6, 1e-4, 1e-2, 1, 1e2, 1e4],
-            ticktext: ['1e-14', '1e-12', '1e-10', '1e-8', '1e-6', '1e-4', '1e-2', '1', '1e2', '1e4'],
-           showgrid: true, // Keep this for grid lines
-            showline: true, // Keep this for axis line
-          showticklabels: true, // Make sure axis tick labels are displayed
-
-      },
       yaxis: {
         visible: false,
         range: [0, 1],
@@ -147,16 +132,13 @@ const EmRangeChart = ({ results, selectedIds }) => {
     if (emData.length === 0) {
       return [];
     }
-    // Static values for the top axis
-     const wavelengthTickVals = [1e-14, 1e-12, 1e-10, 1e-8, 1e-6, 1e-4, 1e-2, 1, 1e2, 1e4];
-     const emptyY =  Array(wavelengthTickVals.length).fill(0.95); // Constant y position to be on the top
+
     return [
       {
         type: 'scatter',
         mode: 'markers',
         x: emData.map((item) => (item.em_min + item.em_max) / 2),
         y: emData.map(() => 0.5),
-        xaxis:'x',
         marker: { size: 30, opacity: 0.1 },
         hoverinfo: 'text',
         hovertext: emData.map(
@@ -164,28 +146,6 @@ const EmRangeChart = ({ results, selectedIds }) => {
             `ID: ${item.id}<br>Energy Min: ${item.em_min.toExponential(2)} TeV<br>Energy Max: ${item.em_max.toExponential(2)} TeV`
         ),
       },
-       {
-            type: 'scatter',
-             mode: 'markers',
-            x:  wavelengthTickVals, // Use wavelength values as x points
-             y: emptyY,       // constant Y position, same for all values
-            xaxis:'x2',
-            marker: { size: 0, opacity: 0 }, // invisible markers
-             hoverinfo: 'none', // Remove hover
-             },
-        {
-           type: 'scatter',
-        mode: 'markers',
-         x: emData.map((item) => (item.em_min + item.em_max) / 2),
-        y: emData.map(() => 0.5),
-            xaxis:'x2',
-             marker: { size: 0, opacity: 0 },
-             hoverinfo: 'text',
-             hovertext: emData.map(
-                  (item) => `ID: ${item.id}<br>Wavelength Min: ${1.24e-6 / (item.em_max *1e12)} m<br>Wavelength Max: ${1.24e-6 / (item.em_min *1e12)} m`
-              ),
-
-        }
     ];
   }, [emData]);
 
@@ -216,6 +176,9 @@ const EmRangeChart = ({ results, selectedIds }) => {
              displayModeBar: false,
            }}
       />
+         <p style={{fontSize: '12px', marginTop: '5px'}}>
+          * The Energy (TeV) values were converted from wavelength (m) measurements.
+        </p>
     </div>
   );
 };
