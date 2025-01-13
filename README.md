@@ -1,6 +1,6 @@
 # CTAO Data Access and Analysis Portal
 
-This project is a web application designed to access, visualize, and analyze data from the **Cherenkov Telescope Array Observatory (CTAO)** project. The application consists of a frontend built with **React** and a backend powered by **FastAPI**. Users can perform searches on CTAO data, select results, and visualize them with different methods, including on an interactive sky map using **Aladin Lite**.
+This project is a web application for accessing, visualizing, and analyzing data from the **Cherenkov Telescope Array Observatory (CTAO)**. It features a **React**-based frontend and a **FastAPI**-powered backend. Users can perform data searches, select relevant results, and explore visualizations through various methods, including an interactive sky map powered by **Aladin Lite**.
 
 ## Table of Contents
 
@@ -17,7 +17,7 @@ This project is a web application designed to access, visualize, and analyze dat
 - Access and query CTAO data with customizable parameters.
 - Display search results in a data table with selectable rows.
 - Visualize selected data points on an interactive sky map using **Aladin Lite**.
-- Visualize selected data points with timeline chart and electromagnetic range chart
+- Visualize selected data points with timeline chart and electromagnetic range chart.
 
 ## Requirements
 
@@ -46,7 +46,7 @@ This project is a web application designed to access, visualize, and analyze dat
    ```bash
    git clone https://gitlab.obspm.fr/oates/ctao-data-explorer.git
    cd ctao-data-explorer
-   conda create -n ctao-backend python=3.8
+   conda create -n ctao-backend python=3.12.7
    conda activate ctao-backend
    conda install -c conda-forge fastapi uvicorn aiofiles pyvo numpy requests
    uvicorn api.main:app --reload
