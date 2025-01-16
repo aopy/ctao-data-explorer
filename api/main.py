@@ -7,6 +7,8 @@ import math
 import requests
 from astropy.io.votable import parse_single_table
 from io import BytesIO
+import astropy.units as u
+from astropy.coordinates import SkyCoord
 
 app = FastAPI(
     title="CTAO Data Explorer API",
@@ -29,27 +31,54 @@ app.add_middleware(
     allow_headers=["*"],  # Allow all headers
 )
 
-@app.get("/api/search", response_model=SearchResult, tags=["Search"])
-async def api_search(
-    target_raj2000: float = Query(..., ge=0.0, le=360.0, example=83.6331),
-    target_dej2000: float = Query(..., ge=-90.0, le=90.0, example=22.0145),
-    search_radius: float = Query(..., ge=0.0, le=90.0, example=0.1),
+@app.get("/api/search_coords", response_model=SearchResult)
+async def search_coords(
+    coordinate_system: str,
+    # if equatorial
+    ra: float = None,
+    dec: float = None,
+    # if galactic
+    l: float = None,
+    b: float = None,
+    search_radius: float = Query(..., ge=0.0, le=90.0),
     tap_url: str = Query('http://voparis-tap-he.obspm.fr/tap', title="TAP Server URL"),
     obscore_table: str = Query('hess_dr.obscore_sdc', title="ObsCore Table Name")
 ):
+    """
+    Endpoint that accepts coordinate_system='equatorial' or 'galactic'.
+    If galactic, transform (l, b) => (RA, Dec) before running the cone search.
+    """
+    # Validate coordinate_system
+    if coordinate_system not in ('equatorial', 'galactic'):
+        raise HTTPException(status_code=400, detail="Invalid coordinate system")
+
+    # transform to RA/Dec if needed
+    if coordinate_system == 'equatorial':
+        if ra is None or dec is None:
+            raise HTTPException(status_code=400, detail="Missing RA/Dec in equatorial mode")
+        final_ra = ra
+        final_dec = dec
+    else:
+        # coordinate_system == 'galactic'
+        if l is None or b is None:
+            raise HTTPException(status_code=400, detail="Missing l/b in galactic mode")
+        # Use astropy to convert l,b => RA,Dec
+        c_gal = SkyCoord(l*u.deg, b*u.deg, frame='galactic')
+        c_icrs = c_gal.icrs
+        final_ra = c_icrs.ra.deg
+        final_dec = c_icrs.dec.deg
+
     form_data = {
-        'target_raj2000': {'value': target_raj2000},
-        'target_dej2000': {'value': target_dej2000},
+        'target_raj2000': {'value': final_ra},
+        'target_dej2000': {'value': final_dec},
         'search_radius': {'value': search_radius},
         'tap_url': {'value': tap_url},
         'obscore_table': {'value': obscore_table},
     }
     error, res_table = perform_query(form_data)
-
     if error is None:
         columns, data = astropy_table_to_list(res_table)
-        result = SearchResult(columns=columns, data=data)
-        return result
+        return SearchResult(columns=columns, data=data)
     else:
         raise HTTPException(status_code=400, detail=error)
 

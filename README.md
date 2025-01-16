@@ -23,7 +23,7 @@ This project is a web application for accessing, visualizing, and analyzing data
 
 ### Backend
 
-- Python 3.7 or higher
+- Python
 - FastAPI
 - Uvicorn
 - Aiofiles
@@ -34,7 +34,7 @@ This project is a web application for accessing, visualizing, and analyzing data
 
 ### Frontend
 
-- Node.js v14 or higher
+- Node.js
 - React.js
 - Axios
 - React Data Table Component
