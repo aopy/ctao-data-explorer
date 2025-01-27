@@ -59,8 +59,8 @@ async def auth_callback(
         }
         new_user = UserTable(**new_data)
         session.add(new_user)
-        session.commit()
-        session.refresh(new_user)
+        await session.commit()
+        await session.refresh(new_user)
         existing_user = new_user
 
     # Generate JWT token
