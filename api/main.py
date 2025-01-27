@@ -9,11 +9,25 @@ from astropy.io.votable import parse_single_table
 from io import BytesIO
 import astropy.units as u
 from astropy.coordinates import SkyCoord
+from .auth import router as auth_router
+from starlette.middleware.sessions import SessionMiddleware
+from .oidc import oidc_router
+from starlette.staticfiles import StaticFiles
+
 
 app = FastAPI(
     title="CTAO Data Explorer API",
     description="An API to access and analyse high-energy astrophysics data from CTAO",
     version="1.0.0",
+)
+
+# Add session middleware
+app.add_middleware(
+    SessionMiddleware,
+    secret_key="SECRET_KEY",
+    session_cookie="my_session",
+    same_site="lax",  # 'lax'/'strict','none'
+    https_only=False,
 )
 
 # CORS configuration
@@ -198,6 +212,13 @@ def _run_ned_sync_query(adql_query):
         print(f"NED query error: {e}")
 
     return out
+
+# Include local user auth (JWT)
+app.include_router(auth_router)
+# Include CTAO OIDC
+app.include_router(oidc_router)
+# Mount the React build folder
+app.mount("/", StaticFiles(directory="./js/build", html=True), name="js")
 
 # Run the application
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
+import 'bootstrap/dist/css/bootstrap.min.css';  // Ensure Bootstrap is imported
 import SearchForm from './components/SearchForm';
 import ResultsTable from './components/ResultsTable';
 import AladinLiteViewer from './components/AladinLiteViewer';
@@ -17,6 +18,34 @@ function App() {
   // The search and results tabs logic
   const [activeTab, setActiveTab] = useState('search');
 
+  // Auth token from OIDC or local login
+  const [authToken, setAuthToken] = useState(null);
+
+  // On mount, check if there's ?token= in URL. If so, store it in state
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    if (token) {
+      setAuthToken(token);
+      // remove the token param from the URL
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  // A handler for user clicks "Login" => redirect to OIDC
+  const handleLogin = () => {
+    // This points to OIDC login endpoint
+    console.log("Login clicked!");
+    // window.location.href = "/oidc/login";
+    window.location.href = "http://127.0.0.1:8000/oidc/login";
+  };
+
+  // A handler for user clicks "Logout"
+  const handleLogout = () => {
+    setAuthToken(null);
+    // Optionally also remove from localStorage or do a backend call
+  };
+
   /**
    * Called when user submits the search form.
    * This sets 'results' and automatically switches to the "results" tab.
@@ -26,7 +55,6 @@ function App() {
     setActiveTab('results');
 
     // Once we have the entire result set, parse them into allCoordinates.
-    // We want to show ALL of them in the sky map by default.
     if (data?.columns && data?.data) {
       const s_ra_index = data.columns.indexOf('s_ra');
       const s_dec_index = data.columns.indexOf('s_dec');
@@ -46,26 +74,44 @@ function App() {
 
   /**
    * Called whenever the user selects or unselects rows in the ResultsTable.
-   * We store the selectedIds in state. The actual coordinate changes for selection
-   * are not needed anymore, because 'allCoordinates' holds every row’s coordinates.
+   * We store the selectedIds in state.
    */
-  const handleRowSelected = useCallback(
-    (selectedRowsChange) => {
-      const { selectedRows } = selectedRowsChange || {};
-      if (!selectedRows || !Array.isArray(selectedRows)) {
-        console.error('selectedRows is not an array');
-        return;
-      }
-
-      // Just store the selected IDs
-      const ids = selectedRows.map((row) => row['obs_id'].toString());
-      setSelectedIds(ids);
-    },
-    []
-  );
+  const handleRowSelected = useCallback((selectedRowsChange) => {
+    const { selectedRows } = selectedRowsChange || {};
+    if (!selectedRows || !Array.isArray(selectedRows)) {
+      console.error('selectedRows is not an array');
+      return;
+    }
+    // Just store the selected IDs
+    const ids = selectedRows.map((row) => row['obs_id'].toString());
+    setSelectedIds(ids);
+  }, []);
 
   return (
     <div className="container-fluid p-3">
+      {/* TOP NAVBAR AREA */}
+      <div className="d-flex justify-content-between mb-2">
+        <h2>CTAO Data Explorer</h2>
+        <div>
+          {authToken ? (
+            <>
+              <span className="me-3 text-success">Logged in</span>
+              <button className="btn btn-outline-danger" onClick={handleLogout}>
+                Logout
+              </button>
+            </>
+          ) : (
+            <button
+                type="button"
+                className="btn btn-outline-primary"
+                onClick={handleLogin}
+                >
+            Login
+            </button>
+          )}
+        </div>
+      </div>
+
       <ul className="nav nav-tabs" role="tablist">
         <li className="nav-item" role="presentation">
           <button
@@ -122,7 +168,6 @@ function App() {
                       className="card-body p-0"
                       style={{ height: '400px', overflow: 'hidden' }}
                     >
-                      {/* Instead of selectedCoordinates, we pass ALL rows to overlays */}
                       <AladinLiteViewer
                         overlays={allCoordinates}
                         selectedIds={selectedIds}
@@ -130,7 +175,7 @@ function App() {
                     </div>
                   </div>
                 </div>
-                {/* Charts: Take up the remaining 5/12 columns */}
+                {/* Charts: 5/12 columns */}
                 <div className="col-md-5 mb-3">
                   <div className="card h-100">
                     <div className="card-header bg-dark text-white">Charts</div>
@@ -191,7 +236,7 @@ function App() {
                 </div>
               </div>
 
-              {/* Bottom row: Results table spanning full width */}
+              {/* Bottom row: Results table */}
               <div className="row mt-3">
                 <div className="col-12">
                   <div className="card">
