@@ -47,3 +47,6 @@ api/.env
 js/node_modules/
 js/build/
 js/.env
+
+# Environment file
+.env
