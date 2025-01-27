@@ -7,6 +7,7 @@ from starlette.config import Config
 from fastapi import APIRouter, Request, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from .db import get_async_session
+from .auth import get_jwt_strategy
 
 # OIDC config
 config = Config('.env')
@@ -63,9 +64,7 @@ async def auth_callback(
         await session.refresh(new_user)
         existing_user = new_user
 
-    # Generate JWT token
-    from fastapi_users.authentication import JWTStrategy
-    strategy = JWTStrategy(secret="SECRET_KEY_CHANGE_ME", lifetime_seconds=3600)
-    local_token = strategy.write_token(existing_user.id)
+    jwt_strategy = get_jwt_strategy()
+    local_token = jwt_strategy.write_token(existing_user.id)
 
     return RedirectResponse(url=f"/?token={local_token}")
