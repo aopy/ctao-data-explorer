@@ -7,6 +7,7 @@ from fastapi import APIRouter, Request, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from .db import get_async_session
 from .auth import get_jwt_strategy
+from datetime import datetime
 
 # OIDC config
 config = Config('.env')
@@ -60,6 +61,7 @@ async def auth_callback(
             "is_active": True,
             "first_name": given_name,
             "last_name": family_name,
+            "first_login_at": datetime.utcnow(),
         }
         new_user = UserTable(**new_data)
         session.add(new_user)
@@ -67,6 +69,10 @@ async def auth_callback(
         await session.refresh(new_user)
         existing_user = new_user
     else:
+        # If user already exists, and if
+        # first_login_at is null, fill it
+        if existing_user.first_login_at is None:
+            existing_user.first_login_at = datetime.utcnow()
         # Update user to sync names from CTAO each time
         existing_user.first_name = given_name
         existing_user.last_name = family_name
