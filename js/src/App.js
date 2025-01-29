@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import 'bootstrap/dist/css/bootstrap.min.css';  // Ensure Bootstrap is imported
+import 'bootstrap/dist/css/bootstrap.min.css';
+import axios from 'axios';
 import SearchForm from './components/SearchForm';
 import ResultsTable from './components/ResultsTable';
 import AladinLiteViewer from './components/AladinLiteViewer';
@@ -21,6 +22,9 @@ function App() {
   // Auth token from OIDC or local login
   const [authToken, setAuthToken] = useState(null);
 
+  // Store the current user info once we fetch /users/me
+  const [user, setUser] = useState(null);
+
   // On mount, check if there's ?token= in URL. If so, store it in state
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -32,17 +36,37 @@ function App() {
     }
   }, []);
 
+  // If we have an authToken, fetch the user's info from /users/me
+  useEffect(() => {
+    if (authToken) {
+      axios
+        .get('/users/me', {
+          headers: {
+            Authorization: `Bearer ${authToken}`
+          }
+        })
+        .then((res) => {
+          setUser(res.data); // e.g. { id, email, first_name, last_name }
+        })
+        .catch((err) => {
+          console.error('Failed to fetch current user:', err);
+        });
+    } else {
+      // If no token, ensure user is set to null
+      setUser(null);
+    }
+  }, [authToken]);
+
   // A handler for user clicks "Login" => redirect to OIDC
   const handleLogin = () => {
-    // This points to OIDC login endpoint
     console.log("Login clicked!");
-    // window.location.href = "/oidc/login";
-    window.location.href = "http://127.0.0.1:8000/oidc/login";
+    window.location.href = "/oidc/login";
   };
 
   // A handler for user clicks "Logout"
   const handleLogout = () => {
     setAuthToken(null);
+    setUser(null);
     // Optionally also remove from localStorage or do a backend call
   };
 
@@ -95,7 +119,9 @@ function App() {
         <div>
           {authToken ? (
             <>
-              <span className="me-3 text-success">Logged in</span>
+              <span className="me-3 text-success">
+                {user ? `Logged in as ${user.first_name || user.email}` : 'Logged in'}
+              </span>
               <button className="btn btn-outline-danger" onClick={handleLogout}>
                 Logout
               </button>

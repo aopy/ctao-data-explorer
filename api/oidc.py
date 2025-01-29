@@ -1,7 +1,6 @@
 from fastapi.responses import RedirectResponse
 from .auth import UserTable, fastapi_users
 from fastapi_users.db import SQLAlchemyUserDatabase
-from sqlalchemy.orm import Session
 from authlib.integrations.starlette_client import OAuth
 from starlette.config import Config
 from fastapi import APIRouter, Request, Depends
@@ -42,6 +41,8 @@ async def auth_callback(
     userinfo = await oauth.ctao.userinfo(token=token)
 
     email = userinfo.get("email")
+    given_name = userinfo.get("given_name")
+    family_name = userinfo.get("family_name")
     sub = userinfo.get("sub")
 
     if not email:
@@ -56,15 +57,24 @@ async def auth_callback(
         new_data = {
             "email": email,
             "hashed_password": "...",  # generate a random password
-            "is_active": True
+            "is_active": True,
+            "first_name": given_name,
+            "last_name": family_name,
         }
         new_user = UserTable(**new_data)
         session.add(new_user)
         await session.commit()
         await session.refresh(new_user)
         existing_user = new_user
+    else:
+        # Update user to sync names from CTAO each time
+        existing_user.first_name = given_name
+        existing_user.last_name = family_name
+        await session.commit()
+        await session.refresh(existing_user)
 
     jwt_strategy = get_jwt_strategy()
-    local_token = jwt_strategy.write_token(existing_user.id)
+    local_token = await jwt_strategy.write_token(existing_user)
+    # print("DEBUG local_token =>", local_token)
 
     return RedirectResponse(url=f"/?token={local_token}")
