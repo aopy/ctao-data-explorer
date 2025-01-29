@@ -23,7 +23,7 @@ This project is a web application for accessing, visualizing, and analyzing data
 
 ### Backend
 
-- Python
+- Python >=3.10
 - FastAPI
 - Uvicorn
 - Aiofiles
@@ -47,11 +47,23 @@ This project is a web application for accessing, visualizing, and analyzing data
 ### Backend Setup
 
    ```bash
+   # Clone the repository
    git clone https://gitlab.obspm.fr/oates/ctao-data-explorer.git
    cd ctao-data-explorer
+   # Create and activate a conda environment
    conda create -n ctao-backend python=3.12.7
    conda activate ctao-backend
-   conda install -c conda-forge fastapi uvicorn aiofiles pyvo numpy requests fastapi-users-db-sqlalchemy authlib itsdangerous asyncpg alembic
+   # Install dependencies
+   conda install -c conda-forge fastapi uvicorn aiofiles pyvo numpy requests \
+    fastapi-users-db-sqlalchemy authlib itsdangerous asyncpg postgresql alembic
+   # Set up PostgreSQL
+   psql -U postgres
+   CREATE DATABASE fastapi_db;
+   CREATE USER user WITH PASSWORD 'password'; # Adjust user name and password
+   GRANT ALL PRIVILEGES ON DATABASE fastapi_db TO user;
+   # Apply Alembic migrations
+   alembic upgrade head
+   # Run the backend
    uvicorn api.main:app --reload
    ```
 ### Frontend Setup
