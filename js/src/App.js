@@ -7,6 +7,81 @@ import AladinLiteViewer from './components/AladinLiteViewer';
 import TimelineChart from './components/TimelineChart';
 import EmRangeChart from './components/EmRangeChart';
 
+/**
+ * BasketPage component
+ * - Fetches items from /basket
+ * - Lets user remove or open items
+ */
+function BasketPage({ authToken }) {
+  const [items, setItems] = useState([]);
+
+  useEffect(() => {
+    if (!authToken) return; // not logged in
+    axios
+      .get('/basket', {
+        headers: { Authorization: `Bearer ${authToken}` },
+      })
+      .then((res) => {
+        setItems(res.data);
+      })
+      .catch((err) => {
+        console.error('Failed to fetch basket:', err);
+      });
+  }, [authToken]);
+
+  const handleRemove = async (id) => {
+    try {
+      await axios.delete(`/basket/${id}`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      // filter out the removed item
+      setItems((prev) => prev.filter((item) => item.id !== id));
+    } catch (err) {
+      console.error('Failed to remove from basket:', err);
+      alert('Error removing item from basket.');
+    }
+  };
+
+  const handleOpen = (item) => {
+    // Possibly parse item.dataset_json and pass to sky map or charts
+    console.log('Open basket item =>', item);
+    alert(`TODO display the sky map/charts for obs_id=${item.obs_id}`);
+  };
+
+  if (!authToken) {
+    return <p>Please log in to view your basket.</p>;
+  }
+
+  return (
+    <div className="mt-3">
+      <h3>My Basket</h3>
+      <ul className="list-group">
+        {items.map((it) => (
+          <li key={it.id} className="list-group-item d-flex justify-content-between">
+            <div>
+              <strong>{it.obs_id}</strong> | Saved: {new Date(it.created_at).toLocaleString()}
+            </div>
+            <div>
+              <button
+                className="btn btn-sm btn-outline-primary me-2"
+                onClick={() => handleOpen(it)}
+              >
+                Open
+              </button>
+              <button
+                className="btn btn-sm btn-outline-danger"
+                onClick={() => handleRemove(it.id)}
+              >
+                Remove
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function App() {
   // The entire search results from the backend
   const [results, setResults] = useState(null);
@@ -42,8 +117,8 @@ function App() {
       axios
         .get('/users/me', {
           headers: {
-            Authorization: `Bearer ${authToken}`
-          }
+            Authorization: `Bearer ${authToken}`,
+          },
         })
         .then((res) => {
           setUser(res.data); // e.g. { id, email, first_name, last_name }
@@ -59,8 +134,8 @@ function App() {
 
   // A handler for user clicks "Login" => redirect to OIDC
   const handleLogin = () => {
-    console.log("Login clicked!");
-    window.location.href = "/oidc/login";
+    console.log('Login clicked!');
+    window.location.href = '/oidc/login';
   };
 
   // A handler for user clicks "Logout"
@@ -84,7 +159,12 @@ function App() {
       const s_dec_index = data.columns.indexOf('s_dec');
       const id_index = data.columns.indexOf('obs_id');
       const s_fov_index = data.columns.indexOf('s_fov');
-      if (s_ra_index !== -1 && s_dec_index !== -1 && id_index !== -1 && s_fov_index !== -1) {
+      if (
+        s_ra_index !== -1 &&
+        s_dec_index !== -1 &&
+        id_index !== -1 &&
+        s_fov_index !== -1
+      ) {
         const coords = data.data.map((row) => ({
           ra: parseFloat(row[s_ra_index]),
           dec: parseFloat(row[s_dec_index]),
@@ -127,17 +207,14 @@ function App() {
               </button>
             </>
           ) : (
-            <button
-                type="button"
-                className="btn btn-outline-primary"
-                onClick={handleLogin}
-                >
-            Login
+            <button type="button" className="btn btn-outline-primary" onClick={handleLogin}>
+              Login
             </button>
           )}
         </div>
       </div>
 
+      {/* TAB NAVIGATION */}
       <ul className="nav nav-tabs" role="tablist">
         <li className="nav-item" role="presentation">
           <button
@@ -159,6 +236,16 @@ function App() {
             Results
           </button>
         </li>
+        <li className="nav-item" role="presentation">
+          <button
+            className={`nav-link ${activeTab === 'basket' ? 'active' : ''}`}
+            onClick={() => setActiveTab('basket')}
+            type="button"
+            role="tab"
+          >
+            My Basket
+          </button>
+        </li>
       </ul>
 
       <div className="tab-content mt-3">
@@ -168,9 +255,7 @@ function App() {
           role="tabpanel"
         >
           <div className="card">
-            <div className="card-header bg-secondary text-white">
-              Search Form
-            </div>
+            <div className="card-header bg-secondary text-white">Search Form</div>
             <div className="card-body">
               <SearchForm setResults={handleSearchResults} />
             </div>
@@ -190,14 +275,8 @@ function App() {
                 <div className="col-md-7 mb-3">
                   <div className="card h-100">
                     <div className="card-header bg-primary text-white">Sky Map</div>
-                    <div
-                      className="card-body p-0"
-                      style={{ height: '400px', overflow: 'hidden' }}
-                    >
-                      <AladinLiteViewer
-                        overlays={allCoordinates}
-                        selectedIds={selectedIds}
-                      />
+                    <div className="card-body p-0" style={{ height: '400px', overflow: 'hidden' }}>
+                      <AladinLiteViewer overlays={allCoordinates} selectedIds={selectedIds} />
                     </div>
                   </div>
                 </div>
@@ -266,11 +345,13 @@ function App() {
               <div className="row mt-3">
                 <div className="col-12">
                   <div className="card">
-                    <div className="card-header bg-info text-white">
-                      Search Results
-                    </div>
+                    <div className="card-header bg-info text-white">Search Results</div>
                     <div className="card-body p-0">
-                      <ResultsTable results={results} onRowSelected={handleRowSelected} />
+                      <ResultsTable
+                        results={results}
+                        onRowSelected={handleRowSelected}
+                        authToken={authToken}  // pass token for "Add to Basket"
+                      />
                     </div>
                   </div>
                 </div>
@@ -279,6 +360,14 @@ function App() {
           ) : (
             <div>No results yet. Please run a search first.</div>
           )}
+        </div>
+
+        {/* BASKET TAB */}
+        <div
+          className={`tab-pane fade ${activeTab === 'basket' ? 'show active' : ''}`}
+          role="tabpanel"
+        >
+          <BasketPage authToken={authToken} />
         </div>
       </div>
     </div>

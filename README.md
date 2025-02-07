@@ -55,7 +55,7 @@ This project is a web application for accessing, visualizing, and analyzing data
    conda activate ctao-backend
    # Install dependencies
    conda install -c conda-forge fastapi uvicorn aiofiles pyvo numpy requests \
-    fastapi-users-db-sqlalchemy authlib itsdangerous asyncpg postgresql alembic
+    fastapi-users-db-sqlalchemy authlib itsdangerous asyncpg postgresql alembic psycopg2
    # Set up PostgreSQL
    psql -U postgres
    CREATE DATABASE fastapi_db;

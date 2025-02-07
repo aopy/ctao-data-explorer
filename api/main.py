@@ -13,6 +13,7 @@ from .auth import router as auth_router
 from starlette.middleware.sessions import SessionMiddleware
 from .oidc import oidc_router
 from starlette.staticfiles import StaticFiles
+from .basket import basket_router
 
 
 app = FastAPI(
@@ -217,6 +218,8 @@ def _run_ned_sync_query(adql_query):
 app.include_router(auth_router)
 # Include CTAO OIDC
 app.include_router(oidc_router)
+# Include basket router here
+app.include_router(basket_router)
 # Mount the React build folder
 app.mount("/", StaticFiles(directory="./js/build", html=True), name="js")
 

@@ -1,11 +1,37 @@
 import React, { useMemo, useState } from 'react';
 import DataTable from 'react-data-table-component';
+import axios from 'axios';
 
-const ResultsTable = ({ results, onRowSelected }) => {
+const ResultsTable = ({ results, onRowSelected, authToken }) => {
   const { columns, data } = results;
 
   // State to track hidden columns
   const [hiddenColumns, setHiddenColumns] = useState([]);
+
+  // A function to add a row to the basket
+  const addToBasket = async (rowData) => {
+    if (!authToken) {
+      alert("You must be logged in to add to basket!");
+      return;
+    }
+
+    try {
+      const payload = {
+        obs_id: rowData.obs_id,
+        dataset_dict: rowData,  // the entire row or partial info
+      };
+      const response = await axios.post("/basket", payload, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+      console.log("Added to basket:", response.data);
+      alert(`Added obs_id=${rowData.obs_id} to basket!`);
+    } catch (error) {
+      console.error("Failed to add to basket:", error);
+      alert("Error adding to basket. Check console logs.");
+    }
+  };
 
   // Custom subheader component for column visibility
   const SubHeader = () => (
@@ -82,8 +108,26 @@ const ResultsTable = ({ results, onRowSelected }) => {
       });
     }
 
+    // **Add a new column** for the "Add to Basket" button
+    normalCols.unshift({
+      id: 'basket-column',
+      name: 'Action',
+      cell: (row) => (
+        <button
+          className="btn btn-sm btn-primary"
+          onClick={() => addToBasket(row)}
+          disabled={!authToken}  // disable if not logged in
+        >
+          Add
+        </button>
+      ),
+      ignoreRowClick: true,
+      allowOverflow: true,
+      button: true,
+    });
+
     return normalCols;
-  }, [columns, hiddenColumns]);
+  }, [columns, hiddenColumns, authToken]);
 
   // Memoize data
   const tableData = useMemo(() => {
