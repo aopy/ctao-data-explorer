@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import axios from 'axios';
 import SearchForm from './components/SearchForm';
@@ -7,47 +7,178 @@ import AladinLiteViewer from './components/AladinLiteViewer';
 import TimelineChart from './components/TimelineChart';
 import EmRangeChart from './components/EmRangeChart';
 
-/**
- * BasketPage component
- * - Fetches items from /basket
- * - Lets user remove or open items
- */
-function BasketPage({ authToken }) {
-  const [items, setItems] = useState([]);
+// The modal that displays sky map & charts for a single basket item
+function BasketItemModal({ show, onClose, basketItem }) {
+  if (!show || !basketItem) return null;
 
-  useEffect(() => {
-    if (!authToken) return; // not logged in
-    axios
-      .get('/basket', {
-        headers: { Authorization: `Bearer ${authToken}` },
-      })
-      .then((res) => {
-        setItems(res.data);
-      })
-      .catch((err) => {
-        console.error('Failed to fetch basket:', err);
-      });
-  }, [authToken]);
+  // The entire object from DB => rowData
+  const rowData = basketItem.dataset_json || {};
 
-  const handleRemove = async (id) => {
-    try {
-      await axios.delete(`/basket/${id}`, {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-      // filter out the removed item
-      setItems((prev) => prev.filter((item) => item.id !== id));
-    } catch (err) {
-      console.error('Failed to remove from basket:', err);
-      alert('Error removing item from basket.');
-    }
-  };
+  // Prepare the overlay for Aladin
+  const raNum = parseFloat(rowData.s_ra);
+  const decNum = parseFloat(rowData.s_dec);
+  const fovNum = parseFloat(rowData.s_fov); // if any
 
-  const handleOpen = (item) => {
-    // Possibly parse item.dataset_json and pass to sky map or charts
-    console.log('Open basket item =>', item);
-    alert(`TODO display the sky map/charts for obs_id=${item.obs_id}`);
-  };
+  // A single overlay array with marker + circle
+  const allCoordinates = [];
+  if (!isNaN(raNum) && !isNaN(decNum)) {
+    allCoordinates.push({
+      ra: raNum,
+      dec: decNum,
+      id: rowData.obs_id?.toString() || "??",
+      s_fov: !isNaN(fovNum) ? fovNum : undefined, // pass s_fov if it exists
+    });
+  }
 
+  // For charts
+  const chartColumns = ["obs_id", "s_ra", "s_dec", "t_min", "t_max", "em_min", "em_max"];
+  const chartData = [chartColumns.map((col) => rowData[col])];
+  const fakeResults = { columns: chartColumns, data: chartData };
+
+  // For the table: show all fields from rowData
+  const allKeys = Object.keys(rowData).sort();
+
+  return (
+    <div className="modal show" style={{ display: 'block' }} role="dialog">
+      <div className="modal-dialog modal-xl" role="document">
+        <div className="modal-content">
+          {/* MODAL HEADER */}
+          <div className="modal-header bg-primary text-white">
+            <h5 className="modal-title">
+              Basket Item: {rowData.obs_id || "N/A"}
+            </h5>
+            <button type="button" className="btn-close" onClick={onClose}></button>
+          </div>
+
+          {/* MODAL BODY */}
+          <div className="modal-body">
+            {/* ROW #1 => SKY MAP (left), CHART TABS (right) */}
+            <div className="row">
+              {/* Sky map + circle overlay if s_fov is present */}
+              <div className="col-md-7 mb-3">
+                <div className="card h-100">
+                  <div className="card-header bg-primary text-white">Sky Map</div>
+                  <div
+                    className="card-body p-0"
+                    style={{ height: "400px", overflow: "hidden" }}
+                  >
+                    <AladinLiteViewer
+                      overlays={allCoordinates}
+                      selectedIds={[]}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Timeline / EM Range Tabs */}
+              <div className="col-md-5 mb-3">
+                <div className="card h-100">
+                  <div className="card-header bg-dark text-white">Charts</div>
+                  <div
+                    className="card-body d-flex flex-column"
+                    style={{ height: '400px', overflow: 'auto' }}
+                  >
+                    {/* Unique IDs so it won't clash with other tabs */}
+                    <ul className="nav nav-tabs" id="modalChartTabs" role="tablist">
+                      <li className="nav-item" role="presentation">
+                        <button
+                          className="nav-link active"
+                          id="timeline-tab-modal"
+                          data-bs-toggle="tab"
+                          data-bs-target="#timelinePaneModal"
+                          type="button"
+                          role="tab"
+                          aria-controls="timelinePaneModal"
+                          aria-selected="true"
+                        >
+                          Timeline
+                        </button>
+                      </li>
+                      <li className="nav-item" role="presentation">
+                        <button
+                          className="nav-link"
+                          id="emrange-tab-modal"
+                          data-bs-toggle="tab"
+                          data-bs-target="#emrangePaneModal"
+                          type="button"
+                          role="tab"
+                          aria-controls="emrangePaneModal"
+                          aria-selected="false"
+                        >
+                          EM Range
+                        </button>
+                      </li>
+                    </ul>
+
+                    <div
+                      className="tab-content flex-grow-1"
+                      id="modalChartTabsContent"
+                    >
+                      <div
+                        className="tab-pane fade show active mt-2"
+                        id="timelinePaneModal"
+                        role="tabpanel"
+                        aria-labelledby="timeline-tab-modal"
+                      >
+                        <TimelineChart results={fakeResults} selectedIds={[]} />
+                      </div>
+                      <div
+                        className="tab-pane fade mt-2"
+                        id="emrangePaneModal"
+                        role="tabpanel"
+                        aria-labelledby="emrange-tab-modal"
+                      >
+                        <EmRangeChart results={fakeResults} selectedIds={[]} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ROW #2 => FULL TABLE of all fields */}
+            <div className="row mt-3">
+              <div className="col-12">
+                <h6>All Fields</h6>
+                <table className="table table-sm table-bordered">
+                  <thead>
+                    <tr>
+                      <th>Key</th>
+                      <th>Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allKeys.map((key) => (
+                      <tr key={key}>
+                        <td>{key}</td>
+                        <td>{rowData[key]?.toString() ?? ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          {/* MODAL FOOTER */}
+          <div className="modal-footer">
+            <button type="button" className="btn btn-secondary" onClick={onClose}>
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BasketPage({
+  authToken,
+  basketItems,
+  refreshBasket,
+  onOpenItem,
+  onRemoveItem,
+}) {
   if (!authToken) {
     return <p>Please log in to view your basket.</p>;
   }
@@ -55,22 +186,26 @@ function BasketPage({ authToken }) {
   return (
     <div className="mt-3">
       <h3>My Basket</h3>
+
+      {/* "Refresh" button for manual refresh: */}
+      {/* <button onClick={refreshBasket} className="btn btn-sm btn-outline-info mb-2">Refresh</button> */}
+
       <ul className="list-group">
-        {items.map((it) => (
+        {basketItems.map((it) => (
           <li key={it.id} className="list-group-item d-flex justify-content-between">
             <div>
-              <strong>{it.obs_id}</strong> | Saved: {new Date(it.created_at).toLocaleString()}
+              <strong>{it.obs_id}</strong> | {new Date(it.created_at).toLocaleString()}
             </div>
             <div>
               <button
                 className="btn btn-sm btn-outline-primary me-2"
-                onClick={() => handleOpen(it)}
+                onClick={() => onOpenItem(it)}
               >
                 Open
               </button>
               <button
                 className="btn btn-sm btn-outline-danger"
-                onClick={() => handleRemove(it.id)}
+                onClick={() => onRemoveItem(it.id)}
               >
                 Remove
               </button>
@@ -90,23 +225,25 @@ function App() {
   const [allCoordinates, setAllCoordinates] = useState([]);
   // selectedIds = only the IDs that the user has highlighted in the table
   const [selectedIds, setSelectedIds] = useState([]);
-
-  // The search and results tabs logic
   const [activeTab, setActiveTab] = useState('search');
 
   // Auth token from OIDC or local login
   const [authToken, setAuthToken] = useState(null);
-
-  // Store the current user info once we fetch /users/me
+  // Current user info
   const [user, setUser] = useState(null);
 
-  // On mount, check if there's ?token= in URL. If so, store it in state
+  // BASKET STATE
+  const [basketItems, setBasketItems] = useState([]);
+  // For the modal
+  const [showBasketModal, setShowBasketModal] = useState(false);
+  const [basketModalItem, setBasketModalItem] = useState(null);
+
+  // On mount, check if there's ?token= in URL
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token');
     if (token) {
       setAuthToken(token);
-      // remove the token param from the URL
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
@@ -127,33 +264,53 @@ function App() {
           console.error('Failed to fetch current user:', err);
         });
     } else {
-      // If no token, ensure user is set to null
       setUser(null);
     }
   }, [authToken]);
 
-  // A handler for user clicks "Login" => redirect to OIDC
+  /**
+   * A function to reload the basket from the server
+   * and store in `basketItems` state.
+   */
+  const refreshBasket = async () => {
+    if (!authToken) return;
+    try {
+      const res = await axios.get('/basket', {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+      setBasketItems(res.data);
+    } catch (err) {
+      console.error('Failed to refresh basket:', err);
+    }
+  };
+
+  // Whenever log in or out, refresh the basket
+  useEffect(() => {
+    if (authToken) {
+      refreshBasket();
+    } else {
+      setBasketItems([]);
+    }
+  }, [authToken]);
+
+  // Handler for user clicks login
   const handleLogin = () => {
-    console.log('Login clicked!');
     window.location.href = '/oidc/login';
   };
 
-  // A handler for user clicks "Logout"
+  // Handler for user clicks logout
   const handleLogout = () => {
     setAuthToken(null);
     setUser(null);
-    // Optionally also remove from localStorage or do a backend call
   };
 
-  /**
-   * Called when user submits the search form.
-   * This sets 'results' and automatically switches to the "results" tab.
-   */
+  // Called when user does a search
   const handleSearchResults = (data) => {
     setResults(data);
     setActiveTab('results');
 
-    // Once we have the entire result set, parse them into allCoordinates.
     if (data?.columns && data?.data) {
       const s_ra_index = data.columns.indexOf('s_ra');
       const s_dec_index = data.columns.indexOf('s_dec');
@@ -176,20 +333,42 @@ function App() {
     }
   };
 
-  /**
-   * Called whenever the user selects or unselects rows in the ResultsTable.
-   * We store the selectedIds in state.
-   */
-  const handleRowSelected = useCallback((selectedRowsChange) => {
+  // Called whenever user selects rows in results table
+  const handleRowSelected = (selectedRowsChange) => {
     const { selectedRows } = selectedRowsChange || {};
     if (!selectedRows || !Array.isArray(selectedRows)) {
-      console.error('selectedRows is not an array');
       return;
     }
-    // Just store the selected IDs
     const ids = selectedRows.map((row) => row['obs_id'].toString());
     setSelectedIds(ids);
-  }, []);
+  };
+
+  // Called by basket page when user clicks "Remove"
+  const handleRemoveBasketItem = async (id) => {
+    if (!authToken) return;
+    try {
+      await axios.delete(`/basket/${id}`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      // filter out the removed
+      setBasketItems(prev => prev.filter(b => b.id !== id));
+    } catch (err) {
+      console.error('Failed to remove from basket:', err);
+      alert('Error removing item from basket.');
+    }
+  };
+
+  // Called by basket page when user clicks "Open"
+  const handleOpenBasketItem = (item) => {
+    setBasketModalItem(item);
+    setShowBasketModal(true);
+  };
+
+  // close the modal
+  const closeBasketModal = () => {
+    setShowBasketModal(false);
+    setBasketModalItem(null);
+  };
 
   return (
     <div className="container-fluid p-3">
@@ -248,12 +427,10 @@ function App() {
         </li>
       </ul>
 
+      {/* TAB CONTENT */}
       <div className="tab-content mt-3">
         {/* SEARCH TAB */}
-        <div
-          className={`tab-pane fade ${activeTab === 'search' ? 'show active' : ''}`}
-          role="tabpanel"
-        >
+        <div className={`tab-pane fade ${activeTab === 'search' ? 'show active' : ''}`} role="tabpanel">
           <div className="card">
             <div className="card-header bg-secondary text-white">Search Form</div>
             <div className="card-body">
@@ -269,18 +446,23 @@ function App() {
         >
           {results ? (
             <>
-              {/* Top row: Sky map (left) and Charts (right) */}
+              {/* ROW: Sky Map (left) + Charts (right) */}
               <div className="row">
-                {/* Sky map: Make it wider (7/12 columns) */}
+                {/* Sky map */}
                 <div className="col-md-7 mb-3">
                   <div className="card h-100">
                     <div className="card-header bg-primary text-white">Sky Map</div>
                     <div className="card-body p-0" style={{ height: '400px', overflow: 'hidden' }}>
-                      <AladinLiteViewer overlays={allCoordinates} selectedIds={selectedIds} />
+                      {/* Aladin sky map with your overlays */}
+                      <AladinLiteViewer
+                        overlays={allCoordinates}
+                        selectedIds={selectedIds}
+                      />
                     </div>
                   </div>
                 </div>
-                {/* Charts: 5/12 columns */}
+
+                {/* Charts */}
                 <div className="col-md-5 mb-3">
                   <div className="card h-100">
                     <div className="card-header bg-dark text-white">Charts</div>
@@ -288,16 +470,17 @@ function App() {
                       className="card-body d-flex flex-column"
                       style={{ height: '400px', overflow: 'auto' }}
                     >
+                      {/* BOOTSTRAP TABS FOR TIMELINE VS EM RANGE */}
                       <ul className="nav nav-tabs" id="chartTabs" role="tablist">
                         <li className="nav-item" role="presentation">
                           <button
                             className="nav-link active"
                             id="timeline-tab"
                             data-bs-toggle="tab"
-                            data-bs-target="#timeline"
+                            data-bs-target="#timelinePane"
                             type="button"
                             role="tab"
-                            aria-controls="timeline"
+                            aria-controls="timelinePane"
                             aria-selected="true"
                           >
                             Timeline
@@ -308,20 +491,20 @@ function App() {
                             className="nav-link"
                             id="emrange-tab"
                             data-bs-toggle="tab"
-                            data-bs-target="#emrange"
+                            data-bs-target="#emrangePane"
                             type="button"
                             role="tab"
-                            aria-controls="emrange"
+                            aria-controls="emrangePane"
                             aria-selected="false"
                           >
-                            Electromagnetic Range
+                            EM Range
                           </button>
                         </li>
                       </ul>
                       <div className="tab-content flex-grow-1" id="chartTabsContent">
                         <div
                           className="tab-pane fade show active mt-2"
-                          id="timeline"
+                          id="timelinePane"
                           role="tabpanel"
                           aria-labelledby="timeline-tab"
                         >
@@ -329,7 +512,7 @@ function App() {
                         </div>
                         <div
                           className="tab-pane fade mt-2"
-                          id="emrange"
+                          id="emrangePane"
                           role="tabpanel"
                           aria-labelledby="emrange-tab"
                         >
@@ -341,7 +524,7 @@ function App() {
                 </div>
               </div>
 
-              {/* Bottom row: Results table */}
+              {/* Results Table */}
               <div className="row mt-3">
                 <div className="col-12">
                   <div className="card">
@@ -350,7 +533,8 @@ function App() {
                       <ResultsTable
                         results={results}
                         onRowSelected={handleRowSelected}
-                        authToken={authToken}  // pass token for "Add to Basket"
+                        authToken={authToken}
+                        onAddedBasketItem={() => refreshBasket()}
                       />
                     </div>
                   </div>
@@ -363,13 +547,23 @@ function App() {
         </div>
 
         {/* BASKET TAB */}
-        <div
-          className={`tab-pane fade ${activeTab === 'basket' ? 'show active' : ''}`}
-          role="tabpanel"
-        >
-          <BasketPage authToken={authToken} />
+        <div className={`tab-pane fade ${activeTab === 'basket' ? 'show active' : ''}`} role="tabpanel">
+          <BasketPage
+            authToken={authToken}
+            basketItems={basketItems}
+            refreshBasket={refreshBasket}
+            onOpenItem={handleOpenBasketItem}
+            onRemoveItem={handleRemoveBasketItem}
+          />
         </div>
       </div>
+
+      {/* The modal for showing a single basket item with sky map and charts */}
+      <BasketItemModal
+        show={showBasketModal}
+        onClose={closeBasketModal}
+        basketItem={basketModalItem}
+      />
     </div>
   );
 }

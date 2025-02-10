@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import DataTable from 'react-data-table-component';
 import axios from 'axios';
 
-const ResultsTable = ({ results, onRowSelected, authToken }) => {
+const ResultsTable = ({ results, onRowSelected, authToken, onAddedBasketItem }) => {
   const { columns, data } = results;
 
   // State to track hidden columns
@@ -27,6 +27,12 @@ const ResultsTable = ({ results, onRowSelected, authToken }) => {
       });
       console.log("Added to basket:", response.data);
       alert(`Added obs_id=${rowData.obs_id} to basket!`);
+
+      // Tell parent to refresh the basket
+      if (onAddedBasketItem) {
+        onAddedBasketItem();
+      }
+
     } catch (error) {
       console.error("Failed to add to basket:", error);
       alert("Error adding to basket. Check console logs.");
