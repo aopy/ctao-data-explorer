@@ -2,23 +2,41 @@ import React, { useMemo, useState } from 'react';
 import DataTable from 'react-data-table-component';
 import axios from 'axios';
 
-const ResultsTable = ({ results, onRowSelected, authToken, onAddedBasketItem }) => {
+const ResultsTable = ({
+  results,
+  onRowSelected,
+  authToken,
+  onAddedBasketItem,
+  basketItems = [],
+}) => {
   const { columns, data } = results;
 
   // State to track hidden columns
   const [hiddenColumns, setHiddenColumns] = useState([]);
+  // Alerts
+  const [alertMessage, setAlertMessage] = useState(null);
+  // Check if an obs_id is already in the user's basket
+  const isAlreadyInBasket = (obsId) => {
+    return basketItems.some((it) => it.obs_id === obsId);
+  };
 
-  // A function to add a row to the basket
+  // Function to add a row to the basket
   const addToBasket = async (rowData) => {
     if (!authToken) {
-      alert("You must be logged in to add to basket!");
+      setAlertMessage("You must be logged in to add to basket!");
+      return;
+    }
+
+    // Check in front-end if it is already in basket:
+    if (isAlreadyInBasket(rowData.obs_id)) {
+      setAlertMessage(`obs_id=${rowData.obs_id} is already in your basket.`);
       return;
     }
 
     try {
       const payload = {
         obs_id: rowData.obs_id,
-        dataset_dict: rowData,  // the entire row or partial info
+        dataset_dict: rowData, // the entire row or partial info
       };
       const response = await axios.post("/basket", payload, {
         headers: {
@@ -26,17 +44,19 @@ const ResultsTable = ({ results, onRowSelected, authToken, onAddedBasketItem }) 
         },
       });
       console.log("Added to basket:", response.data);
-      alert(`Added obs_id=${rowData.obs_id} to basket!`);
-
+      setAlertMessage(`Added obs_id=${rowData.obs_id} to basket successfully!`);
       // Tell parent to refresh the basket
       if (onAddedBasketItem) {
         onAddedBasketItem();
       }
-
     } catch (error) {
-      console.error("Failed to add to basket:", error);
-      alert("Error adding to basket. Check console logs.");
+      console.error('Failed to add to basket:', error);
+      setAlertMessage('Error adding item to basket.');
     }
+  };
+
+  const handleCloseAlert = () => {
+    setAlertMessage(null);
   };
 
   // Custom subheader component for column visibility
@@ -61,9 +81,9 @@ const ResultsTable = ({ results, onRowSelected, authToken, onAddedBasketItem }) 
                 id={`column-${col}`}
                 checked={!hiddenColumns.includes(col)}
                 onChange={() => {
-                  setHiddenColumns(current =>
+                  setHiddenColumns((current) =>
                     current.includes(col)
-                      ? current.filter(c => c !== col)
+                      ? current.filter((c) => c !== col)
                       : [...current, col]
                   );
                 }}
@@ -80,11 +100,11 @@ const ResultsTable = ({ results, onRowSelected, authToken, onAddedBasketItem }) 
 
   // Memoize columns with visibility control
   const tableColumns = useMemo(() => {
-    const visibleColumns = columns.filter(col => !hiddenColumns.includes(col));
+    const visibleColumns = columns.filter((col) => !hiddenColumns.includes(col));
 
     // Create normal columns
     const normalCols = visibleColumns
-      .filter(col => col !== 'access_url')
+      .filter((col) => col !== 'access_url')
       .map((col, index) => ({
         id: `column-${col}-${index}`,
         name: col,
@@ -118,22 +138,25 @@ const ResultsTable = ({ results, onRowSelected, authToken, onAddedBasketItem }) 
     normalCols.unshift({
       id: 'basket-column',
       name: 'Action',
-      cell: (row) => (
-        <button
-          className="btn btn-sm btn-primary"
-          onClick={() => addToBasket(row)}
-          disabled={!authToken}  // disable if not logged in
-        >
-          Add
-        </button>
-      ),
+      cell: (row) => {
+        const alreadyInBasket = isAlreadyInBasket(row.obs_id);
+        return (
+          <button
+            className="btn btn-sm btn-primary"
+            onClick={() => addToBasket(row)}
+            disabled={!authToken || alreadyInBasket}
+          >
+            {alreadyInBasket ? 'In Basket' : 'Add'}
+          </button>
+        );
+      },
       ignoreRowClick: true,
       allowOverflow: true,
       button: true,
     });
 
     return normalCols;
-  }, [columns, hiddenColumns, authToken]);
+  }, [columns, hiddenColumns, authToken, basketItems]);
 
   // Memoize data
   const tableData = useMemo(() => {
@@ -158,6 +181,13 @@ const ResultsTable = ({ results, onRowSelected, authToken, onAddedBasketItem }) 
 
   return (
     <div className="table-responsive">
+      {/* BOOTSTRAP ALERT if there's an alertMessage */}
+      {alertMessage && (
+        <div className="alert alert-info alert-dismissible fade show" role="alert">
+          {alertMessage}
+          <button type="button" className="btn-close" onClick={handleCloseAlert} />
+        </div>
+      )}
       <DataTable
         columns={tableColumns}
         data={tableData}

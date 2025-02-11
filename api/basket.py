@@ -37,11 +37,26 @@ async def add_to_basket(
     if not basket_data.obs_id:
         raise HTTPException(status_code=400, detail="obs_id is required")
 
-    # Create the new record
+    # Check if this obs_id already exists for this user
+    existing = await session.execute(
+        select(SavedDataset)
+        .where(SavedDataset.user_id == user.id)
+        .where(SavedDataset.obs_id == basket_data.obs_id)
+    )
+    existing_item = existing.scalars().first()
+
+    if existing_item:
+        # If the row is already in the user’s basket, return 409 Conflict
+        raise HTTPException(
+            status_code=409,
+            detail=f"obs_id={basket_data.obs_id} is already in your basket"
+        )
+
+    # Create & save if not found
     saved_item = SavedDataset(
         user_id=user.id,
         obs_id=basket_data.obs_id,
-        dataset_json=json.dumps(basket_data.dataset_dict),  # store as text
+        dataset_json=json.dumps(basket_data.dataset_dict),
     )
     session.add(saved_item)
     await session.commit()

@@ -1,11 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import 'bootstrap/dist/css/bootstrap.min.css';
 import axios from 'axios';
 import SearchForm from './components/SearchForm';
 import ResultsTable from './components/ResultsTable';
 import AladinLiteViewer from './components/AladinLiteViewer';
 import TimelineChart from './components/TimelineChart';
 import EmRangeChart from './components/EmRangeChart';
+
+// Helper function to convert numeric t_min to local date/time string
+function formatTmin(mjd) {
+  if (!mjd || isNaN(mjd)) return '';
+  // MJD -> local time
+  const MJD_UNIX_EPOCH = 40587;
+  const msPerDay = 86400000;
+  const unixTime = (mjd - MJD_UNIX_EPOCH) * msPerDay;
+  const d = new Date(unixTime);
+  return d.toLocaleString();
+}
 
 // The modal that displays sky map & charts for a single basket item
 function BasketItemModal({ show, onClose, basketItem }) {
@@ -172,13 +182,8 @@ function BasketItemModal({ show, onClose, basketItem }) {
   );
 }
 
-function BasketPage({
-  authToken,
-  basketItems,
-  refreshBasket,
-  onOpenItem,
-  onRemoveItem,
-}) {
+// The BasketPage that lists items with “Open”/“Remove”
+function BasketPage({ authToken, basketItems, refreshBasket, onOpenItem, onRemoveItem }) {
   if (!authToken) {
     return <p>Please log in to view your basket.</p>;
   }
@@ -191,32 +196,43 @@ function BasketPage({
       {/* <button onClick={refreshBasket} className="btn btn-sm btn-outline-info mb-2">Refresh</button> */}
 
       <ul className="list-group">
-        {basketItems.map((it) => (
-          <li key={it.id} className="list-group-item d-flex justify-content-between">
-            <div>
-              <strong>{it.obs_id}</strong> | {new Date(it.created_at).toLocaleString()}
-            </div>
-            <div>
-              <button
-                className="btn btn-sm btn-outline-primary me-2"
-                onClick={() => onOpenItem(it)}
-              >
-                Open
-              </button>
-              <button
-                className="btn btn-sm btn-outline-danger"
-                onClick={() => onRemoveItem(it.id)}
-              >
-                Remove
-              </button>
-            </div>
-          </li>
-        ))}
+        {basketItems.map((it) => {
+          const ds = it.dataset_json || {};
+          const targetName = ds.target_name || 'Unknown Target';
+          const tmin_str = formatTmin(ds.t_min);
+          //const createdStr = new Date(it.created_at).toLocaleString();
+
+          return (
+            <li key={it.id} className="list-group-item d-flex justify-content-between">
+              <div>
+                {/* Display obs_id + targetName + t_min */}
+                <strong>{it.obs_id}</strong>{' '}
+                | {targetName}{' '}
+                | {tmin_str}{' '}
+              </div>
+              <div>
+                <button
+                  className="btn btn-sm btn-outline-primary me-2"
+                  onClick={() => onOpenItem(it)}
+                >
+                  Open
+                </button>
+                <button
+                  className="btn btn-sm btn-outline-danger"
+                  onClick={() => onRemoveItem(it.id)}
+                >
+                  Remove
+                </button>
+              </div>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
 }
 
+// The main App component
 function App() {
   // The entire search results from the backend
   const [results, setResults] = useState(null);
@@ -268,10 +284,7 @@ function App() {
     }
   }, [authToken]);
 
-  /**
-   * A function to reload the basket from the server
-   * and store in `basketItems` state.
-   */
+  // Re-load the basket from the server
   const refreshBasket = async () => {
     if (!authToken) return;
     try {
@@ -532,6 +545,7 @@ function App() {
                     <div className="card-body p-0">
                       <ResultsTable
                         results={results}
+                        basketItems={basketItems}
                         onRowSelected={handleRowSelected}
                         authToken={authToken}
                         onAddedBasketItem={() => refreshBasket()}
