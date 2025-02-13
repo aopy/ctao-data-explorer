@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import DataTable from 'react-data-table-component';
 import axios from 'axios';
 
@@ -55,11 +55,56 @@ const ResultsTable = ({
     }
   };
 
+  // Function to close alert messages
   const handleCloseAlert = () => {
     setAlertMessage(null);
   };
 
-  // Custom subheader component for column visibility
+  /**
+   * handleDataLink:
+   * Fetches VOTable XML from the DataLink URL, extracts TABLEDATA rows,
+   * and opens the first valid access_url in a new tab.
+   */
+  const handleDataLink = useCallback(async (row) => {
+    if (!row.datalink_url) {
+      alert("No DataLink URL available for this row");
+      return;
+    }
+    try {
+      const res = await axios.get(row.datalink_url, { responseType: 'text' });
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(res.data, "application/xml");
+      const tabledata = xmlDoc.getElementsByTagName("TABLEDATA")[0];
+      if (!tabledata) {
+        alert("No TABLEDATA found in DataLink response");
+        return;
+      }
+      const trElements = tabledata.getElementsByTagName("TR");
+      let downloadUrl = null;
+      for (let i = 0; i < trElements.length; i++) {
+        const tdElements = trElements[i].getElementsByTagName("TD");
+        // According to the backend VOTable, TD[0]: ID, TD[1]: access_url, TD[2]: error_message
+        const errorMsg = tdElements[2]?.textContent;
+        if (errorMsg && errorMsg.trim() !== "") {
+          continue; // skip rows with an error message
+        }
+        downloadUrl = tdElements[1]?.textContent;
+        if (downloadUrl && downloadUrl.trim() !== "") {
+          break;
+        }
+      }
+      if (downloadUrl) {
+        window.open(downloadUrl, '_blank');
+      } else {
+        alert("No valid download URL found in DataLink response.");
+      }
+    } catch (error) {
+      console.error("Error fetching DataLink:", error);
+      alert("Error fetching DataLink information.");
+    }
+  }, []);
+
+  // Custom subheader for toggling column visibility
   const SubHeader = () => (
     <div className="p-2 border-bottom bg-light w-100 d-flex">
       <div className="dropdown ms-2">
@@ -98,13 +143,15 @@ const ResultsTable = ({
     </div>
   );
 
-  // Memoize columns with visibility control
+  // Memoize table columns.
+  // Exclude the raw "access_url" and "datalink_url" fields from the default columns,
+  // then add custom columns for direct download and DataLink retrieval.
   const tableColumns = useMemo(() => {
     const visibleColumns = columns.filter((col) => !hiddenColumns.includes(col));
 
     // Create normal columns
     const normalCols = visibleColumns
-      .filter((col) => col !== 'access_url')
+      .filter((col) => col !== 'access_url' && col !== 'datalink_url')
       .map((col, index) => ({
         id: `column-${col}-${index}`,
         name: col,
@@ -113,11 +160,11 @@ const ResultsTable = ({
         omit: hiddenColumns.includes(col),
       }));
 
-    // Add access_url column if it's visible
+    // Add a column for direct download if an "access_url" field exists
     if (visibleColumns.includes('access_url')) {
       normalCols.push({
         id: 'access_url-column',
-        name: 'access_url',
+        name: 'Download',
         cell: (row) => (
           <a
             href={row.access_url}
@@ -134,7 +181,28 @@ const ResultsTable = ({
       });
     }
 
-    // **Add a new column** for the "Add to Basket" button
+    // Add a column for DataLink if a "datalink_url" field exists
+    if (visibleColumns.includes('datalink_url')) {
+      normalCols.push({
+        id: 'datalink-column',
+        name: 'DataLink',
+        cell: (row) => (
+          <button
+            className="btn btn-sm btn-info"
+            onClick={() => handleDataLink(row)}
+          >
+            Get DataLink
+          </button>
+        ),
+        sortable: false,
+        omit: hiddenColumns.includes('datalink_url'),
+        ignoreRowClick: true,
+        allowOverflow: true,
+        button: true,
+      });
+    }
+
+    // Prepend the "basket" column.
     normalCols.unshift({
       id: 'basket-column',
       name: 'Action',
@@ -156,9 +224,9 @@ const ResultsTable = ({
     });
 
     return normalCols;
-  }, [columns, hiddenColumns, authToken, basketItems]);
+  }, [columns, hiddenColumns, authToken, basketItems, handleDataLink]);
 
-  // Memoize data
+  // Map the raw data into an object with keys corresponding to column names
   const tableData = useMemo(() => {
     return data.map((row, rowIndex) => {
       const rowData = { id: `row-${rowIndex}` };
@@ -181,7 +249,6 @@ const ResultsTable = ({
 
   return (
     <div className="table-responsive">
-      {/* BOOTSTRAP ALERT if there's an alertMessage */}
       {alertMessage && (
         <div className="alert alert-info alert-dismissible fade show" role="alert">
           {alertMessage}

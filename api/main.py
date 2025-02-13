@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query, HTTPException, Body
+from fastapi import FastAPI, Query, HTTPException, Body, Response
 from fastapi.middleware.cors import CORSMiddleware
 from .models import SearchResult
 from .tap import perform_query, astropy_table_to_list
@@ -14,6 +14,8 @@ from starlette.middleware.sessions import SessionMiddleware
 from .oidc import oidc_router
 from starlette.staticfiles import StaticFiles
 from .basket import basket_router
+from typing import List, Optional
+import urllib.parse
 
 
 app = FastAPI(
@@ -35,6 +37,8 @@ app.add_middleware(
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
     # production frontend URL
 ]
 
@@ -93,6 +97,19 @@ async def search_coords(
     error, res_table = perform_query(form_data)
     if error is None:
         columns, data = astropy_table_to_list(res_table)
+        columns = list(columns)
+        data = [list(row) for row in data]
+        # If table has the ObsCore identifier column, add a DataLink URL column
+        if "obs_publisher_did" in columns:
+            datalink_col = "datalink_url"
+            columns.append(datalink_col)
+            idx = columns.index("obs_publisher_did")
+            for row in data:
+                did = row[idx]
+                encoded_did = urllib.parse.quote(did, safe='')
+                # Build the DataLink URL
+                row.append(f"http://localhost:8000/api/datalink?ID={encoded_did}")
+
         return SearchResult(columns=columns, data=data)
     else:
         raise HTTPException(status_code=400, detail=error)
@@ -213,6 +230,79 @@ def _run_ned_sync_query(adql_query):
         print(f"NED query error: {e}")
 
     return out
+
+@app.get("/api/datalink", response_class=Response, tags=["DataLink"])
+async def datalink_endpoint(
+    ID: Optional[List[str]] = Query(None, description="One or more dataset identifiers (e.g. ivo://example/dataset1)"),
+    RESPONSEFORMAT: Optional[str] = Query(None,description="Output format; for now only votable is supported")
+):
+    """
+    Minimal DataLink endpoint that returns a VOTable containing links for each dataset ID.
+    TODO add additional fields (e.g. semantics, content_type) and service descriptors.
+    """
+    # If no IDs are provided, return an empty VOTable with an empty TABLEDATA.
+    if not ID:
+        empty_votable = f'''<?xml version="1.0" encoding="UTF-8"?>
+<VOTABLE version="1.3" xmlns="http://www.ivoa.net/xml/VOTable/v1.3">
+  <RESOURCE type="results">
+    <INFO name="standardID" value="ivo://ivoa.net/std/DataLink#links-1.1"/>
+    <TABLE>
+      <FIELD name="ID" datatype="char" arraysize="*"/>
+      <FIELD name="access_url" datatype="char" arraysize="*"/>
+      <FIELD name="error_message" datatype="char" arraysize="*"/>
+      <DATA>
+        <TABLEDATA>
+        </TABLEDATA>
+      </DATA>
+    </TABLE>
+  </RESOURCE>
+</VOTABLE>
+'''
+        return Response(content=empty_votable, media_type="application/x-votable+xml")
+
+    # Build table rows – if the ID starts with "ivo://", return a dummy URL.
+    rows = ""
+    for id_val in ID:
+        if id_val.lower().startswith("ivo://"):
+            # Extract the part after "ivo://"
+            id_path = id_val.split("://")[-1]
+            access_url = f"http://localhost:8000/api/download?ID={urllib.parse.quote(id_path, safe='')}"
+            error_message = ""
+        else:
+            access_url = ""
+            error_message = f"NotFoundFault: {id_val} is not recognized as a valid ivo:// identifier"
+        rows += (
+            "                <TR>\n"
+            f"                  <TD>{id_val}</TD>\n"
+            f"                  <TD>{access_url}</TD>\n"
+            f"                  <TD>{error_message}</TD>\n"
+            "                </TR>\n"
+        )
+
+    votable_xml = f'''<?xml version="1.0" encoding="UTF-8"?>
+<VOTABLE version="1.3" xmlns="http://www.ivoa.net/xml/VOTable/v1.3">
+  <RESOURCE type="results">
+    <INFO name="standardID" value="ivo://ivoa.net/std/DataLink#links-1.1"/>
+    <TABLE>
+      <FIELD name="ID" datatype="char" arraysize="*"/>
+      <FIELD name="access_url" datatype="char" arraysize="*"/>
+      <FIELD name="error_message" datatype="char" arraysize="*"/>
+      <DATA>
+        <TABLEDATA>
+{rows}        </TABLEDATA>
+      </DATA>
+    </TABLE>
+  </RESOURCE>
+</VOTABLE>
+'''
+    return Response(content=votable_xml, media_type="application/x-votable+xml")
+
+
+@app.get("/api/download")
+async def download_dataset(ID: str):
+    # For testing, return a dummy response.
+    return {"dataset_id": ID, "message": "Dummy download endpoint. File serving not implemented."}
+
 
 # Include local user auth (JWT)
 app.include_router(auth_router)
