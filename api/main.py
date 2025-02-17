@@ -260,14 +260,27 @@ async def datalink_endpoint(
 '''
         return Response(content=empty_votable, media_type="application/x-votable+xml")
 
-    # Build table rows – if the ID starts with "ivo://", return a dummy URL.
+    # Build table rows
     rows = ""
     for id_val in ID:
         if id_val.lower().startswith("ivo://"):
-            # Extract the part after "ivo://"
-            id_path = id_val.split("://")[-1]
-            access_url = f"http://localhost:8000/api/download?ID={urllib.parse.quote(id_path, safe='')}"
-            error_message = ""
+            if '#' in id_val:
+                # Extract the portion after '#' (e.g. "23523")
+                obs_id_str = id_val.split('#', 1)[1]
+                try:
+                    obs_id_int = int(obs_id_str)
+                    # Format the number with zero-padding to 6 digits
+                    formatted_id = f"{obs_id_int:06d}"
+                    # Construct the direct download URL from the unique obs_id.
+                    direct_download_url = f"https://hess-dr.obspm.fr/retrieve/hess_dl3_dr1_obs_id_{formatted_id}.fits.gz"
+                    error_message = ""
+                    access_url = direct_download_url
+                except Exception:
+                    access_url = ""
+                    error_message = f"NotFoundFault: Invalid numeric obs id in {id_val}"
+            else:
+                access_url = ""
+                error_message = f"NotFoundFault: Missing '#' in {id_val}"
         else:
             access_url = ""
             error_message = f"NotFoundFault: {id_val} is not recognized as a valid ivo:// identifier"
@@ -296,12 +309,6 @@ async def datalink_endpoint(
 </VOTABLE>
 '''
     return Response(content=votable_xml, media_type="application/x-votable+xml")
-
-
-@app.get("/api/download")
-async def download_dataset(ID: str):
-    # For testing, return a dummy response.
-    return {"dataset_id": ID, "message": "Dummy download endpoint. File serving not implemented."}
 
 
 # Include local user auth (JWT)
