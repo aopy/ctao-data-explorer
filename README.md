@@ -1,4 +1,4 @@
-# CTAO Data Access and Analysis Portal
+# CTAO Data Explorer
 
 This project is a web application for accessing, visualizing, and analyzing data from the **Cherenkov Telescope Array Observatory (CTAO)**. It features a **React**-based frontend and a **FastAPI**-powered backend. Users can perform data searches, select relevant results, and explore visualizations through various methods, including an interactive sky map powered by **Aladin Lite**. The project leverages standards from the [International Virtual Observatory Alliance (IVOA)](https://ivoa.net/) to ensure interoperability and accessibility of astronomical data. 
 

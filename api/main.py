@@ -231,36 +231,13 @@ def _run_ned_sync_query(adql_query):
 
     return out
 
-@app.get("/api/datalink", response_class=Response, tags=["DataLink"])
+@app.get("/api/datalink")
 async def datalink_endpoint(
-    ID: Optional[List[str]] = Query(None, description="One or more dataset identifiers (e.g. ivo://example/dataset1)"),
-    RESPONSEFORMAT: Optional[str] = Query(None,description="Output format; for now only votable is supported")
+    ID: list[str] = Query(..., description="One or more dataset identifiers (e.g., ivo://padc.obspm/hess#23523)")
 ):
     """
-    Minimal DataLink endpoint that returns a VOTable containing links for each dataset ID.
-    TODO add additional fields (e.g. semantics, content_type) and service descriptors.
+    DataLink endpoint that returns a VOTable containing links for each dataset ID.
     """
-    # If no IDs are provided, return an empty VOTable with an empty TABLEDATA.
-    if not ID:
-        empty_votable = f'''<?xml version="1.0" encoding="UTF-8"?>
-<VOTABLE version="1.3" xmlns="http://www.ivoa.net/xml/VOTable/v1.3">
-  <RESOURCE type="results">
-    <INFO name="standardID" value="ivo://ivoa.net/std/DataLink#links-1.1"/>
-    <TABLE>
-      <FIELD name="ID" datatype="char" arraysize="*"/>
-      <FIELD name="access_url" datatype="char" arraysize="*"/>
-      <FIELD name="error_message" datatype="char" arraysize="*"/>
-      <DATA>
-        <TABLEDATA>
-        </TABLEDATA>
-      </DATA>
-    </TABLE>
-  </RESOURCE>
-</VOTABLE>
-'''
-        return Response(content=empty_votable, media_type="application/x-votable+xml")
-
-    # Build table rows
     rows = ""
     for id_val in ID:
         if id_val.lower().startswith("ivo://"):
@@ -275,19 +252,24 @@ async def datalink_endpoint(
                     direct_download_url = f"https://hess-dr.obspm.fr/retrieve/hess_dl3_dr1_obs_id_{formatted_id}.fits.gz"
                     error_message = ""
                     access_url = direct_download_url
+                    service_def = ""
                 except Exception:
                     access_url = ""
                     error_message = f"NotFoundFault: Invalid numeric obs id in {id_val}"
+                    service_def = ""
             else:
                 access_url = ""
                 error_message = f"NotFoundFault: Missing '#' in {id_val}"
+                service_def = ""
         else:
             access_url = ""
             error_message = f"NotFoundFault: {id_val} is not recognized as a valid ivo:// identifier"
+            service_def = ""
         rows += (
             "                <TR>\n"
             f"                  <TD>{id_val}</TD>\n"
             f"                  <TD>{access_url}</TD>\n"
+            f"                  <TD>{service_def}</TD>\n"
             f"                  <TD>{error_message}</TD>\n"
             "                </TR>\n"
         )
@@ -299,6 +281,7 @@ async def datalink_endpoint(
     <TABLE>
       <FIELD name="ID" datatype="char" arraysize="*"/>
       <FIELD name="access_url" datatype="char" arraysize="*"/>
+      <FIELD name="service_def" datatype="char" arraysize="*"/>
       <FIELD name="error_message" datatype="char" arraysize="*"/>
       <DATA>
         <TABLEDATA>

@@ -16,6 +16,8 @@ const ResultsTable = ({
   const [hiddenColumns, setHiddenColumns] = useState([]);
   // Alert message state
   const [alertMessage, setAlertMessage] = useState(null);
+  // State to track which row's dropdown is open (by row id).
+  const [openDropdownId, setOpenDropdownId] = useState(null);
   // Check if an obs_id is already in the user's basket
   const isAlreadyInBasket = (obsId) => {
     return basketItems.some((it) => it.obs_id === obsId);
@@ -129,7 +131,13 @@ const ResultsTable = ({
       name: 'DataLink',
       cell: (row) =>
         row.datalink_url ? (
-          <DataLinkDropdown datalink_url={row.datalink_url} />
+          <DataLinkDropdown
+            datalink_url={row.datalink_url}
+            isOpen={row.id === openDropdownId}
+            onToggle={() =>
+              setOpenDropdownId(row.id === openDropdownId ? null : row.id)
+            }
+          />
         ) : null,
       sortable: false,
       ignoreRowClick: true,
@@ -150,7 +158,7 @@ const ResultsTable = ({
       });
     });
 
-    // The access_url column
+    // access_url column (toggleable)
     cols.push({
       id: 'access_url-column',
       name: 'access_url',
@@ -165,9 +173,9 @@ const ResultsTable = ({
     });
 
     return cols;
-  }, [columns, hiddenColumns, authToken, basketItems, toggleableColumns]);
+  }, [columns, hiddenColumns, authToken, basketItems, toggleableColumns, openDropdownId]);
 
-  // Map raw data (an array of arrays) into objects keyed by column name.
+  // Map raw data (array of arrays) to objects keyed by column names.
   const tableData = useMemo(() => {
     return data.map((row, rowIndex) => {
       const rowData = { id: `row-${rowIndex}` };
