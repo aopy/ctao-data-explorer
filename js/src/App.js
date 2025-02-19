@@ -29,6 +29,9 @@ function BasketItemModal({ show, onClose, basketItem }) {
   const decNum = parseFloat(rowData.s_dec);
   const fovNum = parseFloat(rowData.s_fov); // if any
 
+  // Calculate an appropriate field-of-view (FOV) to ensure the circle is visible
+  const initialFov = !isNaN(fovNum) ? fovNum * 2.5 : 0.5;
+
   // A single overlay array with marker + circle
   const allCoordinates = [];
   if (!isNaN(raNum) && !isNaN(decNum)) {
@@ -75,6 +78,7 @@ function BasketItemModal({ show, onClose, basketItem }) {
                     <AladinLiteViewer
                       overlays={allCoordinates}
                       selectedIds={[]}
+                      initialFov={initialFov}
                     />
                   </div>
                 </div>

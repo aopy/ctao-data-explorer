@@ -21,7 +21,7 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [] }) => {
         projection: 'AIT'
       });
 
-      // Two catalogs, both shaped like 'triangle'
+      // Create two catalogs: one for unselected and one for selected markers.
       allCatalogRef.current = window.A.catalog({
         name: 'allCatalog',
         shape: 'triangle', // unselected markers
@@ -52,10 +52,12 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [] }) => {
   }, [overlays, selectedIds]);
 
   const updateMarkers = () => {
-    if (!aladinInstance.current ||
-        !allCatalogRef.current ||
-        !selectedCatalogRef.current ||
-        !circleOverlayRef.current) {
+    if (
+      !aladinInstance.current ||
+      !allCatalogRef.current ||
+      !selectedCatalogRef.current ||
+      !circleOverlayRef.current
+    ) {
       return;
     }
 
@@ -79,7 +81,7 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [] }) => {
         return;
       }
 
-      // Create one marker (triangle shape as set by catalog default)
+      // Create one marker
       const isSelected = selectedIds.includes(id);
       const source = window.A.source(ra, dec, {
         popupTitle: `Obs ID: ${id}`,
@@ -96,10 +98,9 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [] }) => {
       raValues.push(ra);
       decValues.push(dec);
 
-      // If s_fov numeric, draw a circle of radius s_fov degrees
+      // If s_fov is a valid number, draw a circle
       if (!isNaN(s_fov)) {
         console.log(`Drawing circle for ID=${id}, s_fov=${s_fov} deg`);
-        // A.circle(ra, dec, radiusDeg, style)
         const circle = window.A.circle(ra, dec, parseFloat(s_fov), {
           color: 'blue',
           lineWidth: 2,
@@ -119,6 +120,16 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [] }) => {
   };
 
   const autoZoom = (raValues, decValues) => {
+    // For a single overlay with s_fov
+    if (overlays.length === 1 && overlays[0].s_fov && !isNaN(overlays[0].s_fov)) {
+      // Multiply s_fov to ensure the circle is fully visible
+      const finalFov = Math.min(overlays[0].s_fov * 2.5, 180);
+      aladinInstance.current.gotoRaDec(raValues[0], decValues[0]);
+      aladinInstance.current.setFov(finalFov);
+      return;
+    }
+
+    // Existing multi-object auto-zoom logic
     const minRa = Math.min(...raValues);
     const maxRa = Math.max(...raValues);
     const minDec = Math.min(...decValues);
@@ -139,10 +150,9 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [] }) => {
       centerRa = adjustedCenterRa > 360 ? adjustedCenterRa - 360 : adjustedCenterRa;
     }
 
-    // Original bounding logic
+    // Calculate FOV based on the spread of markers
     const baseFov = Math.min(Math.max(maxDiff * 1.2, 0.1), 180);
-
-    // Apply an extra multiplier to zoom out more
+    // Apply an extra multiplier to zoom out further
     const finalFov = Math.min(baseFov * 6, 180);
 
     aladinInstance.current.gotoRaDec(centerRa, centerDec);
