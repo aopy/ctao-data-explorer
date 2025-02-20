@@ -73,9 +73,9 @@ def astropy_table_to_list(table):
         rows.append(row_data)
     return columns, rows
 
-def perform_query(fields):
+def perform_coords_query(fields):
     """
-    Perform TAP query and return error (None if OK) and result table
+    Perform a coordinate (cone search) query.
     """
     # Get URL of TAP server from fields
     url = fields['tap_url']['value']
@@ -88,13 +88,72 @@ def perform_query(fields):
     t.connect(timeout)
 
     # Construct ADQL query - cone search
-    query = ("SELECT TOP 100 * FROM {} WHERE 1=CONTAINS(POINT('ICRS',s_ra,s_dec),"
-             "CIRCLE('ICRS',{},{},{}))".format(
-                 obscore_table,
-                 fields['target_raj2000']['value'],
-                 fields['target_dej2000']['value'],
-                 fields['search_radius']['value']))
+    query = (
+        "SELECT TOP 100 * FROM {} WHERE 1=CONTAINS(POINT('ICRS', s_ra, s_dec), "
+        "CIRCLE('ICRS', {}, {}, {}))".format(
+            obscore_table,
+            fields['target_raj2000']['value'],
+            fields['target_dej2000']['value'],
+            fields['search_radius']['value']
+        )
+    )
+    exception, res_table = t.query(query)
+    if exception is None:
+        error = None
+    else:
+        error = f'Got exception with TAP query: {exception}'
+    return error, res_table
 
+def perform_time_query(fields):
+    """
+    Perform a time‑only query.
+    Expects fields to contain 'search_mjd_start' and 'search_mjd_end',
+    which define the time window (in MJD) corresponding to the user’s day.
+    """
+    url = fields['tap_url']['value']
+    obscore_table = fields['obscore_table']['value']
+    timeout = 5
+
+    t = Tap(url)
+    t.connect(timeout)
+    query = (
+        "SELECT TOP 100 * FROM {} WHERE t_min < {} AND t_max > {}"
+        .format(
+            obscore_table,
+            fields['search_mjd_end']['value'],
+            fields['search_mjd_start']['value']
+        )
+    )
+    exception, res_table = t.query(query)
+    if exception is None:
+        error = None
+    else:
+        error = f'Got exception with TAP query: {exception}'
+    return error, res_table
+
+def perform_coords_time_query(fields):
+    """
+    Perform a query that combines a cone search with a time filter.
+    Expects fields to include both coordinate keys and time keys.
+    """
+    url = fields['tap_url']['value']
+    obscore_table = fields['obscore_table']['value']
+    timeout = 5
+
+    t = Tap(url)
+    t.connect(timeout)
+    query = (
+        "SELECT TOP 100 * FROM {} WHERE 1=CONTAINS(POINT('ICRS', s_ra, s_dec), "
+        "CIRCLE('ICRS', {}, {}, {})) AND t_min < {} AND t_max > {}"
+        .format(
+            obscore_table,
+            fields['target_raj2000']['value'],
+            fields['target_dej2000']['value'],
+            fields['search_radius']['value'],
+            fields['search_mjd_end']['value'],
+            fields['search_mjd_start']['value']
+        )
+    )
     exception, res_table = t.query(query)
 
     if exception is None:

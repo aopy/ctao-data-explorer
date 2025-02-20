@@ -25,6 +25,9 @@ function SearchForm({ setResults }) {
   const [tapUrl, setTapUrl] = useState('http://voparis-tap-he.obspm.fr/tap');
   const [obscoreTable, setObscoreTable] = useState('hess_dr.obscore_sdc');
 
+  // State variable for the search time (as a string in YYYY-MM-DD)
+  const [searchTime, setSearchTime] = useState('');
+
   /**
    * Called when user clicks "Resolve" button:
    * Post object_name + checkboxes (Simbad, NED) to /api/object_resolve
@@ -80,12 +83,22 @@ function SearchForm({ setResults }) {
       obscore_table: obscoreTable
     };
 
+    // Only include coordinate parameters if they are non-empty
     if (coordinateSystem === 'equatorial') {
-      reqParams.ra = targetRAJ2000;
-      reqParams.dec = targetDEJ2000;
-    } else {
-      reqParams.l = galacticL;
-      reqParams.b = galacticB;
+      if (String(targetRAJ2000).trim() !== '' && String(targetDEJ2000).trim() !== '') {
+        reqParams.ra = targetRAJ2000;
+        reqParams.dec = targetDEJ2000;
+      }
+    } else if (coordinateSystem === 'galactic') {
+      if (String(galacticL).trim() !== '' && String(galacticB).trim() !== '') {
+        reqParams.l = galacticL;
+        reqParams.b = galacticB;
+      }
+    }
+
+    // Include the search time if provided
+    if (searchTime) {
+      reqParams.search_time = searchTime;
     }
 
     axios.get('/api/search_coords', { params: reqParams })
@@ -216,6 +229,15 @@ function SearchForm({ setResults }) {
         </>
       )}
 
+      <div className="mb-3">
+        <label className="form-label">Observation Date (DD-MM-YYYY):</label>
+        <input
+          type="date"
+          className="form-control"
+          value={searchTime}
+          onChange={(e) => setSearchTime(e.target.value)}
+        />
+      </div>
       {/* Search radius, TAP URL, ObsCore Table */}
       <div className="mb-3">
         <label className="form-label">Search Radius [deg]:</label>
