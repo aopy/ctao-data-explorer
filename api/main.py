@@ -21,6 +21,7 @@ from starlette.staticfiles import StaticFiles
 from .basket import basket_router
 import urllib.parse
 from astropy.time import Time
+from datetime import datetime
 
 
 app = FastAPI(
@@ -57,35 +58,38 @@ app.add_middleware(
 
 @app.get("/api/search_coords", response_model=SearchResult)
 async def search_coords(
-    coordinate_system: str,
-    # if equatorial
-    ra: float = None,
-    dec: float = None,
-    # if galactic
-    l: float = None,
-    b: float = None,
-    search_radius: float = Query(..., ge=0.0, le=90.0),
-    tap_url: str = Query('http://voparis-tap-he.obspm.fr/tap', title="TAP Server URL"),
-    obscore_table: str = Query('hess_dr.obscore_sdc', title="ObsCore Table Name"),
-    search_time: str = None  # Optional time parameter (format: DD-MM-YYYY)
+        coordinate_system: str = None,
+        # if equatorial
+        ra: float = None,
+        dec: float = None,
+        # if galactic
+        l: float = None,
+        b: float = None,
+        search_radius: float = Query(5.0, ge=0.0, le=90.0),
+        tap_url: str = Query('http://voparis-tap-he.obspm.fr/tap', title="TAP Server URL"),
+        obscore_table: str = Query('hess_dr.obscore_sdc', title="ObsCore Table Name"),
+        # exact observation start and end dates/times
+        obs_start: str = None,  # e.g. "04/12/2004 14:00:00"
+        obs_end: str = None  # e.g. "04/12/2004 20:00:00"
 ):
-    """
-    Endpoint that accepts coordinate_system='equatorial' or 'galactic', and observation time.
-    If galactic, transform (l, b) => (RA, Dec) before running the cone search.
-    """
-    # Process the time filter
+    # Process the time interval filter if both dates are provided
     time_filter_present = False
-    if search_time:
+    if obs_start and obs_end:
         try:
-            # Interpret the user-provided date as the start of the day (UTC)
-            t_start = Time(search_time, format='iso', scale='utc')
+            dt_start = datetime.strptime(obs_start, "%d/%m/%Y %H:%M:%S")
+            dt_end = datetime.strptime(obs_end, "%d/%m/%Y %H:%M:%S")
+            # Convert to Astropy Time objects (UTC as time scale)
+            t_start = Time(dt_start, scale='utc')
+            t_end = Time(dt_end, scale='utc')
+            # Get the corresponding Modified Julian Dates
             search_mjd_start = t_start.mjd
-            # Define the end as 1 day later
-            t_end = Time(search_time, format='iso', scale='utc') + 1 * u.day
             search_mjd_end = t_end.mjd
             time_filter_present = True
         except Exception as e:
-            raise HTTPException(status_code=400, detail="Invalid date format for search_time. Use YYYY-MM-DD.")
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid date format for obs_start/obs_end. Use dd/mm/yyyy HH:MM:SS."
+            )
 
     # Build the fields dictionary to pass to the TAP query function
     fields = {
@@ -94,10 +98,9 @@ async def search_coords(
         'search_radius': {'value': search_radius}
     }
 
-    # See if coordinate information is provided
+    # Include coordinate information if provided
     coords_present = False
     if coordinate_system == 'equatorial':
-        # Only add if both values are nonempty
         if ra is not None and dec is not None:
             fields['target_raj2000'] = {'value': ra}
             fields['target_dej2000'] = {'value': dec}
@@ -110,12 +113,12 @@ async def search_coords(
             fields['target_dej2000'] = {'value': c_icrs.dec.deg}
             coords_present = True
 
-    # If a time filter is provided add its start and end
+    # If a time interval was provided, add the MJD start and end
     if time_filter_present:
         fields['search_mjd_start'] = {'value': search_mjd_start}
         fields['search_mjd_end'] = {'value': search_mjd_end}
 
-    # Decide which query to run
+    # Choose the appropriate TAP query based on which parameters are provided
     if coords_present and time_filter_present:
         error, res_table = perform_coords_time_query(fields)
     elif coords_present:
@@ -123,8 +126,10 @@ async def search_coords(
     elif time_filter_present:
         error, res_table = perform_time_query(fields)
     else:
-        raise HTTPException(status_code=400,
-                            detail="You must provide either coordinates or a search time for the query.")
+        raise HTTPException(
+            status_code=400,
+            detail="You must provide either coordinates or an observation time interval for the query."
+        )
 
     if error is None:
         columns, data = astropy_table_to_list(res_table)

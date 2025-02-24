@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 
 function SearchForm({ setResults }) {
-  // --- Object name resolution states ---
+  // Object name resolution states
   const [objectName, setObjectName] = useState('');
   const [useSimbad, setUseSimbad] = useState(true);  // SIMBAD checked by default
   const [useNed, setUseNed] = useState(false);
@@ -10,7 +10,7 @@ function SearchForm({ setResults }) {
   // Show a Bootstrap inline alert if something goes wrong or no matches found
   const [warningMessage, setWarningMessage] = useState('');
 
-  // --- Coordinate system (default = Equatorial) ---
+  // Coordinate system (default = Equatorial)
   const [coordinateSystem, setCoordinateSystem] = useState('equatorial');
 
   // Equatorial fields (J2000)
@@ -25,14 +25,10 @@ function SearchForm({ setResults }) {
   const [tapUrl, setTapUrl] = useState('http://voparis-tap-he.obspm.fr/tap');
   const [obscoreTable, setObscoreTable] = useState('hess_dr.obscore_sdc');
 
-  // State variable for the search time (as a string in YYYY-MM-DD)
-  const [searchTime, setSearchTime] = useState('');
+  // States for observation start and end date-times
+  const [obsStart, setObsStart] = useState('');  // expected format: dd/mm/yyyy HH:MM:SS
+  const [obsEnd, setObsEnd] = useState('');      // expected format: dd/mm/yyyy HH:MM:SS
 
-  /**
-   * Called when user clicks "Resolve" button:
-   * Post object_name + checkboxes (Simbad, NED) to /api/object_resolve
-   * If found, fill RA/Dec in Equatorial mode (regardless of the current system).
-   */
   const handleResolve = () => {
     setWarningMessage('');
     if (!objectName) return;
@@ -66,12 +62,6 @@ function SearchForm({ setResults }) {
     });
   };
 
-  /**
-   * Main "Search" submission:
-   *  - If equatorial => pass RA/Dec
-   *  - If galactic => pass l/b
-   * The backend does galactic->equatorial transform.
-   */
   const handleSubmit = (e) => {
     e.preventDefault();
     setWarningMessage('');
@@ -96,9 +86,10 @@ function SearchForm({ setResults }) {
       }
     }
 
-    // Include the search time if provided
-    if (searchTime) {
-      reqParams.search_time = searchTime;
+    // Include observation time interval parameters if provided
+    if (obsStart.trim() !== '' && obsEnd.trim() !== '') {
+      reqParams.obs_start = obsStart;
+      reqParams.obs_end = obsEnd;
     }
 
     axios.get('/api/search_coords', { params: reqParams })
@@ -229,13 +220,25 @@ function SearchForm({ setResults }) {
         </>
       )}
 
+      {/* Observation Time Interval Inputs */}
       <div className="mb-3">
-        <label className="form-label">Observation Date (DD-MM-YYYY):</label>
+        <label className="form-label">Observation Start (dd/mm/yyyy HH:MM:SS):</label>
         <input
-          type="date"
+          type="text"
           className="form-control"
-          value={searchTime}
-          onChange={(e) => setSearchTime(e.target.value)}
+          value={obsStart}
+          onChange={(e) => setObsStart(e.target.value)}
+          placeholder="dd/mm/yyyy HH:MM:SS"
+        />
+      </div>
+      <div className="mb-3">
+        <label className="form-label">Observation End (dd/mm/yyyy HH:MM:SS):</label>
+        <input
+          type="text"
+          className="form-control"
+          value={obsEnd}
+          onChange={(e) => setObsEnd(e.target.value)}
+          placeholder="dd/mm/yyyy HH:MM:SS"
         />
       </div>
       {/* Search radius, TAP URL, ObsCore Table */}
