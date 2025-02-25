@@ -151,25 +151,11 @@ const ResultsTable = ({
       if (col === "datalink_url") return;
       cols.push({
         id: `column-${col}-${index}`,
-        name: col,
-        selector: (row) => row[col],
+        name: <span title={col}>{col}</span>,
+        cell: (row) => <span title={row[col]}>{row[col]}</span>,
         sortable: true,
         omit: hiddenColumns.includes(col),
       });
-    });
-
-    // access_url column (toggleable)
-    cols.push({
-      id: 'access_url-column',
-      name: 'access_url',
-      cell: (row) => (
-        <a href={row.access_url} target="_blank" rel="noopener noreferrer">
-          {row.access_url}
-        </a>
-      ),
-      sortable: false,
-      ignoreRowClick: true,
-      omit: hiddenColumns.includes('access_url'),
     });
 
     return cols;
