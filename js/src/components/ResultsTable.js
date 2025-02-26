@@ -60,6 +60,9 @@ const ResultsTable = ({
   // Define which columns are toggleable
   const toggleableColumns = columns.filter(col => col !== "datalink_url");
 
+  // Fixed column width
+  const colWidth = "150px";
+
   // Custom subheader for column visibility using Bootstrap dropdown
   const SubHeader = () => (
     <div className="p-2 border-bottom bg-light w-100 d-flex">
@@ -100,7 +103,6 @@ const ResultsTable = ({
   );
 
   // Build table columns
-  // Always show Basket and DataLink columns.
   const tableColumns = useMemo(() => {
     let cols = [];
 
@@ -147,12 +149,35 @@ const ResultsTable = ({
 
     // Toggleable columns from the original result
     toggleableColumns.forEach((col, index) => {
-      // Skip "datalink_url" if present.
       if (col === "datalink_url") return;
       cols.push({
         id: `column-${col}-${index}`,
-        name: <span title={col}>{col}</span>,
-        cell: (row) => <span title={row[col]}>{row[col]}</span>,
+        name: (
+          <div
+            style={{
+              width: colWidth,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }}
+            title={col}
+          >
+            {col}
+          </div>
+        ),
+        cell: (row) => (
+          <div
+            style={{
+              width: colWidth,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }}
+            title={row[col]}
+          >
+            {row[col]}
+          </div>
+        ),
         sortable: true,
         omit: hiddenColumns.includes(col),
       });
@@ -178,26 +203,28 @@ const ResultsTable = ({
   };
 
   return (
-    <div className="table-responsive">
-      {alertMessage && (
-        <div className="alert alert-info alert-dismissible fade show" role="alert">
-          {alertMessage}
-          <button type="button" className="btn-close" onClick={handleCloseAlert} />
-        </div>
-      )}
-      <DataTable
-        columns={tableColumns}
-        data={tableData}
-        keyField="id"
-        pagination
-        selectableRows
-        onSelectedRowsChange={onRowSelected}
-        pointerOnHover
-        highlightOnHover
-        subHeader
-        subHeaderComponent={<SubHeader />}
-        customStyles={customStyles}
-      />
+    <div style={{ overflowX: 'auto' }}>
+      <div className="table-responsive">
+        {alertMessage && (
+          <div className="alert alert-info alert-dismissible fade show" role="alert">
+            {alertMessage}
+            <button type="button" className="btn-close" onClick={handleCloseAlert} />
+          </div>
+        )}
+        <DataTable
+          columns={tableColumns}
+          data={tableData}
+          keyField="id"
+          pagination
+          selectableRows
+          onSelectedRowsChange={onRowSelected}
+          pointerOnHover
+          highlightOnHover
+          subHeader
+          subHeaderComponent={<SubHeader />}
+          customStyles={customStyles}
+        />
+      </div>
     </div>
   );
 };
