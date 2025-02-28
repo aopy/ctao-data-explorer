@@ -120,40 +120,33 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [] }) => {
   };
 
   const autoZoom = (raValues, decValues) => {
-    // For a single overlay with s_fov
-    if (overlays.length === 1 && overlays[0].s_fov && !isNaN(overlays[0].s_fov)) {
-      // Multiply s_fov to ensure the circle is fully visible
-      const finalFov = Math.min(overlays[0].s_fov * 2.5, 180);
-      aladinInstance.current.gotoRaDec(raValues[0], decValues[0]);
-      aladinInstance.current.setFov(finalFov);
-      return;
-    }
+    // Define a margin to account for the circles
+    const margin = 10;
 
-    // Existing multi-object auto-zoom logic
-    const minRa = Math.min(...raValues);
-    const maxRa = Math.max(...raValues);
-    const minDec = Math.min(...decValues);
-    const maxDec = Math.max(...decValues);
+    // Compute an extended bounding box including the margin
+    let minRa = Math.min(...raValues) - margin;
+    let maxRa = Math.max(...raValues) + margin;
+    let minDec = Math.min(...decValues) - margin;
+    let maxDec = Math.max(...decValues) + margin;
 
-    let centerRa = (minRa + maxRa) / 2;
-    let centerDec = (minDec + maxDec) / 2;
-    let maxDiff = Math.max(maxRa - minRa, maxDec - minDec);
-
-    // RA wrap-around
+    // RA wrap-around handling
     if (maxRa - minRa > 180) {
       const adjustedRa = raValues.map(r => (r < 180 ? r + 360 : r));
-      const adjustedMinRa = Math.min(...adjustedRa);
-      const adjustedMaxRa = Math.max(...adjustedRa);
-      maxDiff = Math.max(adjustedMaxRa - adjustedMinRa, maxDec - minDec);
-
+      const adjustedMinRa = Math.min(...adjustedRa) - margin;
+      const adjustedMaxRa = Math.max(...adjustedRa) + margin;
       const adjustedCenterRa = (adjustedMinRa + adjustedMaxRa) / 2;
-      centerRa = adjustedCenterRa > 360 ? adjustedCenterRa - 360 : adjustedCenterRa;
+      // Bring back into 0-360 if needed
+      var centerRa = adjustedCenterRa > 360 ? adjustedCenterRa - 360 : adjustedCenterRa;
+    } else {
+      var centerRa = (minRa + maxRa) / 2;
     }
+    const centerDec = (minDec + maxDec) / 2;
 
-    // Calculate FOV based on the spread of markers
-    const baseFov = Math.min(Math.max(maxDiff * 1.2, 0.1), 180);
-    // Apply an extra multiplier to zoom out further
-    const finalFov = Math.min(baseFov * 6, 180);
+    // Determine the FOV needed to cover the extended bounding box
+    let fovCandidate = Math.max(maxRa - minRa, maxDec - minDec);
+    // Ensure a minimum FOV
+    fovCandidate = Math.max(fovCandidate, 10);
+    const finalFov = Math.min(fovCandidate, 180);
 
     aladinInstance.current.gotoRaDec(centerRa, centerDec);
     aladinInstance.current.setFov(finalFov);
