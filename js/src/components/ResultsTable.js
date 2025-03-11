@@ -9,6 +9,7 @@ const ResultsTable = ({
   authToken,
   onAddedBasketItem,
   basketItems = [],
+  activeBasketGroupId,
 }) => {
   const { columns, data } = results;
 
@@ -18,38 +19,44 @@ const ResultsTable = ({
   const [alertMessage, setAlertMessage] = useState(null);
   // State to track which row's dropdown is open (by row id).
   const [openDropdownId, setOpenDropdownId] = useState(null);
+
   // Check if an obs_id is already in the user's basket
   const isAlreadyInBasket = (obsId) => {
     return basketItems.some((it) => it.obs_id === obsId);
   };
 
-  // Function to add a row to the basket
+  // Function to add a row to the basket (including the active basket group ID)
   const addToBasket = async (rowData) => {
     if (!authToken) {
       setAlertMessage("You must be logged in to add to basket!");
       return;
     }
 
-    // Check in front-end if it is already in basket:
     if (isAlreadyInBasket(rowData.obs_id)) {
       setAlertMessage(`obs_id=${rowData.obs_id} is already in your basket.`);
       return;
     }
+
     try {
       const payload = {
         obs_id: rowData.obs_id,
         dataset_dict: rowData, // the entire row or partial info
+        basket_group_id: activeBasketGroupId,
       };
       const response = await axios.post("/basket", payload, {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       console.log("Added to basket:", response.data);
       setAlertMessage(`Added obs_id=${rowData.obs_id} to basket successfully!`);
-      if (onAddedBasketItem) onAddedBasketItem();
+      if (onAddedBasketItem) onAddedBasketItem(response.data);
     } catch (error) {
-      console.error('Failed to add to basket:', error);
-      setAlertMessage('Error adding item to basket.');
-    }
+      if (error.response && error.response.status === 409) {
+        setAlertMessage(`obs_id=${rowData.obs_id} is already in your basket.`);
+      } else {
+          console.error('Failed to add to basket:', error);
+          setAlertMessage('Error adding item to basket.');
+        }
+      }
   };
 
   // Function to close alert messages

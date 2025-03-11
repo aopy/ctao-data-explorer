@@ -121,7 +121,7 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [] }) => {
 
   const autoZoom = (raValues, decValues) => {
     // Define a margin to account for the circles
-    const margin = 10;
+    const margin = 15;
 
     // Compute an extended bounding box including the margin
     let minRa = Math.min(...raValues) - margin;
