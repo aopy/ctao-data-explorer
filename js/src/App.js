@@ -128,6 +128,16 @@ function App() {
   // A counter used to trigger a refresh of basket groups
   const [basketRefreshCounter, setBasketRefreshCounter] = useState(0);
 
+  const [allBasketGroups, setAllBasketGroups] = useState([]);
+  const [allBasketItems, setAllBasketItems] = useState([]);
+
+  const handleBasketGroupsChange = (groups) => {
+    setAllBasketGroups(groups);
+    // Flatten items from all groups
+    const flatItems = groups.reduce((acc, group) => acc.concat(group.items || []), []);
+    setAllBasketItems(flatItems);
+  };
+
   // Handler to update basket state immediately when a new item is added
   const handleBasketItemAdded = (newItem) => {
     setActiveBasketItems(prevItems => [...prevItems, newItem]);
@@ -289,7 +299,7 @@ function App() {
                         authToken={authToken}
                         onRowSelected={handleRowSelected}
                         activeBasketGroupId={activeBasketGroupId}
-                        basketItems={activeBasketItems}
+                        basketItems={allBasketItems}
                         onAddedBasketItem={handleBasketItemAdded}
                       />
                     </div>
@@ -311,8 +321,8 @@ function App() {
               setActiveBasketGroupId(groupId);
               setActiveBasketItems(items);
             }}
+            onBasketGroupsChange={handleBasketGroupsChange}
             refreshTrigger={basketRefreshCounter}
-            activeItems={activeBasketItems}
           />
         </div>
       </div>

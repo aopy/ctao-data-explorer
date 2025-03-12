@@ -9,7 +9,7 @@ const formatTmin = (mjd) => {
   return new Date(unixTime).toLocaleString();
 };
 
-function BasketPage({ authToken, onOpenItem, onActiveGroupChange, refreshTrigger, activeItems }) {
+function BasketPage({ authToken, onOpenItem, onActiveGroupChange, refreshTrigger, activeItems, onBasketGroupsChange }) {
   const [basketGroups, setBasketGroups] = useState([]);
   const [activeGroup, setActiveGroup] = useState(null);
   const [newGroupName, setNewGroupName] = useState('');
@@ -31,24 +31,36 @@ function BasketPage({ authToken, onOpenItem, onActiveGroupChange, refreshTrigger
         });
         setBasketGroups(res2.data);
         setActiveGroup(res2.data[0]);
-        if (onActiveGroupChange) onActiveGroupChange(res2.data[0].id, res2.data[0].items);
+      if (onActiveGroupChange) {
+        onActiveGroupChange(res2.data[0].id, res2.data[0].items);
+      }
+      if (onBasketGroupsChange) {
+        onBasketGroupsChange(res2.data);
+      }
       } else {
         setBasketGroups(res.data);
-        if (activeGroup) {
-        const newActive = res.data.find(g => g.id === activeGroup.id);
+      if (activeGroup) {
+        const newActive = res.data.find((g) => g.id === activeGroup.id);
         if (newActive) {
           setActiveGroup(newActive);
-          if (onActiveGroupChange) onActiveGroupChange(newActive.id, newActive.items);
+          if (onActiveGroupChange) {
+            onActiveGroupChange(newActive.id, newActive.items);
+          }
         }
-        } else {
-          setActiveGroup(res.data[0]);
-          if (onActiveGroupChange) onActiveGroupChange(res.data[0].id, res.data[0].items);
+      } else {
+        setActiveGroup(res.data[0]);
+        if (onActiveGroupChange) {
+          onActiveGroupChange(res.data[0].id, res.data[0].items);
         }
       }
-    } catch (err) {
-      console.error('Error fetching basket groups', err);
+      if (onBasketGroupsChange) {
+        onBasketGroupsChange(res.data);
+      }
     }
-  };
+  } catch (err) {
+    console.error('Error fetching basket groups', err);
+  }
+};
 
   useEffect(() => {
     if (authToken) {
@@ -102,6 +114,9 @@ function BasketPage({ authToken, onOpenItem, onActiveGroupChange, refreshTrigger
       headers: { Authorization: `Bearer ${authToken}` },
     });
     setBasketGroups(res.data);
+    if (onBasketGroupsChange) {
+      onBasketGroupsChange(res.data);
+    }
     if (res.data.length > 0) {
       const newActiveGroup = res.data[0];
       setActiveGroup(newActiveGroup);
@@ -122,6 +137,9 @@ function BasketPage({ authToken, onOpenItem, onActiveGroupChange, refreshTrigger
       setActiveGroup(res2.data[0]);
       if (onActiveGroupChange) {
         onActiveGroupChange(res2.data[0].id, res2.data[0].items);
+      }
+      if (onBasketGroupsChange) {
+        onBasketGroupsChange(res2.data);
       }
     }
   } catch (err) {
