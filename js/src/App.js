@@ -6,6 +6,7 @@ import AladinLiteViewer from './components/AladinLiteViewer';
 import TimelineChart from './components/TimelineChart';
 import EmRangeChart from './components/EmRangeChart';
 import BasketPage from './components/BasketPage';
+import UserProfileModal from './components/UserProfileModal';
 
 function formatTmin(mjd) {
   if (!mjd || isNaN(mjd)) return '';
@@ -131,6 +132,8 @@ function App() {
   const [allBasketGroups, setAllBasketGroups] = useState([]);
   const [allBasketItems, setAllBasketItems] = useState([]);
 
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
   const handleBasketGroupsChange = (groups) => {
     setAllBasketGroups(groups);
     // Flatten items from all groups
@@ -221,6 +224,9 @@ function App() {
               <span className="me-3 text-success">
                 {user ? `Logged in as ${user.first_name || user.email}` : 'Logged in'}
               </span>
+              <button className="btn btn-outline-secondary me-2" onClick={() => setShowProfileModal(true)}>
+                Profile
+              </button>
               <button className="btn btn-outline-danger" onClick={handleLogout}>Logout</button>
             </>
           ) : (
@@ -248,7 +254,7 @@ function App() {
         <div className={`tab-pane fade ${activeTab==='search'?'show active':''}`} role="tabpanel">
           <div className="card">
             <div className="card-header bg-secondary text-white">Search Form</div>
-            <div className="card-body"><SearchForm setResults={handleSearchResults} /></div>
+            <div className="card-body"><SearchForm setResults={handleSearchResults} authToken={authToken} /></div>
           </div>
         </div>
 
@@ -326,7 +332,7 @@ function App() {
           />
         </div>
       </div>
-
+      <UserProfileModal show={showProfileModal} onClose={() => setShowProfileModal(false)} authToken={authToken} />
       <BasketItemModal show={showBasketModal} onClose={closeBasketModal} basketItem={basketModalItem} />
     </div>
   );

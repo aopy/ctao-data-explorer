@@ -15,16 +15,18 @@ class UserTable(Base, SQLAlchemyBaseUserTable):
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)
     first_login_at = Column(DateTime(timezone=True), nullable=True)
-    saved_datasets = relationship(
-        "SavedDataset",
-        back_populates="user",
-        cascade="all, delete-orphan"
-    )
-    basket_groups = relationship(
-        "BasketGroup",
-        back_populates="user",
-        cascade="all, delete-orphan"
-    )
+    saved_datasets = relationship("SavedDataset", back_populates="user", cascade="all, delete-orphan")
+    basket_groups = relationship("BasketGroup", back_populates="user", cascade="all, delete-orphan")
+    query_history = relationship("QueryHistory", back_populates="user", cascade="all, delete-orphan")
+
+class QueryHistory(Base):
+    __tablename__ = "query_history"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    query_date = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    query_params = Column(Text, nullable=True)
+    results = Column(Text, nullable=True)
+    user = relationship("UserTable", back_populates="query_history")
 
 class BasketGroup(Base):
     __tablename__ = "basket_groups"

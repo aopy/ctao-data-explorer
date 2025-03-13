@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 
-function SearchForm({ setResults }) {
+function SearchForm({ setResults, authToken }) {
   // Object name resolution states
   const [objectName, setObjectName] = useState('');
   const [useSimbad, setUseSimbad] = useState(true);  // SIMBAD checked by default
@@ -95,6 +95,18 @@ function SearchForm({ setResults }) {
     axios.get('/api/search_coords', { params: reqParams })
       .then(response => {
         setResults(response.data);
+
+      if (authToken) {
+        axios.post('/query-history', {
+          query_params: reqParams,
+          results: response.data,
+        }, {
+          headers: { Authorization: `Bearer ${authToken}` }
+        })
+        .catch(error => {
+          console.error("Error recording search history:", error.response ? error.response.data : error.message);
+        });
+        }
       })
       .catch(error => {
         console.error('Search error:', error);

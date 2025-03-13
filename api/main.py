@@ -22,6 +22,7 @@ from .basket import basket_router
 import urllib.parse
 from astropy.time import Time
 from datetime import datetime
+from .query_history import query_history_router
 
 
 app = FastAPI(
@@ -333,8 +334,10 @@ async def datalink_endpoint(
 app.include_router(auth_router)
 # Include CTAO OIDC
 app.include_router(oidc_router)
-# Include basket router here
+# Include basket router
 app.include_router(basket_router)
+# Include query history router
+app.include_router(query_history_router)
 # Mount the React build folder
 app.mount("/", StaticFiles(directory="./js/build", html=True), name="js")
 
