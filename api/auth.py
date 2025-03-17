@@ -12,12 +12,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .db import get_async_session
 from .models import UserTable
 from fastapi_users.manager import BaseUserManager
-
+from datetime import datetime
 
 # User Schemas
 class UserRead(schemas.BaseUser[int]):
     first_name: str | None = None
     last_name: str | None = None
+    first_login_at: datetime | None = None
+    email: str
+    class Config:
+        orm_mode = True
 
 class UserCreate(schemas.BaseUserCreate):
     first_name: str | None = None
@@ -47,9 +51,9 @@ async def get_user_manager(
 ) -> UserManager:
     yield UserManager(user_db)
 
-# Using bearer token approach:
+# Using bearer token:
 bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
-# Using cookies approach
+# Using cookies
 # from fastapi_users.authentication import CookieTransport
 # cookie_transport = CookieTransport(cookie_max_age=3600)
 

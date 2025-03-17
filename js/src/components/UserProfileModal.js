@@ -42,6 +42,9 @@ const UserProfileModal = ({ show, onClose, authToken }) => {
                   <strong>Full Name:</strong> {profile.first_name} {profile.last_name}
                 </p>
                 <p>
+                  <strong>Email:</strong> {profile.email}
+                </p>
+                <p>
                   <strong>First Login:</strong>{" "}
                   {profile.first_login_at
                     ? new Date(profile.first_login_at).toLocaleString()
