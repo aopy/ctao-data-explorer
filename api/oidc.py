@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .db import get_async_session
 from .auth import get_jwt_strategy
 from datetime import datetime
+from fastapi import Response
 
 # OIDC config
 config = Config('.env')
@@ -31,6 +32,11 @@ async def login(request: Request):
     print("Redirect URI =>", redirect_uri)
     return await oauth.ctao.authorize_redirect(request, redirect_uri)
 
+@oidc_router.post("/logout")
+async def logout(response: Response):
+    response.delete_cookie("access_token", path="/")
+    return {"detail": "Logged out"}
+
 
 @oidc_router.get("/callback")
 async def auth_callback(
@@ -38,7 +44,6 @@ async def auth_callback(
         session: AsyncSession = Depends(get_async_session),
 ):
     token = await oauth.ctao.authorize_access_token(request)
-    # userinfo = await oauth.ctao.parse_id_token(request, token)
     userinfo = await oauth.ctao.userinfo(token=token)
 
     email = userinfo.get("email")
@@ -54,7 +59,6 @@ async def auth_callback(
     existing_user = await user_db.get_by_email(email)
 
     if not existing_user:
-        # Create new user
         new_data = {
             "email": email,
             "hashed_password": "...",  # generate a random password
@@ -69,18 +73,24 @@ async def auth_callback(
         await session.refresh(new_user)
         existing_user = new_user
     else:
-        # If user already exists, and if
-        # first_login_at is null, fill it
         if existing_user.first_login_at is None:
             existing_user.first_login_at = datetime.utcnow()
-        # Update user to sync names from CTAO each time
         existing_user.first_name = given_name
         existing_user.last_name = family_name
         await session.commit()
         await session.refresh(existing_user)
 
+    # Generate a local token and set it in an HttpOnly cookie
     jwt_strategy = get_jwt_strategy()
     local_token = await jwt_strategy.write_token(existing_user)
-    # print("DEBUG local_token =>", local_token)
-
-    return RedirectResponse(url=f"/?token={local_token}")
+    response = RedirectResponse(url="/")
+    response.set_cookie(
+        key="access_token",
+        value=local_token,
+        httponly=True,
+        secure=False,  # Must be True in production
+        samesite="lax",
+        max_age=3600,
+        path="/"
+    )
+    return response

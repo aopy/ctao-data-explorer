@@ -14,12 +14,12 @@ const UserProfileModal = ({ show, onClose, authToken }) => {
   useEffect(() => {
     if (authToken && show) {
       axios
-        .get('/users/me', { headers: { Authorization: `Bearer ${authToken}` } })
+        .get('/users/me')
         .then(res => setProfile(res.data))
         .catch(err => console.error("Error fetching user profile", err));
 
       axios
-        .get('/query-history', { headers: { Authorization: `Bearer ${authToken}` } })
+        .get('/query-history')
         .then(res => setHistory(res.data))
         .catch(err => console.error("Error fetching query history", err));
     }

@@ -16,19 +16,14 @@ function BasketPage({ authToken, onOpenItem, onActiveGroupChange, refreshTrigger
 
   const fetchBasketGroups = async () => {
     try {
-      const res = await axios.get('/basket/groups', {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
+      const res = await axios.get('/basket/groups');
       if (res.data.length === 0) {
         // Create default basket group if none exist
         await axios.post(
           '/basket/groups',
           { name: 'My Basket' },
-          { headers: { Authorization: `Bearer ${authToken}` } }
         );
-        const res2 = await axios.get('/basket/groups', {
-          headers: { Authorization: `Bearer ${authToken}` },
-        });
+        const res2 = await axios.get('/basket/groups');
         setBasketGroups(res2.data);
         setActiveGroup(res2.data[0]);
       if (onActiveGroupChange) {
@@ -81,7 +76,6 @@ function BasketPage({ authToken, onOpenItem, onActiveGroupChange, refreshTrigger
       const res = await axios.post(
         '/basket/groups',
         { name },
-        { headers: { Authorization: `Bearer ${authToken}` } }
       );
       await fetchBasketGroups();
       handleSetActiveGroup(res.data);
@@ -96,7 +90,6 @@ function BasketPage({ authToken, onOpenItem, onActiveGroupChange, refreshTrigger
       await axios.put(
         `/basket/groups/${groupId}`,
         { name: newName },
-        { headers: { Authorization: `Bearer ${authToken}` } }
       );
       await fetchBasketGroups();
     } catch (err) {
@@ -106,13 +99,9 @@ function BasketPage({ authToken, onOpenItem, onActiveGroupChange, refreshTrigger
 
   const deleteGroup = async (groupId) => {
   try {
-    await axios.delete(`/basket/groups/${groupId}`, {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
+    await axios.delete(`/basket/groups/${groupId}`);
     // Re-fetch the basket groups
-    const res = await axios.get('/basket/groups', {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
+    const res = await axios.get('/basket/groups');
     setBasketGroups(res.data);
     if (onBasketGroupsChange) {
       onBasketGroupsChange(res.data);
@@ -128,11 +117,8 @@ function BasketPage({ authToken, onOpenItem, onActiveGroupChange, refreshTrigger
       await axios.post(
         '/basket/groups',
         { name: 'My Basket' },
-        { headers: { Authorization: `Bearer ${authToken}` } }
       );
-      const res2 = await axios.get('/basket/groups', {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
+      const res2 = await axios.get('/basket/groups');
       setBasketGroups(res2.data);
       setActiveGroup(res2.data[0]);
       if (onActiveGroupChange) {
@@ -149,9 +135,7 @@ function BasketPage({ authToken, onOpenItem, onActiveGroupChange, refreshTrigger
 
 const deleteItem = async (itemId) => {
   try {
-    await axios.delete(`/basket/${itemId}`, {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
+    await axios.delete(`/basket/${itemId}`);
     // Immediately update the local active group
     if (activeGroup) {
       const updatedItems = activeGroup.items.filter(item => item.id !== itemId);

@@ -7,6 +7,7 @@ import TimelineChart from './components/TimelineChart';
 import EmRangeChart from './components/EmRangeChart';
 import BasketPage from './components/BasketPage';
 import UserProfileModal from './components/UserProfileModal';
+axios.defaults.withCredentials = true;
 
 function formatTmin(mjd) {
   if (!mjd || isNaN(mjd)) return '';
@@ -117,8 +118,8 @@ function App() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [activeTab, setActiveTab] = useState('search');
 
-  const [authToken, setAuthToken] = useState(null);
   const [user, setUser] = useState(null);
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   const [showBasketModal, setShowBasketModal] = useState(false);
   const [basketModalItem, setBasketModalItem] = useState(null);
@@ -126,49 +127,42 @@ function App() {
   // State for basket groups
   const [activeBasketGroupId, setActiveBasketGroupId] = useState(null);
   const [activeBasketItems, setActiveBasketItems] = useState([]);
-  // A counter used to trigger a refresh of basket groups
   const [basketRefreshCounter, setBasketRefreshCounter] = useState(0);
-
-  const [allBasketGroups, setAllBasketGroups] = useState([]);
   const [allBasketItems, setAllBasketItems] = useState([]);
+  const [allBasketGroups, setAllBasketGroups] = useState([]);
 
-  const [showProfileModal, setShowProfileModal] = useState(false);
-
-  const handleBasketGroupsChange = (groups) => {
-    setAllBasketGroups(groups);
-    // Flatten items from all groups
-    const flatItems = groups.reduce((acc, group) => acc.concat(group.items || []), []);
-    setAllBasketItems(flatItems);
-  };
-
-  // Handler to update basket state immediately when a new item is added
-  const handleBasketItemAdded = (newItem) => {
-    setActiveBasketItems(prevItems => [...prevItems, newItem]);
-    setBasketRefreshCounter(prev => prev + 1);
-  };
-
-
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get('token');
-    if (token) {
-      setAuthToken(token);
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (authToken) {
-      axios.get('/users/me', { headers: { Authorization: `Bearer ${authToken}` } })
-        .then(res => setUser(res.data))
-        .catch(err => console.error('Failed to fetch user:', err));
-    } else {
+  // On initial mount, fetch the user profile using the cookie
+useEffect(() => {
+  axios.get('/users/me')
+    .then(res => {
+      console.log("User profile:", res.data);
+      setUser(res.data);
+    })
+    .catch(err => {
+      if (err.response && err.response.status === 401) {
+        console.log("User not logged in");
+      } else {
+        console.error('Error fetching user:', err);
+      }
       setUser(null);
-    }
-  }, [authToken]);
+    });
+}, []);
 
-  const handleLogin = () => { window.location.href = '/oidc/login'; };
-  const handleLogout = () => { setAuthToken(null); setUser(null); };
+  const handleLogin = () => {
+    window.location.href = '/oidc/login';
+  };
+
+const handleLogout = async () => {
+  try {
+    const res = await axios.post('/oidc/logout');
+    console.log("Logout response:", res.data);
+  } catch (err) {
+    console.error('Logout error:', err);
+  }
+  // Clear local state and force a reload
+  setUser(null);
+  window.location.reload();
+};
 
   const handleSearchResults = (data) => {
     setResults(data);
@@ -208,57 +202,74 @@ function App() {
     setBasketModalItem(null);
   };
 
-  // Called after an item is added in ResultsTable
-  const refreshBasketGroups = () => {
+  // Callback is used by BasketPage to lift up active basket groups data
+  const handleBasketGroupsChange = (groups) => {
+    setAllBasketGroups(groups);
+    const flatItems = groups.reduce((acc, group) => acc.concat(group.items || []), []);
+    setAllBasketItems(flatItems);
+  };
+
+  const handleBasketItemAdded = (newItem) => {
+    // Update local state immediately
+    setActiveBasketItems(prev => [...prev, newItem]);
     setBasketRefreshCounter(prev => prev + 1);
   };
 
   return (
     <div className="container-fluid p-3">
-      {/* Top Navbar */}
       <div className="d-flex justify-content-between mb-2">
         <h2>CTAO Data Explorer</h2>
         <div>
-          {authToken ? (
-            <>
-              <span className="me-3 text-success">
-                {user ? `Logged in as ${user.first_name || user.email}` : 'Logged in'}
-              </span>
-              <button className="btn btn-outline-secondary me-2" onClick={() => setShowProfileModal(true)}>
-                Profile
-              </button>
-              <button className="btn btn-outline-danger" onClick={handleLogout}>Logout</button>
-            </>
-          ) : (
-            <button className="btn btn-outline-primary" onClick={handleLogin}>Login</button>
-          )}
-        </div>
+  {user ? (
+    <>
+      <span className="me-3 text-success">
+        Logged in as {user.first_name || user.email}
+      </span>
+      <button className="btn btn-outline-secondary me-2" onClick={() => setShowProfileModal(true)}>
+        Profile
+      </button>
+      <button className="btn btn-outline-danger" onClick={handleLogout}>
+        Logout
+      </button>
+    </>
+  ) : (
+    <button className="btn btn-outline-primary" onClick={handleLogin}>
+      Login
+    </button>
+  )}
+</div>
       </div>
 
-      {/* Tab Navigation */}
       <ul className="nav nav-tabs" role="tablist">
-        <li className="nav-item">
-          <button className={`nav-link ${activeTab==='search'?'active':''}`} onClick={() => setActiveTab('search')} type="button">Search</button>
-        </li>
-        <li className="nav-item">
-          <button className={`nav-link ${activeTab==='results'?'active':''}`} onClick={() => setActiveTab('results')} type="button">Results</button>
-        </li>
-        <li className="nav-item">
-          <button className={`nav-link ${activeTab==='basket'?'active':''}`} onClick={() => setActiveTab('basket')} type="button">My Basket</button>
-        </li>
-      </ul>
+  <li className="nav-item">
+    <button className={`nav-link ${activeTab==='search'?'active':''}`} onClick={() => setActiveTab('search')} type="button">
+      Search
+    </button>
+  </li>
+  <li className="nav-item">
+    <button className={`nav-link ${activeTab==='results'?'active':''}`} onClick={() => setActiveTab('results')} type="button">
+      Results
+    </button>
+  </li>
+  {user && (
+    <li className="nav-item">
+      <button className={`nav-link ${activeTab==='basket'?'active':''}`} onClick={() => setActiveTab('basket')} type="button">
+        My Basket
+      </button>
+    </li>
+  )}
+</ul>
 
-      {/* Tab Content */}
       <div className="tab-content mt-3">
-        {/* SEARCH TAB */}
         <div className={`tab-pane fade ${activeTab==='search'?'show active':''}`} role="tabpanel">
           <div className="card">
             <div className="card-header bg-secondary text-white">Search Form</div>
-            <div className="card-body"><SearchForm setResults={handleSearchResults} authToken={authToken} /></div>
+            <div className="card-body">
+              <SearchForm setResults={handleSearchResults} user={user ? "dummy" : null} />
+            </div>
           </div>
         </div>
 
-        {/* RESULTS TAB */}
         <div className={`tab-pane fade ${activeTab==='results'?'show active':''}`} role="tabpanel">
           {results ? (
             <>
@@ -302,7 +313,7 @@ function App() {
                     <div className="card-body p-0">
                       <ResultsTable
                         results={results}
-                        authToken={authToken}
+                        authToken={user ? "dummy" : null}
                         onRowSelected={handleRowSelected}
                         activeBasketGroupId={activeBasketGroupId}
                         basketItems={allBasketItems}
@@ -318,21 +329,26 @@ function App() {
           )}
         </div>
 
-        {/* BASKET TAB */}
         <div className={`tab-pane fade ${activeTab==='basket'?'show active':''}`} role="tabpanel">
           <BasketPage
-            authToken={authToken}
+            authToken={user ? "dummy" : null}
             onOpenItem={handleOpenBasketItem}
             onActiveGroupChange={(groupId, items) => {
               setActiveBasketGroupId(groupId);
-              setActiveBasketItems(items);
             }}
             onBasketGroupsChange={handleBasketGroupsChange}
             refreshTrigger={basketRefreshCounter}
+            activeItems={activeBasketItems}
           />
         </div>
       </div>
-      <UserProfileModal show={showProfileModal} onClose={() => setShowProfileModal(false)} authToken={authToken} />
+
+      <UserProfileModal
+        show={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        authToken={user ? "dummy" : null}
+      />
+
       <BasketItemModal show={showBasketModal} onClose={closeBasketModal} basketItem={basketModalItem} />
     </div>
   );

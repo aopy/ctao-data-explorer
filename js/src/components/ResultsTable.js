@@ -43,9 +43,7 @@ const ResultsTable = ({
         dataset_dict: rowData, // the entire row or partial info
         basket_group_id: activeBasketGroupId,
       };
-      const response = await axios.post("/basket", payload, {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
+      const response = await axios.post("/basket", payload);
       console.log("Added to basket:", response.data);
       setAlertMessage(`Added obs_id=${rowData.obs_id} to basket successfully!`);
       if (onAddedBasketItem) onAddedBasketItem(response.data);

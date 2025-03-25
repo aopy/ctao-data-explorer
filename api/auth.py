@@ -3,7 +3,7 @@ from fastapi_users import FastAPIUsers
 from fastapi_users.db import SQLAlchemyUserDatabase
 from fastapi_users.authentication import (
     AuthenticationBackend,
-    BearerTransport,
+    CookieTransport,
     JWTStrategy
 )
 from starlette.config import Config
@@ -21,7 +21,7 @@ class UserRead(schemas.BaseUser[int]):
     first_login_at: datetime | None = None
     email: str
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class UserCreate(schemas.BaseUserCreate):
     first_name: str | None = None
@@ -51,11 +51,13 @@ async def get_user_manager(
 ) -> UserManager:
     yield UserManager(user_db)
 
-# Using bearer token:
-bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
-# Using cookies
-# from fastapi_users.authentication import CookieTransport
-# cookie_transport = CookieTransport(cookie_max_age=3600)
+cookie_transport = CookieTransport(
+    cookie_name="access_token",
+    cookie_max_age=3600,
+    cookie_secure=False,  # Must be True in production
+    cookie_httponly=True,
+    cookie_samesite="lax"
+)
 
 def get_jwt_strategy() -> JWTStrategy:
     """Create a JWT strategy with the secret loaded from .env."""
@@ -63,7 +65,7 @@ def get_jwt_strategy() -> JWTStrategy:
 
 auth_backend = AuthenticationBackend(
     name="jwt",
-    transport=bearer_transport,
+    transport=cookie_transport,
     get_strategy=get_jwt_strategy,
 )
 
