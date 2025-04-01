@@ -16,7 +16,8 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [] }) => {
     window.A.init.then(() => {
       aladinInstance.current = window.A.aladin(aladinRef.current, {
         // survey: 'P/DSS2/color', // Might cause IRSA CORS logs
-        survey: 'CDS/P/Fermi/color',
+        // survey: 'CDS/P/Fermi/color',
+        survey: 'https://healpix.ias.u-psud.fr/CDS_P_Fermi_color',
         fov: 30,
         projection: 'AIT'
       });

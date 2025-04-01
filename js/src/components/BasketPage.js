@@ -17,45 +17,25 @@ function BasketPage({ authToken, onOpenItem, onActiveGroupChange, refreshTrigger
   const fetchBasketGroups = async () => {
     try {
       const res = await axios.get('/basket/groups');
-      if (res.data.length === 0) {
+      let groups = res.data;
+      if (groups.length === 0) {
         // Create default basket group if none exist
-        await axios.post(
-          '/basket/groups',
-          { name: 'My Basket' },
-        );
+        await axios.post('/basket/groups', { name: 'My Basket' });
         const res2 = await axios.get('/basket/groups');
-        setBasketGroups(res2.data);
-        setActiveGroup(res2.data[0]);
-      if (onActiveGroupChange) {
-        onActiveGroupChange(res2.data[0].id, res2.data[0].items);
+        groups = res2.data;
       }
-      if (onBasketGroupsChange) {
-        onBasketGroupsChange(res2.data);
-      }
-      } else {
-        setBasketGroups(res.data);
-      if (activeGroup) {
-        const newActive = res.data.find((g) => g.id === activeGroup.id);
-        if (newActive) {
-          setActiveGroup(newActive);
-          if (onActiveGroupChange) {
-            onActiveGroupChange(newActive.id, newActive.items);
-          }
-        }
-      } else {
-        setActiveGroup(res.data[0]);
-        if (onActiveGroupChange) {
-          onActiveGroupChange(res.data[0].id, res.data[0].items);
-        }
-      }
-      if (onBasketGroupsChange) {
-        onBasketGroupsChange(res.data);
-      }
+      setBasketGroups(groups);
+      // Try to maintain the current active group if it still exists
+      let newActive = activeGroup ? groups.find((g) => g.id === activeGroup.id) : groups[0];
+      if (!newActive) newActive = groups[0];
+      setActiveGroup(newActive);
+      if (onActiveGroupChange) onActiveGroupChange(newActive.id, newActive.items);
+      if (onBasketGroupsChange) onBasketGroupsChange(groups);
+      return groups;
+    } catch (err) {
+      console.error('Error fetching basket groups', err);
     }
-  } catch (err) {
-    console.error('Error fetching basket groups', err);
-  }
-};
+  };
 
   useEffect(() => {
     if (authToken) {
@@ -73,12 +53,17 @@ function BasketPage({ authToken, onOpenItem, onActiveGroupChange, refreshTrigger
   const createNewGroup = async () => {
     try {
       const name = newGroupName.trim() || 'New Basket';
-      const res = await axios.post(
-        '/basket/groups',
-        { name },
-      );
-      await fetchBasketGroups();
-      handleSetActiveGroup(res.data);
+      const res = await axios.post('/basket/groups', { name });
+      // After creation, re-fetch groups
+      const groups = await fetchBasketGroups();
+      // Set the active group to the newly created group (which should be empty)
+      const newGroup = groups.find(g => g.id === res.data.id);
+      if (newGroup) {
+        setActiveGroup(newGroup);
+        if (onActiveGroupChange) {
+          onActiveGroupChange(newGroup.id, newGroup.items);
+        }
+      }
       setNewGroupName('');
     } catch (err) {
       console.error('Error creating new basket group', err);
@@ -87,10 +72,7 @@ function BasketPage({ authToken, onOpenItem, onActiveGroupChange, refreshTrigger
 
   const renameGroup = async (groupId, newName) => {
     try {
-      await axios.put(
-        `/basket/groups/${groupId}`,
-        { name: newName },
-      );
+      await axios.put(`/basket/groups/${groupId}`, { name: newName });
       await fetchBasketGroups();
     } catch (err) {
       console.error('Error renaming basket group', err);
@@ -98,63 +80,57 @@ function BasketPage({ authToken, onOpenItem, onActiveGroupChange, refreshTrigger
   };
 
   const deleteGroup = async (groupId) => {
-  try {
-    await axios.delete(`/basket/groups/${groupId}`);
-    // Re-fetch the basket groups
-    const res = await axios.get('/basket/groups');
-    setBasketGroups(res.data);
-    if (onBasketGroupsChange) {
-      onBasketGroupsChange(res.data);
-    }
-    if (res.data.length > 0) {
-      const newActiveGroup = res.data[0];
-      setActiveGroup(newActiveGroup);
-      if (onActiveGroupChange) {
-        onActiveGroupChange(newActiveGroup.id, newActiveGroup.items);
-      }
-    } else {
-      // If no groups exist, create a default basket group
-      await axios.post(
-        '/basket/groups',
-        { name: 'My Basket' },
-      );
-      const res2 = await axios.get('/basket/groups');
-      setBasketGroups(res2.data);
-      setActiveGroup(res2.data[0]);
-      if (onActiveGroupChange) {
-        onActiveGroupChange(res2.data[0].id, res2.data[0].items);
-      }
+    try {
+      await axios.delete(`/basket/groups/${groupId}`);
+      const res = await axios.get('/basket/groups');
+      setBasketGroups(res.data);
       if (onBasketGroupsChange) {
-        onBasketGroupsChange(res2.data);
+        onBasketGroupsChange(res.data);
       }
+      if (res.data.length > 0) {
+        const newActiveGroup = res.data[0];
+        setActiveGroup(newActiveGroup);
+        if (onActiveGroupChange) {
+          onActiveGroupChange(newActiveGroup.id, newActiveGroup.items);
+        }
+      } else {
+        await axios.post('/basket/groups', { name: 'My Basket' });
+        const res2 = await axios.get('/basket/groups');
+        setBasketGroups(res2.data);
+        setActiveGroup(res2.data[0]);
+        if (onActiveGroupChange) {
+          onActiveGroupChange(res2.data[0].id, res2.data[0].items);
+        }
+        if (onBasketGroupsChange) {
+          onBasketGroupsChange(res2.data);
+        }
+      }
+    } catch (err) {
+      console.error('Error deleting basket group', err);
     }
-  } catch (err) {
-    console.error('Error deleting basket group', err);
-  }
-};
+  };
 
-const deleteItem = async (itemId) => {
-  try {
-    await axios.delete(`/basket/${itemId}`);
-    // Immediately update the local active group
-    if (activeGroup) {
-      const updatedItems = activeGroup.items.filter(item => item.id !== itemId);
-      const updatedGroup = { ...activeGroup, items: updatedItems };
-      setActiveGroup(updatedGroup);
-      if (onActiveGroupChange) {
-        onActiveGroupChange(updatedGroup.id, updatedGroup.items);
+  const deleteItem = async (itemId) => {
+    try {
+      await axios.delete(`/basket/${itemId}`);
+      if (activeGroup) {
+        const updatedItems = activeGroup.items.filter(item => item.id !== itemId);
+        const updatedGroup = { ...activeGroup, items: updatedItems };
+        setActiveGroup(updatedGroup);
+        if (onActiveGroupChange) {
+          onActiveGroupChange(updatedGroup.id, updatedGroup.items);
+        }
+      }
+      await fetchBasketGroups();
+    } catch (err) {
+      if (err.response && err.response.status === 404) {
+        console.warn(`Item ${itemId} not found; it may have been already deleted.`);
+        await fetchBasketGroups();
+      } else {
+        console.error('Error deleting basket item', err);
       }
     }
-    await fetchBasketGroups();
-  } catch (err) {
-    if (err.response && err.response.status === 404) {
-      console.warn(`Item ${itemId} not found; it may have been already deleted.`);
-      await fetchBasketGroups();
-    } else {
-      console.error('Error deleting basket item', err);
-    }
-  }
-};
+  };
 
   const openItemModal = (item) => {
     onOpenItem(item);
@@ -184,7 +160,6 @@ const deleteItem = async (itemId) => {
             {itemsToShow && itemsToShow.length > 0 ? (
               <ul className="list-group">
                 {itemsToShow.map((item) => {
-                  // Extract additional details from dataset_json
                   const ds = item.dataset_json || {};
                   const targetName = ds.target_name || 'Unknown Target';
                   const tmin_str = formatTmin(ds.t_min);
@@ -194,16 +169,10 @@ const deleteItem = async (itemId) => {
                         <strong>{item.obs_id}</strong> | {targetName} | {tmin_str}
                       </div>
                       <div>
-                        <button
-                          className="btn btn-sm btn-outline-primary me-2"
-                          onClick={() => openItemModal(item)}
-                        >
+                        <button className="btn btn-sm btn-outline-primary me-2" onClick={() => openItemModal(item)}>
                           Open
                         </button>
-                        <button
-                          className="btn btn-sm btn-outline-danger"
-                          onClick={() => deleteItem(item.id)}
-                        >
+                        <button className="btn btn-sm btn-outline-danger" onClick={() => deleteItem(item.id)}>
                           Delete
                         </button>
                       </div>
@@ -227,10 +196,7 @@ const deleteItem = async (itemId) => {
               <div key={group.id} className="card mb-2">
                 <div className="card-header d-flex justify-content-between align-items-center">
                   <span>{group.name}</span>
-                  <button
-                    className="btn btn-sm btn-outline-secondary"
-                    onClick={() => handleSetActiveGroup(group)}
-                  >
+                  <button className="btn btn-sm btn-outline-secondary" onClick={() => handleSetActiveGroup(group)}>
                     Set as Active
                   </button>
                 </div>
@@ -247,16 +213,10 @@ const deleteItem = async (itemId) => {
                               <strong>{item.obs_id}</strong> | {targetName} | {tmin_str}
                             </div>
                             <div>
-                              <button
-                                className="btn btn-sm btn-outline-primary me-2"
-                                onClick={() => openItemModal(item)}
-                              >
+                              <button className="btn btn-sm btn-outline-primary me-2" onClick={() => openItemModal(item)}>
                                 Open
                               </button>
-                              <button
-                                className="btn btn-sm btn-outline-danger"
-                                onClick={() => deleteItem(item.id)}
-                              >
+                              <button className="btn btn-sm btn-outline-danger" onClick={() => deleteItem(item.id)}>
                                 Delete
                               </button>
                             </div>
