@@ -117,58 +117,69 @@ function App() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [activeTab, setActiveTab] = useState('search');
 
-  const [authToken, setAuthToken] = useState(null);
   const [user, setUser] = useState(null);
+  const [isLoadingUser, setIsLoadingUser] = useState(true);
 
   const [showBasketModal, setShowBasketModal] = useState(false);
   const [basketModalItem, setBasketModalItem] = useState(null);
-
-  // State for basket groups
   const [activeBasketGroupId, setActiveBasketGroupId] = useState(null);
   const [activeBasketItems, setActiveBasketItems] = useState([]);
-  // A counter used to trigger a refresh of basket groups
   const [basketRefreshCounter, setBasketRefreshCounter] = useState(0);
-
   const [allBasketGroups, setAllBasketGroups] = useState([]);
   const [allBasketItems, setAllBasketItems] = useState([]);
-
   const [showProfileModal, setShowProfileModal] = useState(false);
 
   const handleBasketGroupsChange = (groups) => {
     setAllBasketGroups(groups);
-    // Flatten items from all groups
     const flatItems = groups.reduce((acc, group) => acc.concat(group.items || []), []);
     setAllBasketItems(flatItems);
   };
 
-  // Handler to update basket state immediately when a new item is added
   const handleBasketItemAdded = (newItem) => {
     setActiveBasketItems(prevItems => [...prevItems, newItem]);
     setBasketRefreshCounter(prev => prev + 1);
   };
 
-
+  // useEffect to check login status via /users/me on mount
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get('token');
-    if (token) {
-      setAuthToken(token);
-      window.history.replaceState({}, '', window.location.pathname);
-    }
+  setIsLoadingUser(true);
+  const timer = setTimeout(() => {
+     axios.get('/users/me')
+       .then(res => {
+         setUser(res.data);
+       })
+       .catch(err => {
+         console.log('Not logged in or failed to fetch user:', err.response?.status);
+         setUser(null);
+       })
+       .finally(() => {
+          setIsLoadingUser(false);
+       });
+   }, 100); // 100ms delay
+
+   return () => clearTimeout(timer); // Cleanup timeout
   }, []);
 
-  useEffect(() => {
-    if (authToken) {
-      axios.get('/users/me', { headers: { Authorization: `Bearer ${authToken}` } })
-        .then(res => setUser(res.data))
-        .catch(err => console.error('Failed to fetch user:', err));
-    } else {
-      setUser(null);
-    }
-  }, [authToken]);
-
   const handleLogin = () => { window.location.href = '/oidc/login'; };
-  const handleLogout = () => { setAuthToken(null); setUser(null); };
+
+  const handleLogout = () => {
+    axios.post('/auth/cookie/logout') // POST to the cookie logout endpoint
+      .then(() => {
+        setUser(null); // Clear user state
+        setResults(null);
+        setAllCoordinates([]);
+        setSelectedIds([]);
+        setActiveTab('search');
+        setAllBasketGroups([]);
+        setAllBasketItems([]);
+        // Trigger refresh if BasketPage is visible/active
+        // setBasketRefreshCounter(prev => prev + 1);
+      })
+      .catch(err => {
+        console.error('Logout failed:', err);
+        setUser(null);
+      });
+  };
 
   const handleSearchResults = (data) => {
     setResults(data);
@@ -198,7 +209,6 @@ function App() {
   };
 
   const handleOpenBasketItem = (item) => {
-    console.log("Opening basket item:", item);
     setBasketModalItem(item);
     setShowBasketModal(true);
   };
@@ -208,10 +218,16 @@ function App() {
     setBasketModalItem(null);
   };
 
-  // Called after an item is added in ResultsTable
   const refreshBasketGroups = () => {
     setBasketRefreshCounter(prev => prev + 1);
   };
+
+  // Render loading indicator while checking auth status
+  if (isLoadingUser) {
+      return <div className="container-fluid p-3 text-center"><h2>Loading...</h2></div>;
+  }
+
+  const isLoggedIn = !!user; // boolean flag for logged-in status
 
   return (
     <div className="container-fluid p-3">
@@ -219,7 +235,8 @@ function App() {
       <div className="d-flex justify-content-between mb-2">
         <h2>CTAO Data Explorer</h2>
         <div>
-          {authToken ? (
+          {/* isLoggedIn flag */}
+          {isLoggedIn ? (
             <>
               <span className="me-3 text-success">
                 {user ? `Logged in as ${user.first_name || user.email}` : 'Logged in'}
@@ -254,7 +271,8 @@ function App() {
         <div className={`tab-pane fade ${activeTab==='search'?'show active':''}`} role="tabpanel">
           <div className="card">
             <div className="card-header bg-secondary text-white">Search Form</div>
-            <div className="card-body"><SearchForm setResults={handleSearchResults} authToken={authToken} /></div>
+            {/* Pass isLoggedIn instead of authToken */}
+            <div className="card-body"><SearchForm setResults={handleSearchResults} isLoggedIn={isLoggedIn} /></div>
           </div>
         </div>
 
@@ -302,7 +320,7 @@ function App() {
                     <div className="card-body p-0">
                       <ResultsTable
                         results={results}
-                        authToken={authToken}
+                        isLoggedIn={isLoggedIn}
                         onRowSelected={handleRowSelected}
                         activeBasketGroupId={activeBasketGroupId}
                         basketItems={allBasketItems}
@@ -320,19 +338,26 @@ function App() {
 
         {/* BASKET TAB */}
         <div className={`tab-pane fade ${activeTab==='basket'?'show active':''}`} role="tabpanel">
-          <BasketPage
-            authToken={authToken}
-            onOpenItem={handleOpenBasketItem}
-            onActiveGroupChange={(groupId, items) => {
-              setActiveBasketGroupId(groupId);
-              setActiveBasketItems(items);
-            }}
-            onBasketGroupsChange={handleBasketGroupsChange}
-            refreshTrigger={basketRefreshCounter}
-          />
+          {/* isLoggedIn */}
+          {isLoggedIn ? (
+              <BasketPage
+                  isLoggedIn={isLoggedIn}
+                  onOpenItem={handleOpenBasketItem}
+                  onActiveGroupChange={(groupId, items) => {
+                      setActiveBasketGroupId(groupId);
+                      setActiveBasketItems(items);
+                  }}
+                  onBasketGroupsChange={handleBasketGroupsChange}
+                  refreshTrigger={basketRefreshCounter}
+                  activeItems={activeBasketItems}
+              />
+          ) : (
+              <div className="alert alert-warning">Please log in to manage your basket.</div>
+          )}
         </div>
       </div>
-      <UserProfileModal show={showProfileModal} onClose={() => setShowProfileModal(false)} authToken={authToken} />
+       {/* isLoggedIn */}
+      <UserProfileModal show={showProfileModal} onClose={() => setShowProfileModal(false)} isLoggedIn={isLoggedIn} />
       <BasketItemModal show={showBasketModal} onClose={closeBasketModal} basketItem={basketModalItem} />
     </div>
   );

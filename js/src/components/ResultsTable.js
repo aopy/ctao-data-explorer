@@ -6,7 +6,7 @@ import DataLinkDropdown from './DataLinkDropdown';
 const ResultsTable = ({
   results,
   onRowSelected,
-  authToken,
+  isLoggedIn,
   onAddedBasketItem,
   basketItems = [],
   activeBasketGroupId,
@@ -27,7 +27,7 @@ const ResultsTable = ({
 
   // Function to add a row to the basket (including the active basket group ID)
   const addToBasket = async (rowData) => {
-    if (!authToken) {
+    if (!isLoggedIn) {
       setAlertMessage("You must be logged in to add to basket!");
       return;
     }
@@ -43,9 +43,7 @@ const ResultsTable = ({
         dataset_dict: rowData, // the entire row or partial info
         basket_group_id: activeBasketGroupId,
       };
-      const response = await axios.post("/basket", payload, {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
+      const response = await axios.post("/basket", payload);
       console.log("Added to basket:", response.data);
       setAlertMessage(`Added obs_id=${rowData.obs_id} to basket successfully!`);
       if (onAddedBasketItem) onAddedBasketItem(response.data);
@@ -123,7 +121,8 @@ const ResultsTable = ({
           <button
             className="btn btn-sm btn-primary"
             onClick={() => addToBasket(row)}
-            disabled={!authToken || alreadyInBasket}
+            disabled={!isLoggedIn || alreadyInBasket}
+            title={!isLoggedIn ? "Login to add to basket" : (alreadyInBasket ? "Already in basket" : "Add to basket")}
           >
             {alreadyInBasket ? 'In Basket' : 'Add'}
           </button>
@@ -191,7 +190,7 @@ const ResultsTable = ({
     });
 
     return cols;
-  }, [columns, hiddenColumns, authToken, basketItems, toggleableColumns, openDropdownId]);
+  }, [columns, hiddenColumns, isLoggedIn, basketItems, activeBasketGroupId, toggleableColumns, openDropdownId]); // toggleableColumns?
 
   // Map raw data (array of arrays) to objects keyed by column names.
   const tableData = useMemo(() => {

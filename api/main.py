@@ -35,7 +35,7 @@ app = FastAPI(
 app.add_middleware(
     SessionMiddleware,
     secret_key="SECRET_KEY",
-    session_cookie="my_session",
+    session_cookie="ctao_session",
     same_site="lax",  # 'lax'/'strict','none'
     https_only=False,
 )

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 
-function SearchForm({ setResults, authToken }) {
+function SearchForm({ setResults, isLoggedIn }) {
   // Object name resolution states
   const [objectName, setObjectName] = useState('');
   const [useSimbad, setUseSimbad] = useState(true);  // SIMBAD checked by default
@@ -96,12 +96,10 @@ function SearchForm({ setResults, authToken }) {
       .then(response => {
         setResults(response.data);
 
-      if (authToken) {
+      if (isLoggedIn) {
         axios.post('/query-history', {
           query_params: reqParams,
           results: response.data,
-        }, {
-          headers: { Authorization: `Bearer ${authToken}` }
         })
         .catch(error => {
           console.error("Error recording search history:", error.response ? error.response.data : error.message);

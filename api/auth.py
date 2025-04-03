@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from fastapi_users import FastAPIUsers
 from fastapi_users.db import SQLAlchemyUserDatabase
 from fastapi_users.authentication import (
     AuthenticationBackend,
-    BearerTransport,
+    CookieTransport,
     JWTStrategy
 )
 from starlette.config import Config
@@ -51,19 +51,27 @@ async def get_user_manager(
 ) -> UserManager:
     yield UserManager(user_db)
 
-# Using bearer token:
-bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
-# Using cookies
-# from fastapi_users.authentication import CookieTransport
-# cookie_transport = CookieTransport(cookie_max_age=3600)
 
+# Configure Cookie Transport
+cookie_transport = CookieTransport(
+    cookie_name="ctao_access_token",
+    cookie_max_age=3600,
+    cookie_path="/",
+    cookie_secure=False, # Must be false for HTTP
+    cookie_httponly=True,
+    cookie_samesite="lax",
+    cookie_domain="localhost",
+)
+
+# JWT Strategy
 def get_jwt_strategy() -> JWTStrategy:
     """Create a JWT strategy with the secret loaded from .env."""
     return JWTStrategy(secret=JWT_SECRET, lifetime_seconds=3600)
 
+# Authentication Backend: Use CookieTransport
 auth_backend = AuthenticationBackend(
-    name="jwt",
-    transport=bearer_transport,
+    name="cookie",
+    transport=cookie_transport,
     get_strategy=get_jwt_strategy,
 )
 
@@ -73,15 +81,17 @@ fastapi_users = FastAPIUsers[UserTable, int](
     [auth_backend],
 )
 
+# User Dependency
+# This will extract the user from the cookie via the transport
 current_active_user = fastapi_users.current_user(active=True)
 
 # Routes
 auth_router = APIRouter()
 
-# Authentication routes (login/logout)
+# Authentication routes (login/logout) - Use cookie endpoints
 auth_router.include_router(
-    fastapi_users.get_auth_router(auth_backend),
-    prefix="/auth/jwt",
+    fastapi_users.get_auth_router(auth_backend),  # Use the cookie backend
+    prefix="/auth/cookie",                      # /auth/cookie/login, /auth/cookie/logout
     tags=["auth"],
 )
 

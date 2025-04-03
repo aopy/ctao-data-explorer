@@ -7,23 +7,27 @@ const truncate = (str, maxLength = 50) => {
   return str.length > maxLength ? str.substring(0, maxLength) + '...' : str;
 };
 
-const UserProfileModal = ({ show, onClose, authToken }) => {
+const UserProfileModal = ({ show, onClose, isLoggedIn }) => {
   const [profile, setProfile] = useState(null);
   const [history, setHistory] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (authToken && show) {
+    if (isLoggedIn && show) {
+      setIsLoading(true);
+      setError(null);
       axios
-        .get('/users/me', { headers: { Authorization: `Bearer ${authToken}` } })
+        .get('/users/me')
         .then(res => setProfile(res.data))
         .catch(err => console.error("Error fetching user profile", err));
 
       axios
-        .get('/query-history', { headers: { Authorization: `Bearer ${authToken}` } })
+        .get('/query-history')
         .then(res => setHistory(res.data))
         .catch(err => console.error("Error fetching query history", err));
     }
-  }, [authToken, show]);
+  }, [isLoggedIn, show]);
 
   if (!show) return null;
 
