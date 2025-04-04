@@ -57,7 +57,7 @@ app.add_middleware(
     allow_headers=["*"],  # Allow all headers
 )
 
-@app.get("/api/search_coords", response_model=SearchResult)
+@app.get("/api/search_coords", response_model=SearchResult, tags=["search"])
 async def search_coords(
         coordinate_system: str = None,
         # if equatorial
@@ -150,7 +150,7 @@ async def search_coords(
     else:
         raise HTTPException(status_code=400, detail=error)
 
-@app.post("/api/object_resolve", tags=["Search"])
+@app.post("/api/object_resolve", tags=["object_resolve"])
 async def object_resolve(data: dict = Body(...)):
     """
     Unified endpoint to resolve an object name from either/both SIMBAD & NED,
@@ -267,7 +267,7 @@ def _run_ned_sync_query(adql_query):
 
     return out
 
-@app.get("/api/datalink")
+@app.get("/api/datalink", tags=["datalink"])
 async def datalink_endpoint(
     ID: list[str] = Query(..., description="One or more dataset identifiers (e.g., ivo://padc.obspm/hess#23523)")
 ):

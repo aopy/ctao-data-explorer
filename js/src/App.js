@@ -163,7 +163,7 @@ function App() {
   const handleLogin = () => { window.location.href = '/oidc/login'; };
 
   const handleLogout = () => {
-    axios.post('/auth/cookie/logout') // POST to the cookie logout endpoint
+    axios.post('/auth/logout') // POST to the cookie logout endpoint
       .then(() => {
         setUser(null); // Clear user state
         setResults(null);

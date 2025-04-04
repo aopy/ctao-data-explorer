@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Response, HTTPException, status
 from fastapi_users import FastAPIUsers
 from fastapi_users.db import SQLAlchemyUserDatabase
 from fastapi_users.authentication import (
@@ -13,6 +13,7 @@ from .db import get_async_session
 from .models import UserTable
 from fastapi_users.manager import BaseUserManager
 from datetime import datetime
+from fastapi.responses import JSONResponse
 
 # User Schemas
 class UserRead(schemas.BaseUser[int]):
@@ -23,9 +24,9 @@ class UserRead(schemas.BaseUser[int]):
     class Config:
         orm_mode = True
 
-class UserCreate(schemas.BaseUserCreate):
-    first_name: str | None = None
-    last_name: str | None = None
+# class UserCreate(schemas.BaseUserCreate):
+#    first_name: str | None = None
+#    last_name: str | None = None
 
 class UserUpdate(schemas.BaseUserUpdate):
     first_name: str | None = None
@@ -88,19 +89,36 @@ current_active_user = fastapi_users.current_user(active=True)
 # Routes
 auth_router = APIRouter()
 
-# Authentication routes (login/logout) - Use cookie endpoints
-auth_router.include_router(
-    fastapi_users.get_auth_router(auth_backend),  # Use the cookie backend
-    prefix="/auth/cookie",                      # /auth/cookie/login, /auth/cookie/logout
-    tags=["auth"],
-)
+@auth_router.post("/auth/logout", tags=["auth"])
+async def logout(
+    response: Response,
+    user: UserTable = Depends(current_active_user),
+    transport: CookieTransport = Depends(lambda: cookie_transport),
+) -> Response:
+    """
+    Logout user by returning a response that clears the authentication cookie.
+    """
+    try:
+        success_content = {"status": "logout successful"}
+        logout_response = await transport.get_logout_response()
+        final_response = JSONResponse(content=success_content)
+        cookie_header = logout_response.headers.get("set-cookie")
 
-# Registration routes
-auth_router.include_router(
-    fastapi_users.get_register_router(UserRead, UserCreate),
-    prefix="/auth",
-    tags=["auth"],
-)
+        if cookie_header:
+            final_response.headers["set-cookie"] = cookie_header
+        else:
+             print("WARNING: get_logout_response did not return a Set-Cookie header.")
+
+        return final_response
+
+    except Exception as e:
+        print(f"Error during transport logout: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred during logout."
+        )
 
 # Users routes (get/update user info)
 auth_router.include_router(
