@@ -8,7 +8,7 @@ const ResultsTable = ({
   onRowSelected,
   isLoggedIn,
   onAddedBasketItem,
-  basketItems = [],
+  allBasketGroups = [],
   activeBasketGroupId,
 }) => {
   const { columns, data } = results;
@@ -20,47 +20,67 @@ const ResultsTable = ({
   // State to track which row's dropdown is open (by row id).
   const [openDropdownId, setOpenDropdownId] = useState(null);
 
-  // Check if an obs_id is already in the user's basket
-  const isAlreadyInBasket = (obsId) => {
-    return basketItems.some((it) => it.obs_id === obsId);
+ // Find the currently active basket group object
+  const activeBasketGroup = useMemo(() => {
+    return allBasketGroups.find(group => group.id === activeBasketGroupId);
+  }, [allBasketGroups, activeBasketGroupId]);
+
+  // Check if an obs_id is already in the active basket group
+  const isInActiveBasket = (obsId) => {
+    if (!activeBasketGroup || !activeBasketGroup.saved_datasets) {
+      return false;
+    }
+    return activeBasketGroup.saved_datasets.some((item) => item.obs_id === obsId);
   };
 
-  // Function to add a row to the basket (including the active basket group ID)
+  // Add item to the currently active basket
   const addToBasket = async (rowData) => {
     if (!isLoggedIn) {
       setAlertMessage("You must be logged in to add to basket!");
       return;
     }
+    if (!activeBasketGroupId) {
+        setAlertMessage("Please select an active basket group first!");
+        // disable the button if no group is active?
+        return;
+    }
 
-    if (isAlreadyInBasket(rowData.obs_id)) {
-      setAlertMessage(`obs_id=${rowData.obs_id} is already in your basket.`);
-      return;
+    if (isInActiveBasket(rowData.obs_id)) {
+      setAlertMessage(`obs_id=${rowData.obs_id} is already in the active basket.`);
+      return; // Already present in the current basket
     }
 
     try {
       const payload = {
         obs_id: rowData.obs_id,
-        dataset_dict: rowData, // the entire row or partial info
-        basket_group_id: activeBasketGroupId,
+        dataset_dict: rowData,
+        basket_group_id: activeBasketGroupId, // Send the active group ID
       };
-      const response = await axios.post("/basket", payload);
+
+      const response = await axios.post("/basket/items", payload);
       console.log("Added to basket:", response.data);
-      setAlertMessage(`Added obs_id=${rowData.obs_id} to basket successfully!`);
-      if (onAddedBasketItem) onAddedBasketItem(response.data);
-    } catch (error) {
-      if (error.response && error.response.status === 409) {
-        setAlertMessage(`obs_id=${rowData.obs_id} is already in your basket.`);
-      } else {
-          console.error('Failed to add to basket:', error);
-          setAlertMessage('Error adding item to basket.');
-        }
+      setAlertMessage(`Added obs_id=${rowData.obs_id} to active basket successfully!`);
+      if (onAddedBasketItem) {
+        // Pass the new item and the group it was added to
+        onAddedBasketItem(response.data, activeBasketGroupId);
       }
+    } catch (error) {
+       if (error.response && error.response.status === 401) {
+         setAlertMessage('Authentication error. Please log in again.');
+       } else if (error.response && error.response.status === 409) {
+        setAlertMessage(`obs_id=${rowData.obs_id} is already in the active basket.`);
+      } else if (error.response && error.response.status === 404) {
+        setAlertMessage(`Error: Active basket group not found.`);
+      }
+      else {
+        console.error('Failed to add to basket:', error);
+        setAlertMessage('Error adding item to basket.');
+      }
+    }
   };
 
   // Function to close alert messages
-  const handleCloseAlert = () => {
-    setAlertMessage(null);
-  };
+  const handleCloseAlert = () => setAlertMessage(null);
 
   // Define which columns are toggleable
   const toggleableColumns = columns.filter(col => col !== "datalink_url");
@@ -116,15 +136,21 @@ const ResultsTable = ({
       id: 'basket-column',
       name: 'Action',
       cell: (row) => {
-        const alreadyInBasket = isAlreadyInBasket(row.obs_id);
+        const inActive = isInActiveBasket(row.obs_id);
+        const buttonDisabled = !isLoggedIn || !activeBasketGroupId || inActive;
+        let title = "Add to active basket";
+        if (!isLoggedIn) title = "Login to add";
+        else if (!activeBasketGroupId) title = "Select a basket first";
+        else if (inActive) title = "Already in active basket";
+
         return (
           <button
-            className="btn btn-sm btn-primary"
+            className={`btn btn-sm ${inActive ? 'btn-secondary' : 'btn-primary'}`} // Style differently if already in
             onClick={() => addToBasket(row)}
-            disabled={!isLoggedIn || alreadyInBasket}
-            title={!isLoggedIn ? "Login to add to basket" : (alreadyInBasket ? "Already in basket" : "Add to basket")}
+            disabled={buttonDisabled}
+            title={title}
           >
-            {alreadyInBasket ? 'In Basket' : 'Add'}
+            {inActive ? 'In Basket' : 'Add'}
           </button>
         );
       },
@@ -190,7 +216,7 @@ const ResultsTable = ({
     });
 
     return cols;
-  }, [columns, hiddenColumns, isLoggedIn, basketItems, activeBasketGroupId, toggleableColumns, openDropdownId]); // toggleableColumns?
+  }, [columns, hiddenColumns, isLoggedIn, activeBasketGroupId, allBasketGroups, toggleableColumns, openDropdownId]); // toggleableColumns?
 
   // Map raw data (array of arrays) to objects keyed by column names.
   const tableData = useMemo(() => {

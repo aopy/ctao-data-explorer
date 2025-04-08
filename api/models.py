@@ -1,9 +1,17 @@
 from pydantic import BaseModel, Field
-from typing import List, Any
+from typing import List, Any, Optional
 from .db import Base
 from fastapi_users.db import SQLAlchemyBaseUserTable
-from sqlalchemy import Column, Integer, String, DateTime, String, ForeignKey, Text, func
+from sqlalchemy import Column, Integer, String, DateTime, Text, func, ForeignKey, Table
 from sqlalchemy.orm import relationship
+
+
+basket_items_association = Table(
+    "basket_items_association",
+    Base.metadata,
+    Column("basket_group_id", Integer, ForeignKey("basket_groups.id"), primary_key=True),
+    Column("saved_dataset_id", Integer, ForeignKey("saved_datasets.id"), primary_key=True),
+)
 
 class SearchResult(BaseModel):
     columns: List[str] = Field(..., title="Column Names", description="List of column names in the result set")
@@ -36,17 +44,26 @@ class BasketGroup(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    items = relationship("SavedDataset", back_populates="basket_group", cascade="all, delete-orphan")
+    saved_datasets = relationship(
+        "SavedDataset",
+        secondary=basket_items_association,
+        back_populates="basket_groups"#,
+        # cascade="all, delete"
+    )
     user = relationship("UserTable", back_populates="basket_groups")
 
 class SavedDataset(Base):
     __tablename__ = "saved_datasets"
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    basket_group_id = Column(Integer, ForeignKey("basket_groups.id"), nullable=True)
     obs_id = Column(String, nullable=False)
     dataset_json = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("UserTable", back_populates="saved_datasets")
-    basket_group = relationship("BasketGroup", back_populates="items")
+    # Relationship back to BasketGroup via association table
+    basket_groups = relationship(
+        "BasketGroup",
+        secondary=basket_items_association,
+        back_populates="saved_datasets"
+    )

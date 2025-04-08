@@ -126,18 +126,38 @@ function App() {
   const [activeBasketItems, setActiveBasketItems] = useState([]);
   const [basketRefreshCounter, setBasketRefreshCounter] = useState(0);
   const [allBasketGroups, setAllBasketGroups] = useState([]);
-  const [allBasketItems, setAllBasketItems] = useState([]);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
   const handleBasketGroupsChange = (groups) => {
-    setAllBasketGroups(groups);
-    const flatItems = groups.reduce((acc, group) => acc.concat(group.items || []), []);
-    setAllBasketItems(flatItems);
+      setAllBasketGroups(groups || []);
+      // Persist active group ID if the active group still exists
+      if (activeBasketGroupId && !groups.some(g => g.id === activeBasketGroupId)) {
+          setActiveBasketGroupId(groups.length > 0 ? groups[0].id : null);
+      } else if (!activeBasketGroupId && groups.length > 0) {
+          setActiveBasketGroupId(groups[0].id); // Default to first if none active
+      }
   };
 
-  const handleBasketItemAdded = (newItem) => {
-    setActiveBasketItems(prevItems => [...prevItems, newItem]);
-    setBasketRefreshCounter(prev => prev + 1);
+  const handleBasketItemAdded = (newItem, addedToGroupId) => {
+    setAllBasketGroups(prevGroups => {
+        return prevGroups.map(group => {
+            // Find the group the item was added to
+            if (group.id === addedToGroupId) {
+                // Check if item already exists locally
+                const itemExists = group.saved_datasets?.some(item => item.id === newItem.id);
+                if (!itemExists) {
+                    // Add the new item to this group's datasets
+                    return {
+                        ...group,
+                        saved_datasets: [...(group.saved_datasets || []), newItem]
+                    };
+                }
+            }
+            return group;
+        });
+    });
+    // Trigger a refresh
+    // setBasketRefreshCounter(prev => prev + 1);
   };
 
   // useEffect to check login status via /users/me on mount
@@ -171,7 +191,7 @@ function App() {
         setSelectedIds([]);
         setActiveTab('search');
         setAllBasketGroups([]);
-        setAllBasketItems([]);
+        // setAllBasketItems([]);
         // Trigger refresh if BasketPage is visible/active
         // setBasketRefreshCounter(prev => prev + 1);
       })
@@ -322,8 +342,8 @@ function App() {
                         results={results}
                         isLoggedIn={isLoggedIn}
                         onRowSelected={handleRowSelected}
+                        allBasketGroups={allBasketGroups}
                         activeBasketGroupId={activeBasketGroupId}
-                        basketItems={allBasketItems}
                         onAddedBasketItem={handleBasketItemAdded}
                       />
                     </div>
@@ -345,11 +365,13 @@ function App() {
                   onOpenItem={handleOpenBasketItem}
                   onActiveGroupChange={(groupId, items) => {
                       setActiveBasketGroupId(groupId);
-                      setActiveBasketItems(items);
+                      // setActiveBasketItems(items);
                   }}
                   onBasketGroupsChange={handleBasketGroupsChange}
                   refreshTrigger={basketRefreshCounter}
-                  activeItems={activeBasketItems}
+                  allBasketGroups={allBasketGroups}
+                  activeBasketGroupId={activeBasketGroupId}
+                  // activeItems={activeBasketItems}
               />
           ) : (
               <div className="alert alert-warning">Please log in to manage your basket.</div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 
 const formatTmin = (mjd) => {
@@ -9,22 +9,31 @@ const formatTmin = (mjd) => {
   return new Date(unixTime).toLocaleString();
 };
 
-function BasketPage({ isLoggedIn, onOpenItem, onActiveGroupChange, refreshTrigger, activeItems, onBasketGroupsChange }) {
+function BasketPage({ isLoggedIn, onOpenItem, onActiveGroupChange, refreshTrigger,
+onBasketGroupsChange, allBasketGroups = [], activeBasketGroupId }) {
   const [basketGroups, setBasketGroups] = useState([]);
-  const [activeGroup, setActiveGroup] = useState(null);
   const [newGroupName, setNewGroupName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [editingGroupName, setEditingGroupName] = useState('');
+
+  const activeGroup = useMemo(() => {
+      if (!activeBasketGroupId) return null;
+      return allBasketGroups.find(group => group.id === activeBasketGroupId);
+  }, [allBasketGroups, activeBasketGroupId]);
+
+  useEffect(() => {
+      setEditingGroupName(activeGroup?.name || '');
+  }, [activeGroup]);
 
   const fetchBasketGroups = async () => {
      // Only fetch if logged in
      if (!isLoggedIn) {
-       setBasketGroups([]);
-       setActiveGroup(null);
-       setError(null);
-       if (onBasketGroupsChange) onBasketGroupsChange([]);
-       if (onActiveGroupChange) onActiveGroupChange(null, []);
-       return;
+       // setActiveGroup(null);
+      setError(null);
+      if (onBasketGroupsChange) onBasketGroupsChange([]);
+      if (onActiveGroupChange) onActiveGroupChange(null, []);
+      return;
      }
 
     setIsLoading(true);
@@ -32,40 +41,26 @@ function BasketPage({ isLoggedIn, onOpenItem, onActiveGroupChange, refreshTrigge
     try {
       const res = await axios.get('/basket/groups');
       const groups = res.data || [];
-
-      if (groups.length === 0) {
-        setBasketGroups([]);
-        setActiveGroup(null);
-         if (onBasketGroupsChange) onBasketGroupsChange([]);
-         if (onActiveGroupChange) onActiveGroupChange(null, []);
-
-        console.log("No groups found, creating default 'My Basket'");
-        await axios.post('/basket/groups', { name: 'My Basket' });
-        const res2 = await axios.get('/basket/groups');
-        const defaultGroups = res2.data || [];
-        setBasketGroups(defaultGroups);
-        const firstGroup = defaultGroups[0] || null;
-        setActiveGroup(firstGroup);
-        if (onBasketGroupsChange) onBasketGroupsChange(defaultGroups);
-        if (onActiveGroupChange) onActiveGroupChange(firstGroup?.id, firstGroup?.items || []);
-
-      } else {
-        setBasketGroups(groups);
-        // Maintain active group selection or default to first
-        let currentActive = activeGroup ? groups.find(g => g.id === activeGroup.id) : null;
-        if (!currentActive && groups.length > 0) {
-            currentActive = groups[0]; // Default to first group if previous active is gone
-        }
-        setActiveGroup(currentActive);
-        if (onBasketGroupsChange) onBasketGroupsChange(groups);
-        if (onActiveGroupChange) onActiveGroupChange(currentActive?.id, currentActive?.items || []);
+      // Let parent know about the fetched groups
+      if (onBasketGroupsChange) onBasketGroupsChange(groups);
+      // Use the activeBasketGroupId passed via props as the source of truth
+      let idToActivate = activeBasketGroupId;
+      if ((!idToActivate || !groups.some(g => g.id === idToActivate)) && groups.length > 0) {
+          // default to the first group's id
+          idToActivate = groups[0].id;
+      }
+      const groupToActivate = groups.find(g => g.id === idToActivate);
+      // Tell the parent component which group ID is active and its datasets
+      if (onActiveGroupChange && groupToActivate) {
+          onActiveGroupChange(groupToActivate.id, groupToActivate.saved_datasets || []);
+      } else if (onActiveGroupChange) {
+          // If no group ended up being activated
+          onActiveGroupChange(null, []);
       }
     } catch (err) {
-      console.error('Error fetching basket groups', err);
-      setError('Failed to load basket data. Please try again later.');
-      setBasketGroups([]);
-      setActiveGroup(null);
-      if (onBasketGroupsChange) onBasketGroupsChange([]);
+       console.error('Error fetching basket groups', err);
+       setError('Failed to load basket data.');
+       if (onBasketGroupsChange) onBasketGroupsChange([]);
        if (onActiveGroupChange) onActiveGroupChange(null, []);
     } finally {
       setIsLoading(false);
@@ -75,107 +70,92 @@ function BasketPage({ isLoggedIn, onOpenItem, onActiveGroupChange, refreshTrigge
   // useEffect depends on isLoggedIn and refreshTrigger
   useEffect(() => {
     fetchBasketGroups();
-  }, [isLoggedIn, refreshTrigger]); // Re-fetch if login status changes or refresh is triggered
+  }, [isLoggedIn, refreshTrigger]);
 
   const handleSetActiveGroup = (group) => {
-    setActiveGroup(group);
+    // setActiveGroup(group);
     if (onActiveGroupChange) {
-      onActiveGroupChange(group.id, group.items || []);
+      onActiveGroupChange(group.id, group.saved_datasets || []);
     }
   };
 
   const createNewGroup = async () => {
-    if (!newGroupName.trim()) return;
+    if (!newGroupName.trim()) {
+        // Provide feedback to the user that name is needed?
+        return;
+    }
     setError(null);
+    // Set loading state for the create button
+    // setIsLoadingCreate(true);
+
     try {
       const name = newGroupName.trim();
-      const res = await axios.post('/basket/groups', { name });
-      // await fetchBasketGroups(); // fetchBasketGroups will update state
+      // Make the API call to create the group
+      await axios.post('/basket/groups', { name });
+
       setNewGroupName('');
-      if (res.data) {
-         // Add the new group locally
-         setBasketGroups(prev => [...prev, res.data]);
-         handleSetActiveGroup(res.data);
-         // fetchBasketGroups();
-         if (onBasketGroupsChange) onBasketGroupsChange([...basketGroups, res.data]);
-      } else {
-          fetchBasketGroups(); // Fallback refresh
-      }
+      fetchBasketGroups();
 
     } catch (err) {
       console.error('Error creating new basket group', err);
-      setError('Failed to create group.');
+      setError('Failed to create group. Please try again.');
+    } finally {
+      // Reset loading state
+      // setIsLoadingCreate(false);
     }
   };
 
   const renameGroup = async (groupId, newName) => {
-    if (!newName.trim() || !activeGroup || newName === activeGroup.name) return;
+    const trimmedName = newName.trim();
+    if (!trimmedName || !activeGroup || trimmedName === activeGroup.name) {
+        setEditingGroupName(activeGroup?.name || '');
+        return;
+    }
     setError(null);
     try {
-      await axios.put(`/basket/groups/${groupId}`, { name: newName }); // No headers
-      // Update local state immediately for responsiveness
-      const updatedGroups = basketGroups.map(g =>
-        g.id === groupId ? { ...g, name: newName } : g
-      );
-      setBasketGroups(updatedGroups);
-      setActiveGroup(prev => prev && prev.id === groupId ? { ...prev, name: newName } : prev);
-       if (onBasketGroupsChange) onBasketGroupsChange(updatedGroups);
+      await axios.put(`/basket/groups/${groupId}`, { name: trimmedName });
+      fetchBasketGroups();
     } catch (err) {
       console.error('Error renaming basket group', err);
       setError('Failed to rename group.');
-       // fetchBasketGroups();
+      setEditingGroupName(activeGroup?.name || '');
     }
   };
 
   const deleteGroup = async (groupId) => {
-     if (!window.confirm(`Are you sure you want to delete the basket group "${activeGroup?.name}" and all its items?`)) {
-         return;
-     }
-     setError(null);
+    // Add confirmation dialog
+    if (!window.confirm(`Are you sure you want to delete this basket group? This cannot be undone.`)) {
+        return;
+    }
+    setError(null);
     try {
       await axios.delete(`/basket/groups/${groupId}`);
-      // Trigger full refresh to get the new state
       fetchBasketGroups();
     } catch (err) {
       console.error('Error deleting basket group', err);
-       setError('Failed to delete group.');
+      setError('Failed to delete group.');
     }
   };
 
   const deleteItem = async (itemId) => {
+    if (!activeGroup) {
+        setError("No active group selected to delete from.");
+        return;
+    }
     setError(null);
     try {
-      await axios.delete(`/basket/${itemId}`); // No headers
-      // Update local state immediately
-      if (activeGroup) {
-          const updatedItems = activeGroup.items.filter(item => item.id !== itemId);
-          const updatedGroup = { ...activeGroup, items: updatedItems };
-          setActiveGroup(updatedGroup); // Update active group state
+      await axios.delete(`/basket/groups/${activeGroup.id}/items/${itemId}`);
 
-          // Update the main basketGroups list state
-          const updatedGroups = basketGroups.map(g =>
-              g.id === activeGroup.id ? updatedGroup : g
-          );
-          setBasketGroups(updatedGroups);
+      fetchBasketGroups();
 
-          // Notify parent component
-          if (onActiveGroupChange) {
-              onActiveGroupChange(updatedGroup.id, updatedItems);
-          }
-          if (onBasketGroupsChange) {
-              onBasketGroupsChange(updatedGroups);
-          }
-      } else {
-          fetchBasketGroups(); // Fallback if something is out of sync
-      }
     } catch (err) {
-        if (err.response && err.response.status === 404) {
-          console.warn(`Item ${itemId} not found; may have been deleted.`);
-          fetchBasketGroups(); // Refresh state
-        } else {
-          console.error('Error deleting basket item', err);
-          setError('Failed to delete item.');
-        }
+       if (err.response && err.response.status === 404) {
+         setError(`Item or group not found.`);
+         fetchBasketGroups();
+       } else {
+         console.error('Error deleting basket item link', err);
+         setError('Failed to delete item from basket.');
+       }
     }
   };
 
@@ -184,7 +164,7 @@ function BasketPage({ isLoggedIn, onOpenItem, onActiveGroupChange, refreshTrigge
   };
 
   // Determine items to show based on local activeGroup state
-  const itemsToShow = activeGroup ? activeGroup.items || [] : [];
+  const itemsToShow = activeGroup ? activeGroup.saved_datasets || [] : [];
 
   // Handle loading and error states
   if (isLoading) {
@@ -210,17 +190,16 @@ function BasketPage({ isLoggedIn, onOpenItem, onActiveGroupChange, refreshTrigge
                 <input
                     type="text"
                     className="form-control form-control-sm w-50"
-                    value={activeGroup.name}
-                    onChange={(e) => setActiveGroup({ ...activeGroup, name: e.target.value })}
-                    onBlur={() => renameGroup(activeGroup.id, activeGroup.name)} // Rename on blur
-                    onKeyPress={(e) => { if (e.key === 'Enter') e.target.blur(); }} // Rename on Enter
+                    value={editingGroupName}
+                    onChange={(e) => setEditingGroupName(e.target.value)}
+                    onBlur={() => renameGroup(activeGroup.id, editingGroupName)}// Rename on blur
+                    onKeyPress={(e) => { if (e.key === 'Enter') renameGroup(activeGroup.id, editingGroupName); }}  // Rename on Enter
                     aria-label="Current basket name"
+                    placeholder="Basket name..."
                 />
                 <button
                     className="btn btn-sm btn-danger"
                     onClick={() => deleteGroup(activeGroup.id)}
-                    disabled={basketGroups.length <= 1} // Disable delete if it's the only group
-                    title={basketGroups.length <= 1 ? "Cannot delete the only basket" : "Delete this basket"}
                 >
                     Delete Basket
                 </button>
@@ -266,12 +245,12 @@ function BasketPage({ isLoggedIn, onOpenItem, onActiveGroupChange, refreshTrigge
 
 
       {/* Other Basket Groups Section */}
-      {basketGroups.length > 1 && (
+      {allBasketGroups.length > 1 && (
         <div className="mb-3">
           <h5>Other Baskets</h5>
           <div className="list-group">
-            {basketGroups
-              .filter((group) => !activeGroup || group.id !== activeGroup.id)
+            {allBasketGroups
+              .filter((group) => !activeBasketGroupId || group.id !== activeBasketGroupId)
               .map((group) => (
                 <button
                   key={group.id}
@@ -280,13 +259,12 @@ function BasketPage({ isLoggedIn, onOpenItem, onActiveGroupChange, refreshTrigge
                   onClick={() => handleSetActiveGroup(group)}
                 >
                   {group.name}
-                  <span className="badge bg-secondary rounded-pill">{group.items?.length || 0} items</span>
+                  <span className="badge bg-secondary rounded-pill">{group.saved_datasets?.length || 0} items</span>
                 </button>
               ))}
           </div>
         </div>
       )}
-
 
       {/* Create New Group Section */}
       <div className="mb-3">

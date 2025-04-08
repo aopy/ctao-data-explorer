@@ -22,7 +22,7 @@ class UserRead(schemas.BaseUser[int]):
     first_login_at: datetime | None = None
     email: str
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # class UserCreate(schemas.BaseUserCreate):
 #    first_name: str | None = None
