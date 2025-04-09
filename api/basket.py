@@ -327,3 +327,63 @@ async def delete_basket_group(
     await session.delete(group)
     await session.commit()
     return None
+
+
+@basket_router.get("/groups/{group_id}", response_model=BasketGroupRead)
+async def get_basket_group_by_id(
+    group_id: int,
+    user: UserTable = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """
+    Retrieves a specific basket group by its ID, including its items (datasets).
+    Ensures the requesting user owns the basket group.
+    """
+
+    stmt = (
+        select(BasketGroup)
+        .options(selectinload(BasketGroup.saved_datasets))
+        .where(BasketGroup.id == group_id, BasketGroup.user_id == user.id)
+    )
+
+    result = await session.execute(stmt)
+    group = result.unique().scalars().first()
+
+    if not group:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Basket group with id={group_id} not found or not accessible."
+        )
+
+    # Create a list to hold the processed BasketItemRead models
+    processed_datasets: List[BasketItemRead] = []
+    for item in group.saved_datasets:
+        parsed_json = {}
+        if isinstance(item.dataset_json, str):
+            try:
+                parsed_json = json.loads(item.dataset_json)
+            except json.JSONDecodeError:
+                print(f"Warning: Invalid JSON found in SavedDataset ID {item.id}")
+                parsed_json = {"error": "invalid JSON in database"}
+        elif item.dataset_json is None:
+             parsed_json = {"error": "missing JSON in database"}
+        else:
+             parsed_json = item.dataset_json
+
+        processed_datasets.append(
+            BasketItemRead(
+                id=item.id,
+                obs_id=item.obs_id,
+                dataset_json=parsed_json,
+                created_at=item.created_at,
+            )
+        )
+
+    response_data = BasketGroupRead(
+        id=group.id,
+        name=group.name,
+        created_at=group.created_at,
+        saved_datasets=processed_datasets
+    )
+
+    return response_data
