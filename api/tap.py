@@ -52,23 +52,44 @@ def astropy_table_to_list(table):
     Convert a TAPResults table to a list of lists suitable for JSON conversion,
     along with the list of column names.
     """
-    # print("Available attributes:", dir(table))
     columns = table.fieldnames
     rows = []
     for row in table:
         row_data = []
         for col in columns:
             cell = row[col]
-            if isinstance(cell, (bytes, np.bytes_)):
-                cell = cell.decode('utf-8')
+
+            if isinstance(cell, np.ma.core.MaskedConstant):
+                cell = None
+            elif isinstance(cell, (bytes, np.bytes_)):
+                try:
+                    cell = cell.decode('utf-8')
+                except UnicodeDecodeError:
+                    cell = repr(cell)
             elif isinstance(cell, (int, np.integer)):
                 cell = int(cell)
-            elif isinstance(cell, (float, np.floating)):
-                cell = float(cell)
-                if math.isnan(cell):
+            elif isinstance(cell, (float, np.floating)):  # Catch numpy float32/64 or python float
+                if np.isnan(cell) or np.isinf(cell):
                     cell = None
+                else:
+                    try:
+                        # Convert via the float's default string representation
+                        cell = float(cell.__str__())  # temporary fix for floating-point issue
+                        if math.isnan(cell) or math.isinf(cell):
+                            cell = None
+                    except Exception as e:
+                        print(f"Warning: Failed float(str()) conversion for column '{col}', value '{row[col]}': {e}")
+                        try:
+                            cell = float(row[col])
+                            if math.isnan(cell) or math.isinf(cell): cell = None
+                        except:
+                            cell = None
             else:
-                cell = str(cell)
+                if cell is None or isinstance(cell, (np.void)):
+                    cell = None
+                else:
+                    cell = str(cell)
+
             row_data.append(cell)
         rows.append(row_data)
     return columns, rows
