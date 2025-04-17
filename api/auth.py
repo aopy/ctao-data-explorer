@@ -86,6 +86,8 @@ fastapi_users = FastAPIUsers[UserTable, int](
 # This will extract the user from the cookie via the transport
 current_active_user = fastapi_users.current_user(active=True)
 
+current_optional_active_user = fastapi_users.current_user(active=True, optional=True)
+
 # Routes
 auth_router = APIRouter()
 

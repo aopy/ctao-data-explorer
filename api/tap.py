@@ -123,7 +123,7 @@ def perform_coords_query(fields):
         error = None
     else:
         error = f'Got exception with TAP query: {exception}'
-    return error, res_table
+    return error, res_table, query
 
 def perform_time_query(fields):
     """
@@ -150,7 +150,7 @@ def perform_time_query(fields):
         error = None
     else:
         error = f'Got exception with TAP query: {exception}'
-    return error, res_table
+    return error, res_table, query
 
 def perform_coords_time_query(fields):
     """
@@ -181,4 +181,4 @@ def perform_coords_time_query(fields):
         error = None
     else:
         error = f'Got exception with TAP query: {exception}'
-    return error, res_table
+    return error, res_table, query

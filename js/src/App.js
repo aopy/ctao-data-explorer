@@ -7,6 +7,7 @@ import TimelineChart from './components/TimelineChart';
 import EmRangeChart from './components/EmRangeChart';
 import BasketPage from './components/BasketPage';
 import UserProfileModal from './components/UserProfileModal';
+import QueryStorePage from './components/QueryStorePage';
 
 function formatTmin(mjd) {
   if (!mjd || isNaN(mjd)) return '';
@@ -202,23 +203,29 @@ function App() {
   };
 
   const handleSearchResults = (data) => {
-    setResults(data);
-    setActiveTab('results');
-    if (data?.columns && data?.data) {
-      const s_ra_index = data.columns.indexOf('s_ra');
-      const s_dec_index = data.columns.indexOf('s_dec');
-      const id_index = data.columns.indexOf('obs_id');
-      const s_fov_index = data.columns.indexOf('s_fov');
-      if (s_ra_index !== -1 && s_dec_index !== -1 && id_index !== -1 && s_fov_index !== -1) {
-        const coords = data.data.map((row) => ({
-          ra: parseFloat(row[s_ra_index]),
-          dec: parseFloat(row[s_dec_index]),
-          id: row[id_index].toString().trim(),
-          s_fov: parseFloat(row[s_fov_index]),
-        }));
-        setAllCoordinates(coords);
-      }
-    }
+    setResults(null);
+    setAllCoordinates([]);
+    setSelectedIds([]);
+    // use setTimeout to allow ui to clear before setting new results
+    setTimeout(() => {
+        setResults(data);
+        setActiveTab('results');
+        if (data?.columns && data?.data) { // Outer if starts
+            const s_ra_index = data.columns.indexOf('s_ra');
+            const s_dec_index = data.columns.indexOf('s_dec');
+            const id_index = data.columns.indexOf('obs_id');
+            const s_fov_index = data.columns.indexOf('s_fov');
+            if (s_ra_index !== -1 && s_dec_index !== -1 && id_index !== -1 && s_fov_index !== -1) {
+                const coords = data.data.map((row) => ({
+                    ra: parseFloat(row[s_ra_index]),
+                    dec: parseFloat(row[s_dec_index]),
+                    id: row[id_index].toString().trim(),
+                    s_fov: parseFloat(row[s_fov_index]),
+                }));
+                setAllCoordinates(coords);
+            }
+        }
+    }, 0);
   };
 
   const handleRowSelected = (selectedRowsChange) => {
@@ -240,6 +247,18 @@ function App() {
 
   const refreshBasketGroups = () => {
     setBasketRefreshCounter(prev => prev + 1);
+  };
+
+  const handleLoadHistory = (historyItem) => {
+      if (historyItem && historyItem.results) {
+          console.log("Loading history item:", historyItem.id);
+          // Directly set the results state with the stored results
+          handleSearchResults(historyItem.results);
+          // switch to the results tab
+          // setActiveTab('results');
+      } else {
+          console.warn("Cannot load history item - missing results data.");
+      }
   };
 
   // Render loading indicator while checking auth status
@@ -278,11 +297,18 @@ function App() {
           <button className={`nav-link ${activeTab==='search'?'active':''}`} onClick={() => setActiveTab('search')} type="button">Search</button>
         </li>
         <li className="nav-item">
-          <button className={`nav-link ${activeTab==='results'?'active':''}`} onClick={() => setActiveTab('results')} type="button">Results</button>
+          <button className={`nav-link ${activeTab==='results'?'active':''}`} onClick={() => setActiveTab('results')} type="button" disabled={!results}>Results</button>
         </li>
+        {isLoggedIn && ( // Show basket/history only if logged in
+            <>
         <li className="nav-item">
           <button className={`nav-link ${activeTab==='basket'?'active':''}`} onClick={() => setActiveTab('basket')} type="button">My Basket</button>
         </li>
+        <li className="nav-item">
+        <button className={`nav-link ${activeTab==='queryStore'?'active':''}`} onClick={() => setActiveTab('queryStore')} type="button">Query Store</button>
+        </li>
+        </>
+        )}
       </ul>
 
       {/* Tab Content */}
@@ -377,7 +403,18 @@ function App() {
               <div className="alert alert-warning">Please log in to manage your basket.</div>
           )}
         </div>
+        {/* QUERY STORE TAB */}
+        <div className={`tab-pane fade ${activeTab==='queryStore'?'show active':''}`} role="tabpanel">
+           {isLoggedIn ? ( <QueryStorePage
+                            onLoadHistory={handleLoadHistory}
+                            isActive={activeTab === 'queryStore'}
+                            isLoggedIn={isLoggedIn}
+                          /> )
+           : ( <div className="alert alert-warning">Please log in to view your query history.</div> )}
+        </div>
+
       </div>
+
        {/* isLoggedIn */}
       <UserProfileModal show={showProfileModal} onClose={() => setShowProfileModal(false)} isLoggedIn={isLoggedIn} />
       <BasketItemModal show={showBasketModal} onClose={closeBasketModal} basketItem={basketModalItem} />

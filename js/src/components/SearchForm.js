@@ -94,17 +94,8 @@ function SearchForm({ setResults, isLoggedIn }) {
 
     axios.get('/api/search_coords', { params: reqParams })
       .then(response => {
-        setResults(response.data);
-
-      if (isLoggedIn) {
-        axios.post('/query-history', {
-          query_params: reqParams,
-          results: response.data,
-        })
-        .catch(error => {
-          console.error("Error recording search history:", error.response ? error.response.data : error.message);
-        });
-        }
+        const searchResultData = response.data;
+        setResults(searchResultData);
       })
       .catch(error => {
         console.error('Search error:', error);

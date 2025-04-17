@@ -14,7 +14,7 @@ from astropy.io.votable import parse_single_table
 from io import BytesIO
 import astropy.units as u
 from astropy.coordinates import SkyCoord
-from .auth import router as auth_router
+from .auth import router as auth_router, current_optional_active_user
 from starlette.middleware.sessions import SessionMiddleware
 from .oidc import oidc_router
 from starlette.staticfiles import StaticFiles
@@ -22,7 +22,12 @@ from .basket import basket_router
 import urllib.parse
 from astropy.time import Time
 from datetime import datetime
-from .query_history import query_history_router
+from .query_history import query_history_router, QueryHistoryCreate, create_query_history
+from typing import Optional
+import fastapi_users
+from fastapi import Depends
+from .models import UserTable
+from .db import AsyncSessionLocal
 
 
 app = FastAPI(
@@ -71,7 +76,9 @@ async def search_coords(
         obscore_table: str = Query('hess_dr.obscore_sdc', title="ObsCore Table Name"),
         # exact observation start and end dates/times
         obs_start: str = None,  # e.g. "04/12/2004 14:00:00"
-        obs_end: str = None  # e.g. "04/12/2004 20:00:00"
+        obs_end: str = None,  # e.g. "04/12/2004 20:00:00"
+        user: Optional[UserTable] =
+        Depends(current_optional_active_user),
 ):
     # Process the time interval filter if both dates are provided
     time_filter_present = False
@@ -119,13 +126,17 @@ async def search_coords(
         fields['search_mjd_start'] = {'value': search_mjd_start}
         fields['search_mjd_end'] = {'value': search_mjd_end}
 
+    adql_query_str = None
+    res_table = None
+    error = None
+
     # Choose the appropriate TAP query based on which parameters are provided
     if coords_present and time_filter_present:
-        error, res_table = perform_coords_time_query(fields)
+        error, res_table, adql_query_str = perform_coords_time_query(fields)
     elif coords_present:
-        error, res_table = perform_coords_query(fields)
+        error, res_table, adql_query_str = perform_coords_query(fields)
     elif time_filter_present:
-        error, res_table = perform_time_query(fields)
+        error, res_table, adql_query_str = perform_time_query(fields)
     else:
         raise HTTPException(
             status_code=400,
@@ -134,8 +145,10 @@ async def search_coords(
 
     if error is None:
         columns, data = astropy_table_to_list(res_table)
-        columns = list(columns)
-        data = [list(row) for row in data]
+        columns = list(columns) if columns else []
+        data = [list(row) for row in data] if data else []
+
+        search_result_obj = SearchResult(columns=columns, data=data)
         # If table has the ObsCore identifier column, add a DataLink URL column
         if "obs_publisher_did" in columns:
             datalink_col = "datalink_url"
@@ -146,9 +159,35 @@ async def search_coords(
                 encoded_did = urllib.parse.quote(did, safe='')
                 # Build the DataLink URL
                 row.append(f"http://localhost:8000/api/datalink?ID={encoded_did}")
-        return SearchResult(columns=columns, data=data)
-    else:
-        raise HTTPException(status_code=400, detail=error)
+        if user:
+            try:
+
+                history_payload = QueryHistoryCreate(
+                    query_params=fields,
+                    adql_query=adql_query_str,
+                    results=search_result_obj.model_dump()
+                )
+                # Create a temporary session for the history save
+                async with AsyncSessionLocal() as history_session:
+                    try:
+                        await create_query_history(
+                            history=history_payload,
+                            user=user,
+                            session=history_session
+                        )
+
+                    except Exception as inner_history_error:
+                        print(f"ERROR during create_query_history call: {inner_history_error}")
+                        # await history_session.rollback() # Explicit rollback
+
+            except Exception as history_error:
+                print(f"ERROR saving query history for user {user.id}: {history_error}")
+                import traceback
+                traceback.print_exc()
+
+            return search_result_obj
+        else:
+            raise HTTPException(status_code=400, detail=error)
 
 @app.post("/api/object_resolve", tags=["object_resolve"])
 async def object_resolve(data: dict = Body(...)):
