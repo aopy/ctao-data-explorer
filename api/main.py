@@ -1,6 +1,6 @@
-from fastapi import FastAPI, Query, HTTPException, Body, Response
+from fastapi import FastAPI, Query, HTTPException, Body, Response, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from .models import SearchResult
+from .models import SearchResult, UserTable
 from .tap import (
     perform_coords_query,
     perform_time_query,
@@ -25,9 +25,8 @@ from datetime import datetime
 from .query_history import query_history_router, QueryHistoryCreate, create_query_history
 from typing import Optional
 import fastapi_users
-from fastapi import Depends
-from .models import UserTable
 from .db import AsyncSessionLocal
+import traceback
 
 
 app = FastAPI(
@@ -64,50 +63,43 @@ app.add_middleware(
 
 @app.get("/api/search_coords", response_model=SearchResult, tags=["search"])
 async def search_coords(
-        coordinate_system: str = None,
-        # if equatorial
-        ra: float = None,
-        dec: float = None,
-        # if galactic
-        l: float = None,
-        b: float = None,
-        search_radius: float = Query(5.0, ge=0.0, le=90.0),
-        tap_url: str = Query('http://voparis-tap-he.obspm.fr/tap', title="TAP Server URL"),
-        obscore_table: str = Query('hess_dr.obscore_sdc', title="ObsCore Table Name"),
-        # exact observation start and end dates/times
-        obs_start: str = None,  # e.g. "04/12/2004 14:00:00"
-        obs_end: str = None,  # e.g. "04/12/2004 20:00:00"
-        user: Optional[UserTable] =
-        Depends(current_optional_active_user),
+    request: Request,
+    coordinate_system: Optional[str] = None,
+    ra: Optional[float] = None,
+    dec: Optional[float] = None,
+    l: Optional[float] = None,
+    b: Optional[float] = None,
+    search_radius: float = 5.0,
+    tap_url: str = 'http://voparis-tap-he.obspm.fr/tap',
+    obscore_table: str = 'hess_dr.obscore_sdc',
+    obs_start: Optional[str] = None,
+    obs_end: Optional[str] = None,
+    user: Optional[UserTable] = Depends(current_optional_active_user),
 ):
-    # Process the time interval filter if both dates are provided
-    time_filter_present = False
-    if obs_start and obs_end:
-        try:
-            dt_start = datetime.strptime(obs_start, "%d/%m/%Y %H:%M:%S")
-            dt_end = datetime.strptime(obs_end, "%d/%m/%Y %H:%M:%S")
-            # Convert to Astropy Time objects (UTC as time scale)
-            t_start = Time(dt_start, scale='utc')
-            t_end = Time(dt_end, scale='utc')
-            # Get the corresponding Modified Julian Dates
-            search_mjd_start = t_start.mjd
-            search_mjd_end = t_end.mjd
-            time_filter_present = True
-        except Exception as e:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid date format for obs_start/obs_end. Use dd/mm/yyyy HH:MM:SS."
-            )
+    print(f"DEBUG search_coords: START. User authenticated: {user is not None}")
 
-    # Build the fields dictionary to pass to the TAP query function
     fields = {
         'tap_url': {'value': tap_url},
         'obscore_table': {'value': obscore_table},
         'search_radius': {'value': search_radius}
     }
-
-    # Include coordinate information if provided
     coords_present = False
+    time_filter_present = False
+
+    # Process time
+    if obs_start and obs_end:
+        try:
+            dt_start = datetime.strptime(obs_start, "%d/%m/%Y %H:%M:%S")
+            dt_end = datetime.strptime(obs_end, "%d/%m/%Y %H:%M:%S")
+            t_start = Time(dt_start, scale='utc')
+            t_end = Time(dt_end, scale='utc')
+            fields['search_mjd_start'] = {'value': t_start.mjd}
+            fields['search_mjd_end'] = {'value': t_end.mjd}
+            time_filter_present = True
+        except Exception as e:
+            raise HTTPException(status_code=400, detail="Invalid date format...")
+
+    # Process coordinates
     if coordinate_system == 'equatorial':
         if ra is not None and dec is not None:
             fields['target_raj2000'] = {'value': ra}
@@ -115,79 +107,130 @@ async def search_coords(
             coords_present = True
     elif coordinate_system == 'galactic':
         if l is not None and b is not None:
-            c_gal = SkyCoord(l * u.deg, b * u.deg, frame='galactic')
-            c_icrs = c_gal.icrs
-            fields['target_raj2000'] = {'value': c_icrs.ra.deg}
-            fields['target_dej2000'] = {'value': c_icrs.dec.deg}
-            coords_present = True
+            try:
+                c_gal = SkyCoord(l * u.deg, b * u.deg, frame='galactic')
+                c_icrs = c_gal.icrs
+                fields['target_raj2000'] = {'value': c_icrs.ra.deg}
+                fields['target_dej2000'] = {'value': c_icrs.dec.deg}
+                coords_present = True
+            except Exception as coord_exc:
+                 print(f"ERROR: Galactic conversion failed: {coord_exc}")
+                 raise HTTPException(status_code=400, detail="Invalid galactic coordinates provided.")
 
-    # If a time interval was provided, add the MJD start and end
-    if time_filter_present:
-        fields['search_mjd_start'] = {'value': search_mjd_start}
-        fields['search_mjd_end'] = {'value': search_mjd_end}
+    print(f"DEBUG search_coords: Fields prepared: {fields}")
 
     adql_query_str = None
     res_table = None
     error = None
 
-    # Choose the appropriate TAP query based on which parameters are provided
-    if coords_present and time_filter_present:
-        error, res_table, adql_query_str = perform_coords_time_query(fields)
-    elif coords_present:
-        error, res_table, adql_query_str = perform_coords_query(fields)
-    elif time_filter_present:
-        error, res_table, adql_query_str = perform_time_query(fields)
-    else:
-        raise HTTPException(
-            status_code=400,
-            detail="You must provide either coordinates or an observation time interval for the query."
-        )
+    try:
+        if coords_present and time_filter_present:
+            error, res_table, adql_query_str = perform_coords_time_query(fields)
+        elif coords_present:
+            error, res_table, adql_query_str = perform_coords_query(fields)
+        elif time_filter_present:
+            error, res_table, adql_query_str = perform_time_query(fields)
+        else:
+            print("ERROR search_coords: No search criteria provided.")
+            raise HTTPException(status_code=400, detail="...")
+
+        print(f"DEBUG search_coords: After query call: error={error}, type(res_table)={type(res_table)}")
+
+    except Exception as query_exc:
+        print(f"ERROR search_coords: Exception during perform_query call: {query_exc}")
+        raise HTTPException(status_code=500, detail="Failed during query execution.")
 
     if error is None:
-        columns, data = astropy_table_to_list(res_table)
-        columns = list(columns) if columns else []
-        data = [list(row) for row in data] if data else []
+        print(f"DEBUG search_coords: No error from query function. Processing table.")
+        try:
+            columns, data = astropy_table_to_list(res_table)
+            print(f"DEBUG search_coords: astropy_table_to_list returned {len(columns)} cols, {len(data)} rows.")
 
-        search_result_obj = SearchResult(columns=columns, data=data)
-        # If table has the ObsCore identifier column, add a DataLink URL column
-        if "obs_publisher_did" in columns:
-            datalink_col = "datalink_url"
-            columns.append(datalink_col)
-            idx = columns.index("obs_publisher_did")
-            for row in data:
-                did = row[idx]
-                encoded_did = urllib.parse.quote(did, safe='')
-                # Build the DataLink URL
-                row.append(f"http://localhost:8000/api/datalink?ID={encoded_did}")
-        if user:
-            try:
+            if not columns and not data and res_table is not None and len(res_table) > 0:
+                 print("ERROR search_coords: astropy_table_to_list returned empty lists despite input.")
+                 raise HTTPException(status_code=500, detail="Internal error processing results.")
 
-                history_payload = QueryHistoryCreate(
-                    query_params=fields,
-                    adql_query=adql_query_str,
-                    results=search_result_obj.model_dump()
-                )
-                # Create a temporary session for the history save
-                async with AsyncSessionLocal() as history_session:
-                    try:
-                        await create_query_history(
-                            history=history_payload,
-                            user=user,
-                            session=history_session
-                        )
+            columns = list(columns) if columns else []
+            data = [list(row) for row in data] if data else []
+            print(f"DEBUG search_coords: Constructing SearchResult object.")
 
-                    except Exception as inner_history_error:
-                        print(f"ERROR during create_query_history call: {inner_history_error}")
-                        # await history_session.rollback() # Explicit rollback
+            search_result_obj = SearchResult(columns=columns, data=data)
+            print(f"DEBUG search_coords: SearchResult object created: {type(search_result_obj)}")
 
-            except Exception as history_error:
-                print(f"ERROR saving query history for user {user.id}: {history_error}")
-                import traceback
-                traceback.print_exc()
+            data_with_datalink = data
+            columns_with_datalink = columns[:]
 
+            if "obs_publisher_did" in columns_with_datalink:
+                datalink_col = "datalink_url"
+                if datalink_col not in columns_with_datalink:
+                    columns_with_datalink.append(datalink_col)
+                idx = columns_with_datalink.index("obs_publisher_did")
+
+                # Create new data rows with the link appended
+                data_with_datalink = []
+                for row_idx, original_row in enumerate(data):
+                    new_row = original_row[:]
+                    # Ensure row has enough elements
+                    if idx < len(new_row):
+                        did = new_row[idx]
+                        if did: # Check if DID is not None or empty
+                           encoded_did = urllib.parse.quote(str(did), safe='')
+                           # TODO: Construct URL based on actual request host/port if needed
+                           # base_api_url = f"{request.url.scheme}://{request.url.netloc}"
+                           # datalink_url = f"{base_api_url}/api/datalink?ID={encoded_did}"
+                           datalink_url = f"http://localhost:8000/api/datalink?ID={encoded_did}"
+                           if len(new_row) == len(columns_with_datalink) -1:
+                               new_row.append(datalink_url)
+                           elif len(new_row) == len(columns_with_datalink):
+                               # If column existed, overwrite
+                               new_row[columns_with_datalink.index(datalink_col)] = datalink_url
+                           else:
+                               print(f"WARN: Row {row_idx} length mismatch when adding datalink.")
+                        else: # Handle empty DID
+                             if len(new_row) == len(columns_with_datalink) -1: new_row.append(None)
+
+                    else:
+                         print(f"WARN: Row {row_idx} too short for DID index {idx}.")
+                         if len(new_row) == len(columns_with_datalink) -1: new_row.append(None)
+
+                    data_with_datalink.append(new_row)
+
+
+            # recreate SearchResult with datalink info
+            search_result_obj = SearchResult(columns=columns_with_datalink, data=data_with_datalink)
+            print(f"DEBUG search_coords: SearchResult RECREATED with datalink.")
+
+            if user:
+                print(f"DEBUG: User {user.id} logged in, attempting to save history. ADQL: {adql_query_str}")
+                try:
+                    history_payload = QueryHistoryCreate(
+                        query_params=fields,
+                        adql_query=adql_query_str,
+                        results=search_result_obj.model_dump()
+                    )
+                    async with AsyncSessionLocal() as history_session:
+                         await create_query_history(history=history_payload, user=user, session=history_session)
+                    print(f"DEBUG: Called create_query_history for user {user.id}")
+                except Exception as history_error:
+                     print(f"ERROR saving query history for user {user.id}: {history_error}")
+                     traceback.print_exc()
+
+            print(f"DEBUG search_coords: Returning SearchResult object.")
             return search_result_obj
-        else:
-            raise HTTPException(status_code=400, detail=error)
+
+        except Exception as processing_exc:
+             print(f"ERROR search_coords: Exception during results processing: {processing_exc}")
+             traceback.print_exc()
+             raise HTTPException(status_code=500, detail="Internal error processing search results.")
+
+    else:
+        print(f"ERROR search_coords: Query function returned error: {error}")
+        raise HTTPException(status_code=400, detail=error)
+
+    # Failsafe
+    print("ERROR search_coords: Reached end of function unexpectedly.")
+    raise HTTPException(status_code=500, detail="Unexpected end of search processing.")
+
 
 @app.post("/api/object_resolve", tags=["object_resolve"])
 async def object_resolve(data: dict = Body(...)):

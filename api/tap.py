@@ -3,6 +3,7 @@ import requests
 import numpy as np
 import math
 
+
 class CTAOHTTPAdapter(requests.adapters.HTTPAdapter):
     """
     A subclass of HTTPAdapter to handle timeouts
@@ -47,52 +48,51 @@ class Tap:
             exception = e
         return exception, table
 
-def astropy_table_to_list(table):
+def astropy_table_to_list(tap_result_obj):
     """
-    Convert a TAPResults table to a list of lists suitable for JSON conversion,
-    along with the list of column names.
+    Convert a pyvo TAPResults object to a list of lists.
     """
-    columns = table.fieldnames
-    rows = []
-    for row in table:
-        row_data = []
-        for col in columns:
-            cell = row[col]
+    if tap_result_obj is None:
+        return [], []
 
-            if isinstance(cell, np.ma.core.MaskedConstant):
-                cell = None
-            elif isinstance(cell, (bytes, np.bytes_)):
-                try:
-                    cell = cell.decode('utf-8')
-                except UnicodeDecodeError:
-                    cell = repr(cell)
-            elif isinstance(cell, (int, np.integer)):
-                cell = int(cell)
-            elif isinstance(cell, (float, np.floating)):  # Catch numpy float32/64 or python float
-                if np.isnan(cell) or np.isinf(cell):
-                    cell = None
-                else:
-                    try:
-                        # Convert via the float's default string representation
-                        cell = float(cell.__str__())  # temporary fix for floating-point issue
-                        if math.isnan(cell) or math.isinf(cell):
-                            cell = None
-                    except Exception as e:
-                        print(f"Warning: Failed float(str()) conversion for column '{col}', value '{row[col]}': {e}")
+    try:
+        columns = tap_result_obj.fieldnames
+        rows = []
+        for record in tap_result_obj:
+            row_data = []
+            for col in columns:
+                cell = record[col]
+                if isinstance(cell, np.ma.core.MaskedConstant): cell = None
+                elif isinstance(cell, (bytes, np.bytes_)):
+                    try: cell = cell.decode('utf-8')
+                    except UnicodeDecodeError: cell = repr(cell)
+                elif isinstance(cell, (int, np.integer)):
+                    cell = int(cell)
+                elif isinstance(cell, (float, np.floating)):
+                    if np.isnan(cell) or np.isinf(cell): cell = None
+                    else:
                         try:
-                            cell = float(row[col])
+                            cell = float(cell.__str__())  # temporary fix for floating point issue
                             if math.isnan(cell) or math.isinf(cell): cell = None
-                        except:
-                            cell = None
-            else:
-                if cell is None or isinstance(cell, (np.void)):
-                    cell = None
+                        except Exception as e:
+                            print(f"Warning: Failed float(str()) conversion for column '{col}', value '{record[col]}': {e}")
+                            try:
+                                cell = float(record[col])
+                                if math.isnan(cell) or math.isinf(cell): cell = None
+                            except: cell = None
                 else:
-                    cell = str(cell)
+                    if cell is None or isinstance(cell, (np.void)): cell = None
+                    else: cell = str(cell)
 
-            row_data.append(cell)
-        rows.append(row_data)
-    return columns, rows
+                row_data.append(cell)
+            rows.append(row_data)
+        return columns, rows
+    except AttributeError as e:
+        print(f"Error processing TAPResults: {e}")
+        return [], []
+    except Exception as e:
+         print(f"Unexpected error in astropy_table_to_list: {e}")
+         return [], []
 
 def perform_coords_query(fields):
     """
