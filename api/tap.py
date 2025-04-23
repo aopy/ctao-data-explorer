@@ -2,6 +2,22 @@ import pyvo as vo
 import requests
 import numpy as np
 import math
+from astropy.table import Table
+import traceback
+
+
+def _process_tap_results(tap_results: vo.dal.TAPResults) -> Table | None:
+    """Converts TAPResults to Astropy Table."""
+    if tap_results is None:
+        return None
+    try:
+        astro_table = tap_results.to_table()
+        print(f"DEBUG: Converted TAPResults to Astropy Table with {len(astro_table)} rows.")
+        return astro_table
+    except Exception as convert_error:
+        print(f"Error: Failed converting TAPResults: {convert_error}")
+        traceback.print_exc()
+        return None
 
 
 class CTAOHTTPAdapter(requests.adapters.HTTPAdapter):
@@ -48,20 +64,22 @@ class Tap:
             exception = e
         return exception, table
 
-def astropy_table_to_list(tap_result_obj):
+def astropy_table_to_list(table: Table | None):
     """
-    Convert a pyvo TAPResults object to a list of lists.
+    Convert an Astropy Table object to a list of lists suitable for JSON conversion,
+    along with the list of column names.
     """
-    if tap_result_obj is None:
+    if table is None:
+        print("DEBUG astropy_table_to_list: Received None table.")
         return [], []
 
     try:
-        columns = tap_result_obj.fieldnames
+        columns = table.colnames
         rows = []
-        for record in tap_result_obj:
+        for row in table:
             row_data = []
             for col in columns:
-                cell = record[col]
+                cell = row[col]
                 if isinstance(cell, np.ma.core.MaskedConstant): cell = None
                 elif isinstance(cell, (bytes, np.bytes_)):
                     try: cell = cell.decode('utf-8')
@@ -72,113 +90,133 @@ def astropy_table_to_list(tap_result_obj):
                     if np.isnan(cell) or np.isinf(cell): cell = None
                     else:
                         try:
-                            cell = float(cell.__str__())  # temporary fix for floating point issue
+                            cell = float(cell.__str__()) # temporary fix for floating point issue
                             if math.isnan(cell) or math.isinf(cell): cell = None
                         except Exception as e:
-                            print(f"Warning: Failed float(str()) conversion for column '{col}', value '{record[col]}': {e}")
+                            print(f"Warning: Failed float(str()) conversion for col '{col}', val '{row[col]}': {e}")
                             try:
-                                cell = float(record[col])
+                                cell = float(row[col])
                                 if math.isnan(cell) or math.isinf(cell): cell = None
                             except: cell = None
                 else:
                     if cell is None or isinstance(cell, (np.void)): cell = None
                     else: cell = str(cell)
-
                 row_data.append(cell)
             rows.append(row_data)
+        print(f"DEBUG astropy_table_to_list: Processed {len(rows)} rows.")
         return columns, rows
-    except AttributeError as e:
-        print(f"Error processing TAPResults: {e}")
-        return [], []
     except Exception as e:
-         print(f"Unexpected error in astropy_table_to_list: {e}")
-         return [], []
+        print(f"ERROR in astropy_table_to_list: {e}")
+        traceback.print_exc()
+        return [],[]
+
 
 def perform_coords_query(fields):
-    """
-    Perform a coordinate (cone search) query.
-    """
-    # Get URL of TAP server from fields
-    url = fields['tap_url']['value']
-    # Get name of obscore table from fields
-    obscore_table = fields['obscore_table']['value']
-    # Timeout for TAP server connection
-    timeout = 5
+    """Perform coordinate query, return error, Astropy Table, query string."""
+    url, obscore_table, timeout = fields['tap_url']['value'], fields['obscore_table']['value'], 5
+    error, astro_table = None, None
+    query = ""
 
-    t = Tap(url)
-    t.connect(timeout)
-
-    # Construct ADQL query - cone search
-    query = (
-        "SELECT TOP 100 * FROM {} WHERE 1=CONTAINS(POINT('ICRS', s_ra, s_dec), "
-        "CIRCLE('ICRS', {}, {}, {}))".format(
-            obscore_table,
-            fields['target_raj2000']['value'],
-            fields['target_dej2000']['value'],
-            fields['search_radius']['value']
+    try:
+        t = Tap(url)
+        t.connect(timeout)
+        query = (
+            "SELECT TOP 100 * FROM {} WHERE 1=CONTAINS(POINT('ICRS', s_ra, s_dec), "
+            "CIRCLE('ICRS', {}, {}, {}))".format(
+                obscore_table, fields['target_raj2000']['value'],
+                fields['target_dej2000']['value'], fields['search_radius']['value']
+            )
         )
-    )
-    exception, res_table = t.query(query)
-    if exception is None:
-        error = None
-    else:
-        error = f'Got exception with TAP query: {exception}'
-    return error, res_table, query
+        print(f"DEBUG: Running ADQL Query: {query}")
+        exception, tap_results = t.query(query)
+
+        if exception: error = f'Got exception with TAP query: {exception}'
+        elif tap_results is None: error = 'TAP query succeeded but returned no results object.'
+        else:
+            astro_table = _process_tap_results(tap_results)
+            if astro_table is None and error is None:
+                error = "Failed processing TAP results after query."
+
+    except Exception as outer_exception:
+        error = f"Failed TAP operation: {outer_exception}"
+        print(f"Error during TAP operation: {outer_exception}")
+        traceback.print_exc()
+        astro_table = None
+
+    print(f"DEBUG Returning from perform_coords_query: error={error}, table type={type(astro_table)}")
+
+    return error, astro_table, query
 
 def perform_time_query(fields):
-    """
-    Perform a time‑only query.
-    Expects fields to contain 'search_mjd_start' and 'search_mjd_end',
-    which define the time window (in MJD) corresponding to the user’s day.
-    """
-    url = fields['tap_url']['value']
-    obscore_table = fields['obscore_table']['value']
-    timeout = 5
+    """Perform time query, return error, Astropy Table, query string."""
+    url, obscore_table, timeout = fields['tap_url']['value'], fields['obscore_table']['value'], 5
+    error, astro_table = None, None
+    query = ""
 
-    t = Tap(url)
-    t.connect(timeout)
-    query = (
-        "SELECT TOP 100 * FROM {} WHERE t_min < {} AND t_max > {}"
-        .format(
-            obscore_table,
-            fields['search_mjd_end']['value'],
-            fields['search_mjd_start']['value']
+    try:
+        t = Tap(url)
+        t.connect(timeout)
+        query = (
+            "SELECT TOP 100 * FROM {} WHERE t_min < {} AND t_max > {}"
+            .format(
+                obscore_table,
+                fields['search_mjd_end']['value'],
+                fields['search_mjd_start']['value']
+            )
         )
-    )
-    exception, res_table = t.query(query)
-    if exception is None:
-        error = None
-    else:
-        error = f'Got exception with TAP query: {exception}'
-    return error, res_table, query
+        print(f"DEBUG: Running ADQL Query: {query}")
+        exception, tap_results = t.query(query)
+
+        if exception: error = f'Got exception with TAP query: {exception}'
+        elif tap_results is None: error = 'TAP query succeeded but returned no results object.'
+        else:
+            astro_table = _process_tap_results(tap_results)
+            if astro_table is None and error is None:
+                error = "Failed processing TAP results after query."
+
+    except Exception as outer_exception:
+        error = f"Failed TAP operation: {outer_exception}"
+        print(f"Error during TAP operation: {outer_exception}")
+        traceback.print_exc()
+        astro_table = None
+
+    print(f"DEBUG Returning from perform_time_query: error={error}, table type={type(astro_table)}")
+    return error, astro_table, query
+
 
 def perform_coords_time_query(fields):
-    """
-    Perform a query that combines a cone search with a time filter.
-    Expects fields to include both coordinate keys and time keys.
-    """
-    url = fields['tap_url']['value']
-    obscore_table = fields['obscore_table']['value']
-    timeout = 5
+    """Perform coordinate and time query, return error, Astropy Table, query string."""
+    url, obscore_table, timeout = fields['tap_url']['value'], fields['obscore_table']['value'], 5
+    error, astro_table = None, None
+    query = ""
 
-    t = Tap(url)
-    t.connect(timeout)
-    query = (
-        "SELECT TOP 100 * FROM {} WHERE 1=CONTAINS(POINT('ICRS', s_ra, s_dec), "
-        "CIRCLE('ICRS', {}, {}, {})) AND t_min < {} AND t_max > {}"
-        .format(
-            obscore_table,
-            fields['target_raj2000']['value'],
-            fields['target_dej2000']['value'],
-            fields['search_radius']['value'],
-            fields['search_mjd_end']['value'],
-            fields['search_mjd_start']['value']
+    try:
+        t = Tap(url)
+        t.connect(timeout)
+        query = (
+           "SELECT TOP 100 * FROM {} WHERE 1=CONTAINS(POINT('ICRS', s_ra, s_dec), "
+           "CIRCLE('ICRS', {}, {}, {})) AND t_min < {} AND t_max > {}"
+           .format(
+               obscore_table, fields['target_raj2000']['value'],
+               fields['target_dej2000']['value'], fields['search_radius']['value'],
+               fields['search_mjd_end']['value'], fields['search_mjd_start']['value']
+           )
         )
-    )
-    exception, res_table = t.query(query)
+        print(f"DEBUG: Running ADQL Query: {query}")
+        exception, tap_results = t.query(query)
 
-    if exception is None:
-        error = None
-    else:
-        error = f'Got exception with TAP query: {exception}'
-    return error, res_table, query
+        if exception: error = f'Got exception with TAP query: {exception}'
+        elif tap_results is None: error = 'TAP query succeeded but returned no results object.'
+        else:
+            astro_table = _process_tap_results(tap_results)
+            if astro_table is None and error is None:
+                error = "Failed processing TAP results after query."
+
+    except Exception as outer_exception:
+        error = f"Failed TAP operation: {outer_exception}"
+        print(f"Error during TAP operation: {outer_exception}")
+        traceback.print_exc()
+        astro_table = None
+
+    print(f"DEBUG Returning from perform_coords_time_query: error={error}, table type={type(astro_table)}")
+    return error, astro_table, query
