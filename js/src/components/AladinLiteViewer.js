@@ -152,8 +152,8 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [] }) => {
         s_fov: parseFloat(s_fov), // Ensure s_fov is a number or NaN
         isSelected: isSelected,
         // Popup content:
-        popupTitle: `Obs ID: ${id?.toString() || 'N/A'}`,
-        popupDesc: `RA: ${raNum.toFixed(6)}, Dec: ${decNum.toFixed(6)}<br/>FOV: ${!isNaN(parseFloat(s_fov)) ? parseFloat(s_fov) + ' deg' : 'N/A'}`
+        // popupTitle: `Obs ID: ${id?.toString() || 'N/A'}`,
+        // popupDesc: `RA: ${raNum.toFixed(6)}, Dec: ${decNum.toFixed(6)}<br/>FOV: ${!isNaN(parseFloat(s_fov)) ? parseFloat(s_fov) + ' deg' : 'N/A'}`
       });
       sources.push(source);
 

@@ -27,6 +27,7 @@ from typing import Optional
 import fastapi_users
 from .db import AsyncSessionLocal
 import traceback
+from .coords import coord_router
 
 
 app = FastAPI(
@@ -64,19 +65,25 @@ app.add_middleware(
 @app.get("/api/search_coords", response_model=SearchResult, tags=["search"])
 async def search_coords(
     request: Request,
+    # Coordinate Params
     coordinate_system: Optional[str] = None,
     ra: Optional[float] = None,
     dec: Optional[float] = None,
     l: Optional[float] = None,
     b: Optional[float] = None,
     search_radius: float = 5.0,
-    tap_url: str = 'http://voparis-tap-he.obspm.fr/tap',
-    obscore_table: str = 'hess_dr.obscore_sdc',
+    # Time Params
     obs_start: Optional[str] = None,
     obs_end: Optional[str] = None,
+    mjd_start: Optional[float] = Query(None),
+    mjd_end: Optional[float] = Query(None),
+    # TAP Params
+    tap_url: str = 'http://voparis-tap-he.obspm.fr/tap',
+    obscore_table: str = 'hess_dr.obscore_sdc',
+    # Auth
     user: Optional[UserTable] = Depends(current_optional_active_user),
 ):
-    print(f"DEBUG search_coords: START. User authenticated: {user is not None}")
+    print(f"DEBUG search_coords: START. Params received: {request.query_params}")
 
     fields = {
         'tap_url': {'value': tap_url},
@@ -86,18 +93,31 @@ async def search_coords(
     coords_present = False
     time_filter_present = False
 
-    # Process time
-    if obs_start and obs_end:
+    # Process Time - prioritize MJD
+    if mjd_start is not None and mjd_end is not None:
+        if mjd_end <= mjd_start:
+            raise HTTPException(status_code=400, detail="mjd_end must be greater than mjd_start.")
+        fields['search_mjd_start'] = {'value': mjd_start}
+        fields['search_mjd_end'] = {'value': mjd_end}
+        time_filter_present = True
+        print(f"DEBUG search_coords: Using MJD filter: {mjd_start} - {mjd_end}")
+    elif obs_start and obs_end:  # Fallback to date/time strings
         try:
             dt_start = datetime.strptime(obs_start, "%d/%m/%Y %H:%M:%S")
             dt_end = datetime.strptime(obs_end, "%d/%m/%Y %H:%M:%S")
+            if dt_end <= dt_start:
+                raise HTTPException(status_code=400, detail="obs_end must be after obs_start.")
             t_start = Time(dt_start, scale='utc')
             t_end = Time(dt_end, scale='utc')
             fields['search_mjd_start'] = {'value': t_start.mjd}
             fields['search_mjd_end'] = {'value': t_end.mjd}
             time_filter_present = True
+            print(f"DEBUG search_coords: Using Date/Time filter (converted to MJD): {t_start.mjd} - {t_end.mjd}")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date/time format...")
         except Exception as e:
-            raise HTTPException(status_code=400, detail="Invalid date format...")
+            print(f"ERROR: Unexpected error during time processing: {e}")
+            raise HTTPException(status_code=500, detail="Error processing time parameters.")
 
     # Process coordinates
     if coordinate_system == 'equatorial':
@@ -118,21 +138,23 @@ async def search_coords(
                  raise HTTPException(status_code=400, detail="Invalid galactic coordinates provided.")
 
     print(f"DEBUG search_coords: Fields prepared: {fields}")
+    print(f"DEBUG search_coords: Coords present: {coords_present}, Time present: {time_filter_present}")
 
     adql_query_str = None
     res_table = None
     error = None
 
     try:
+        if not coords_present and not time_filter_present:
+            print("ERROR search_coords: No valid search criteria provided.")
+            raise HTTPException(status_code=400, detail="Provide Coordinates or Time Interval.")
+
         if coords_present and time_filter_present:
             error, res_table, adql_query_str = perform_coords_time_query(fields)
         elif coords_present:
             error, res_table, adql_query_str = perform_coords_query(fields)
         elif time_filter_present:
             error, res_table, adql_query_str = perform_time_query(fields)
-        else:
-            print("ERROR search_coords: No search criteria provided.")
-            raise HTTPException(status_code=400, detail="...")
 
         print(f"DEBUG search_coords: After query call: error={error}, type(res_table)={type(res_table)}")
 
@@ -412,14 +434,11 @@ async def datalink_endpoint(
     return Response(content=votable_xml, media_type="application/x-votable+xml")
 
 
-# Include local user auth (JWT)
 app.include_router(auth_router)
-# Include CTAO OIDC
 app.include_router(oidc_router)
-# Include basket router
 app.include_router(basket_router)
-# Include query history router
 app.include_router(query_history_router)
+app.include_router(coord_router)
 # Mount the React build folder
 app.mount("/", StaticFiles(directory="./js/build", html=True), name="js")
 
