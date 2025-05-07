@@ -93,7 +93,7 @@ async def auth_callback(
     token = await strategy.write_token(user) # The actual JWT string
 
     # Create the RedirectResponse
-    redirect_response = RedirectResponse(url="http://localhost:8000/")
+    redirect_response = RedirectResponse(url="/")
 
     # Use the RedirectResponse's set_cookie method
     redirect_response.set_cookie(
