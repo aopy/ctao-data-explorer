@@ -8,7 +8,11 @@ import reportWebVitals from './reportWebVitals';
 import axios from 'axios';
 
 const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-axios.defaults.baseURL = isLocal ? 'http://localhost:8000' : '';
+// axios.defaults.baseURL = isLocal ? 'http://localhost:8000' : '';
+
+export const API_PREFIX = isLocal ? '' : '/api';
+
+axios.defaults.baseURL = API_PREFIX;
 
 //axios.defaults.baseURL = 'http://localhost:8000';
 

@@ -8,6 +8,7 @@ import EmRangeChart from './components/EmRangeChart';
 import BasketPage from './components/BasketPage';
 import UserProfileModal from './components/UserProfileModal';
 import QueryStorePage from './components/QueryStorePage';
+import { API_PREFIX } from './index';
 
 function formatTmin(mjd) {
   if (!mjd || isNaN(mjd)) return '';
@@ -181,7 +182,11 @@ function App() {
    return () => clearTimeout(timer); // Cleanup timeout
   }, []);
 
-  const handleLogin = () => { window.location.href = '/oidc/login'; };
+  // const handleLogin = () => { window.location.href = '/oidc/login'; };
+
+  const handleLogin = () => {
+    window.location.href = `${API_PREFIX}/oidc/login`;
+};
 
   const handleLogout = () => {
     axios.post('/auth/logout') // POST to the cookie logout endpoint
