@@ -14,6 +14,9 @@ from .models import UserTable
 from fastapi_users.manager import BaseUserManager
 from datetime import datetime
 from fastapi.responses import JSONResponse
+import os
+
+PRODUCTION = os.getenv("BASE_URL") is not None
 
 # User Schemas
 class UserRead(schemas.BaseUser[int]):
@@ -58,10 +61,10 @@ cookie_transport = CookieTransport(
     cookie_name="ctao_access_token",
     cookie_max_age=3600,
     cookie_path="/",
-    cookie_secure=False, # Must be false for HTTP
+    cookie_secure=False, # PRODUCTION
     cookie_httponly=True,
     cookie_samesite="lax",
-    cookie_domain="localhost",
+    cookie_domain="ctao-data-explorer.obspm.fr" if PRODUCTION else None,
 )
 
 # JWT Strategy
@@ -121,6 +124,12 @@ async def logout(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred during logout."
         )
+
+@auth_router.post("/api/auth/logout", include_in_schema=False)
+async def logout_alias(response: Response,
+                       user: UserTable = Depends(current_active_user),
+                       transport: CookieTransport = Depends(lambda: cookie_transport)):
+    return await logout(response, user, transport)
 
 # Users routes (get/update user info)
 auth_router.include_router(
