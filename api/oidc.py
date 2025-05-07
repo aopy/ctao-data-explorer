@@ -9,6 +9,9 @@ from .db import get_async_session
 from datetime import datetime
 from urllib.parse import urljoin
 import os
+from fastapi_users.password import PasswordHelper
+
+password_helper = PasswordHelper()
 
 # OIDC config
 config = Config('.env')
@@ -61,7 +64,7 @@ async def auth_callback(
     if not user:
         # Create new user
         # Generate a dummy password hash, fastapi-users requires it
-        dummy_password_hash = fastapi_users.password_helper.hash("a_very_long_random_dummy_password_that_wont_be_used")
+        dummy_password_hash = password_helper.hash("a_very_long_random_dummy_password_that_wont_be_used")
         new_data = {
             "email": email,
             "hashed_password": dummy_password_hash,
