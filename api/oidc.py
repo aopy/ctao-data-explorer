@@ -29,14 +29,9 @@ BASE_URL = os.getenv("BASE_URL")
 
 @oidc_router.get("/login")
 async def login(request: Request):
-    if BASE_URL:
-        redirect_uri = urljoin(BASE_URL, "/oidc/callback")
-    else:
-        host = request.headers.get("host")
-        scheme = request.url.scheme
-        redirect_uri = f"{scheme}://{host}/oidc/callback"
-
-    return await oauth.ctao.authorize_redirect(request, redirect_uri)
+    # let FastAPI compute the right path automatically
+    callback_url = request.url_for("auth_callback")
+    return await oauth.ctao.authorize_redirect(request, callback_url)
 
 
 @oidc_router.get("/callback")

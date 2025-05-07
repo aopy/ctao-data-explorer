@@ -184,8 +184,8 @@ function App() {
 
   // const handleLogin = () => { window.location.href = '/oidc/login'; };
 
-  const handleLogin = () => {
-    window.location.href = `${API_PREFIX}/oidc/login`;
+const handleLogin = () => {
+  window.location.href = `${API_PREFIX}/oidc/login`;
 };
 
   const handleLogout = () => {

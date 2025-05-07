@@ -435,7 +435,8 @@ async def datalink_endpoint(
 
 
 app.include_router(auth_router)
-app.include_router(oidc_router)
+# app.include_router(oidc_router)
+app.include_router(oidc_router, prefix="/api")
 app.include_router(basket_router)
 app.include_router(query_history_router)
 app.include_router(coord_router)
