@@ -131,6 +131,10 @@ async def logout_alias(response: Response,
                        transport: CookieTransport = Depends(lambda: cookie_transport)):
     return await logout(response, user, transport)
 
+@auth_router.get("/users/me", include_in_schema=False)
+async def whoami_alias(user: UserTable = Depends(current_active_user)):
+    return user
+
 # Users routes (get/update user info)
 auth_router.include_router(
     fastapi_users.get_users_router(UserRead, UserUpdate),
