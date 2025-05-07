@@ -7,6 +7,8 @@ from fastapi import APIRouter, Request, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from .db import get_async_session
 from datetime import datetime
+from urllib.parse import urljoin
+import os
 
 # OIDC config
 config = Config('.env')
@@ -23,13 +25,18 @@ oauth.register(
 )
 
 oidc_router = APIRouter(prefix="/oidc", tags=["oidc"])
+BASE_URL = os.getenv("BASE_URL")
 
 @oidc_router.get("/login")
 async def login(request: Request):
-    redirect_uri = "http://localhost:8000/oidc/callback"
-    response = await oauth.ctao.authorize_redirect(request, redirect_uri)
+    if BASE_URL:
+        redirect_uri = urljoin(BASE_URL, "/oidc/callback")
+    else:
+        host = request.headers.get("host")
+        scheme = request.url.scheme
+        redirect_uri = f"{scheme}://{host}/oidc/callback"
 
-    return response
+    return await oauth.ctao.authorize_redirect(request, redirect_uri)
 
 
 @oidc_router.get("/callback")
