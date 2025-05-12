@@ -101,7 +101,6 @@ async def auth_callback(
         value=token,
         max_age=cookie_transport.cookie_max_age,
         path=cookie_transport.cookie_path,
-        domain="localhost",
         secure=cookie_transport.cookie_secure,
         httponly=cookie_transport.cookie_httponly,
         samesite=cookie_transport.cookie_samesite,
