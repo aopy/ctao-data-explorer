@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { API_PREFIX } from '../index';
 
 
 const UserProfileModal = ({ show, onClose, isLoggedIn }) => {
@@ -12,7 +13,7 @@ const UserProfileModal = ({ show, onClose, isLoggedIn }) => {
       setIsLoading(true);
       setError(null);
       axios
-        .get('/users/me')
+        .get(`${API_PREFIX}/users/me`)
         .then(res => setProfile(res.data))
         .catch(err => console.error("Error fetching user profile", err));
 
