@@ -166,7 +166,7 @@ function App() {
   useEffect(() => {
   setIsLoadingUser(true);
   const timer = setTimeout(() => {
-     axios.get('/users/me')
+     axios.get(`${API_PREFIX}/users/me`)
        .then(res => {
          setUser(res.data);
        })
@@ -189,7 +189,7 @@ const handleLogin = () => {
 };
 
   const handleLogout = () => {
-    axios.post('/auth/logout') // POST to the cookie logout endpoint
+    axios.post(`${API_PREFIX}/auth/logout`) // POST to the cookie logout endpoint
       .then(() => {
         setUser(null); // Clear user state
         setResults(null);
