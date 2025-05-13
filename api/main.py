@@ -440,6 +440,11 @@ app.include_router(oidc_router, prefix="/api")
 app.include_router(basket_router)
 app.include_router(query_history_router)
 app.include_router(coord_router)
+
+# alias mounts
+app.include_router(basket_router, prefix="/api", include_in_schema=False)
+app.include_router(query_history_router, prefix="/api", include_in_schema=False)
+
 # Mount the React build folder
 app.mount("/", StaticFiles(directory="./js/build", html=True), name="js")
 
