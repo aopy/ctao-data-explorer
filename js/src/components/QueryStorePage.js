@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { API_PREFIX } from '../index';
 
 // generate a summary string
 const generateSummary = (item) => {
@@ -47,7 +48,7 @@ function QueryStorePage({ onLoadHistory, isActive, isLoggedIn }) {
         console.log("QueryStorePage: Attempting to fetch history...");
         setIsLoading(true);
         setError(null);
-        axios.get('/query-history')
+        axios.get(`${API_PREFIX}/query-history`)
             .then(res => {
                 console.log("QueryStorePage: History data received raw:", res);
                 console.log("QueryStorePage: History data received:", res.data);
@@ -80,7 +81,7 @@ function QueryStorePage({ onLoadHistory, isActive, isLoggedIn }) {
             return;
         }
         setError(null);
-        axios.delete(`/query-history/${historyId}`)
+        axios.delete(`${API_PREFIX}/query-history/${historyId}`)
          .then(() => {
              console.log(`History item ${historyId} deleted successfully.`);
              fetchHistory();

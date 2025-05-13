@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
+import { API_PREFIX } from '../index';
 
 const formatTmin = (mjd) => {
   if (!mjd || isNaN(mjd)) return '';
@@ -39,7 +40,7 @@ onBasketGroupsChange, allBasketGroups = [], activeBasketGroupId }) {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await axios.get('/basket/groups');
+      const res = await axios.get(`${API_PREFIX}/basket/groups`);
       const groups = res.data || [];
       // Let parent know about the fetched groups
       if (onBasketGroupsChange) onBasketGroupsChange(groups);
@@ -91,7 +92,7 @@ onBasketGroupsChange, allBasketGroups = [], activeBasketGroupId }) {
     try {
       const name = newGroupName.trim();
       // Make the API call to create the group
-      await axios.post('/basket/groups', { name });
+      await axios.post(`${API_PREFIX}/basket/groups`, { name });
 
       setNewGroupName('');
       fetchBasketGroups();
@@ -113,7 +114,7 @@ onBasketGroupsChange, allBasketGroups = [], activeBasketGroupId }) {
     }
     setError(null);
     try {
-      await axios.put(`/basket/groups/${groupId}`, { name: trimmedName });
+      await axios.put(`${API_PREFIX}/basket/groups/${groupId}`, { name: trimmedName });
       fetchBasketGroups();
     } catch (err) {
       console.error('Error renaming basket group', err);
@@ -129,7 +130,7 @@ onBasketGroupsChange, allBasketGroups = [], activeBasketGroupId }) {
     }
     setError(null);
     try {
-      await axios.delete(`/basket/groups/${groupId}`);
+      await axios.delete(`${API_PREFIX}/basket/groups/${groupId}`);
       fetchBasketGroups();
     } catch (err) {
       console.error('Error deleting basket group', err);
@@ -144,7 +145,7 @@ onBasketGroupsChange, allBasketGroups = [], activeBasketGroupId }) {
     }
     setError(null);
     try {
-      await axios.delete(`/basket/groups/${activeGroup.id}/items/${itemId}`);
+      await axios.delete(`${API_PREFIX}/basket/groups/${activeGroup.id}/items/${itemId}`);
 
       fetchBasketGroups();
 
