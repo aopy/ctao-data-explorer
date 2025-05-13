@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import DataTable from 'react-data-table-component';
 import axios from 'axios';
 import DataLinkDropdown from './DataLinkDropdown';
+import { API_PREFIX } from '../index';
 
 const ResultsTable = ({
   results,
@@ -57,7 +58,7 @@ const ResultsTable = ({
         basket_group_id: activeBasketGroupId, // Send the active group ID
       };
 
-      const response = await axios.post("/basket/items", payload);
+      const response = await axios.post(`${API_PREFIX}/basket/items`, payload);
       console.log("Added to basket:", response.data);
       setAlertMessage(`Added obs_id=${rowData.obs_id} to active basket successfully!`);
       if (onAddedBasketItem) {
