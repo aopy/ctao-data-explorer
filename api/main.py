@@ -83,6 +83,7 @@ async def search_coords(
     # Auth
     user: Optional[UserTable] = Depends(current_optional_active_user),
 ):
+    base_api_url = f"{request.url.scheme}://{request.headers['host']}"
     print(f"DEBUG search_coords: START. Params received: {request.query_params}")
 
     fields = {
@@ -197,10 +198,7 @@ async def search_coords(
                         did = new_row[idx]
                         if did: # Check if DID is not None or empty
                            encoded_did = urllib.parse.quote(str(did), safe='')
-                           # TODO: Construct URL based on actual request host/port if needed
-                           # base_api_url = f"{request.url.scheme}://{request.url.netloc}"
-                           # datalink_url = f"{base_api_url}/api/datalink?ID={encoded_did}"
-                           datalink_url = f"http://localhost:8000/api/datalink?ID={encoded_did}"
+                           datalink_url = f"{base_api_url}/api/datalink?ID={encoded_did}"
                            if len(new_row) == len(columns_with_datalink) -1:
                                new_row.append(datalink_url)
                            elif len(new_row) == len(columns_with_datalink):
