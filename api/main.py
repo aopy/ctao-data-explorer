@@ -223,17 +223,34 @@ async def search_coords(
             if user:
                 print(f"DEBUG: User {user.id} logged in, attempting to save history. ADQL: {adql_query_str}")
                 try:
+                    params_to_save = {
+                        "tap_url": tap_url,
+                        "obscore_table": obscore_table,
+                        "search_radius": search_radius,
+                        "coordinate_system": coordinate_system
+                    }
+                    if coordinate_system == 'equatorial':
+                        if ra is not None: params_to_save["ra"] = ra
+                        if dec is not None: params_to_save["dec"] = dec
+                    elif coordinate_system == 'galactic':
+                        if l is not None: params_to_save["l"] = l
+                        if b is not None: params_to_save["b"] = b
+                    if obs_start: params_to_save["obs_start"] = obs_start
+                    if obs_end: params_to_save["obs_end"] = obs_end
+                    if 'search_mjd_start' in fields: params_to_save["mjd_start"] = fields['search_mjd_start']['value']
+                    if 'search_mjd_end' in fields: params_to_save["mjd_end"] = fields['search_mjd_end']['value']
+
                     history_payload = QueryHistoryCreate(
-                        query_params=fields,
+                        query_params=params_to_save,
                         adql_query=adql_query_str,
                         results=search_result_obj.model_dump()
                     )
                     async with AsyncSessionLocal() as history_session:
-                         await create_query_history(history=history_payload, user=user, session=history_session)
-                    print(f"DEBUG: Called create_query_history for user {user.id}")
+                        await create_query_history(history=history_payload, user=user, session=history_session)
+                    print(f"DEBUG: Called create_query_history for user {user.id} with params: {params_to_save}")
                 except Exception as history_error:
-                     print(f"ERROR saving query history for user {user.id}: {history_error}")
-                     traceback.print_exc()
+                    print(f"ERROR saving query history for user {user.id}: {history_error}")
+                    traceback.print_exc()
 
             print(f"DEBUG search_coords: Returning SearchResult object.")
             return search_result_obj

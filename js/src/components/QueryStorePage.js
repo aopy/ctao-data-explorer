@@ -22,18 +22,25 @@ const generateSummary = (item) => {
         } else if (coordSys === 'galactic' && !isNaN(lNum) && !isNaN(bNum)) {
              coordStr = `l=${lNum.toFixed(3)}, b=${bNum.toFixed(3)}, Rad=${radiusStr}°`;
         } else if (!isNaN(raNum) && !isNaN(decNum)){
-            coordStr = `RA=${raNum.toFixed(3)}, Dec=${decNum.toFixed(3)}, Rad=${radiusStr}°`;
+            coordStr = `RA=${raNum.toFixed(3)}, Dec=${decNum.toFixed(3)}, Rad=${radiusStr}° (System: Unknown)`;
         }
+
         summary += ` | ${coordStr}`;
+
         if (params.obs_start && params.obs_end) {
             summary += ` | Time: ${params.obs_start} - ${params.obs_end}`;
+        } else if (params.mjd_start && params.mjd_end) {
+            summary += ` | MJD: ${params.mjd_start.toFixed(3)} - ${params.mjd_end.toFixed(3)}`;
         }
+    } else {
+        summary += ` | Params: N/A`;
     }
-     const resultCount = Array.isArray(item.results?.data) ? item.results.data.length : '?';
-     summary += ` | ${resultCount} results`;
-     if(item.adql_query_hash) {
-        summary += ` | Hash: ${item.adql_query_hash.substring(0, 8)}...`;
-     }
+
+    const resultCount = Array.isArray(item.results?.data) ? item.results.data.length : '?';
+    summary += ` | ${resultCount} results`;
+    //if(item.adql_query_hash) {
+    //    summary += ` | Hash: ${item.adql_query_hash.substring(0, 8)}...`;
+    //}
     return summary;
 };
 
