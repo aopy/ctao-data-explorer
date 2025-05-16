@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API_PREFIX } from '../index';
+import {
+    COORD_SYS_EQ_DEG,
+    COORD_SYS_EQ_HMS,
+    COORD_SYS_GAL,
+    degToHMS,
+    degToDMS
+} from './datetimeUtils';
 
 // generate a summary string
 const generateSummary = (item) => {
@@ -10,27 +17,29 @@ const generateSummary = (item) => {
         const coordSys = params.coordinate_system || 'N/A';
         const radius = parseFloat(params.search_radius) || NaN;
         const radiusStr = !isNaN(radius) ? radius.toString() : '?';
-
         let coordStr = 'N/A';
         const raNum = parseFloat(params.ra);
         const decNum = parseFloat(params.dec);
         const lNum = parseFloat(params.l);
         const bNum = parseFloat(params.b);
 
-        if (coordSys === 'equatorial' && !isNaN(raNum) && !isNaN(decNum)) {
+        if (coordSys === COORD_SYS_EQ_HMS && !isNaN(raNum) && !isNaN(decNum)) {
+            // convert stored decimal degrees back to hms/dms for display
+            coordStr = `RA=${degToHMS(raNum)}, Dec=${degToDMS(decNum)}, Rad=${radiusStr}°`;
+        } else if (coordSys === COORD_SYS_EQ_DEG && !isNaN(raNum) && !isNaN(decNum)) {
             coordStr = `RA=${raNum.toFixed(3)}, Dec=${decNum.toFixed(3)}, Rad=${radiusStr}°`;
-        } else if (coordSys === 'galactic' && !isNaN(lNum) && !isNaN(bNum)) {
+        } else if (coordSys === COORD_SYS_GAL && !isNaN(lNum) && !isNaN(bNum)) {
              coordStr = `l=${lNum.toFixed(3)}, b=${bNum.toFixed(3)}, Rad=${radiusStr}°`;
         } else if (!isNaN(raNum) && !isNaN(decNum)){
-            coordStr = `RA=${raNum.toFixed(3)}, Dec=${decNum.toFixed(3)}, Rad=${radiusStr}° (System: Unknown)`;
+            coordStr = `RA=${raNum.toFixed(3)}, Dec=${decNum.toFixed(3)}, Rad=${radiusStr}° (System: ${coordSys})`;
         }
 
         summary += ` | ${coordStr}`;
 
-        if (params.obs_start && params.obs_end) {
-            summary += ` | Time: ${params.obs_start} - ${params.obs_end}`;
+        if (params.obs_start_input && params.obs_end_input) {
+            summary += ` | Time: ${params.obs_start_input} - ${params.obs_end_input}`;
         } else if (params.mjd_start && params.mjd_end) {
-            summary += ` | MJD: ${params.mjd_start.toFixed(3)} - ${params.mjd_end.toFixed(3)}`;
+            summary += ` | MJD: ${parseFloat(params.mjd_start).toFixed(3)} - ${parseFloat(params.mjd_end).toFixed(3)}`;
         }
     } else {
         summary += ` | Params: N/A`;

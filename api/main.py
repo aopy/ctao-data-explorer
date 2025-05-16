@@ -29,6 +29,11 @@ from .db import AsyncSessionLocal
 import traceback
 from .coords import coord_router
 
+# coordinate cystem constants
+COORD_SYS_EQ_DEG = 'equatorial_deg'
+COORD_SYS_EQ_HMS = 'equatorial_hms'
+COORD_SYS_GAL = 'galactic'
+
 
 app = FastAPI(
     title="CTAO Data Explorer API",
@@ -121,12 +126,13 @@ async def search_coords(
             raise HTTPException(status_code=500, detail="Error processing time parameters.")
 
     # Process coordinates
-    if coordinate_system == 'equatorial':
+    if coordinate_system == COORD_SYS_EQ_DEG or coordinate_system == COORD_SYS_EQ_HMS:
         if ra is not None and dec is not None:
             fields['target_raj2000'] = {'value': ra}
             fields['target_dej2000'] = {'value': dec}
             coords_present = True
-    elif coordinate_system == 'galactic':
+            print(f"DEBUG search_coords: Galactic coords processed and converted. L={l}, B={b}")
+    elif coordinate_system == COORD_SYS_GAL:
         if l is not None and b is not None:
             try:
                 c_gal = SkyCoord(l * u.deg, b * u.deg, frame='galactic')
@@ -229,16 +235,17 @@ async def search_coords(
                         "search_radius": search_radius,
                         "coordinate_system": coordinate_system
                     }
-                    if coordinate_system == 'equatorial':
+                    if coordinate_system == COORD_SYS_EQ_DEG or coordinate_system == COORD_SYS_EQ_HMS:
                         if ra is not None: params_to_save["ra"] = ra
                         if dec is not None: params_to_save["dec"] = dec
-                    elif coordinate_system == 'galactic':
+                    elif coordinate_system == COORD_SYS_GAL:
                         if l is not None: params_to_save["l"] = l
                         if b is not None: params_to_save["b"] = b
-                    if obs_start: params_to_save["obs_start"] = obs_start
-                    if obs_end: params_to_save["obs_end"] = obs_end
-                    if 'search_mjd_start' in fields: params_to_save["mjd_start"] = fields['search_mjd_start']['value']
-                    if 'search_mjd_end' in fields: params_to_save["mjd_end"] = fields['search_mjd_end']['value']
+                    # Store time parameters
+                    if obs_start: params_to_save["obs_start_input"] = obs_start
+                    if obs_end: params_to_save["obs_end_input"] = obs_end
+                    if mjd_start is not None: params_to_save["mjd_start"] = mjd_start
+                    if mjd_end is not None: params_to_save["mjd_end"] = mjd_end
 
                     history_payload = QueryHistoryCreate(
                         query_params=params_to_save,

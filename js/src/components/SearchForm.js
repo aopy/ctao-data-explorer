@@ -227,22 +227,30 @@ function SearchForm({ setResults, isLoggedIn }) {
             if (coordinateSystem === COORD_SYS_GAL) {
                 // Send l/b if system was galactic and parsing succeeded
                  if (lDeg !== null && bDeg !== null) {
-                    finalReqParams.coordinate_system = 'galactic';
+                    finalReqParams.coordinate_system = COORD_SYS_GAL;
                     finalReqParams.l = lDeg;
                     finalReqParams.b = bDeg;
                     coordsAreValid = true;
                 } else {
                      throw new Error("Galactic parsing succeeded but did not return l/b degrees.");
                 }
-            } else {
-                // Send ra/dec if system was equatorial and parsing succeeded
+            } else if (coordinateSystem === COORD_SYS_EQ_DEG) {
                 if (raDeg !== null && decDeg !== null) {
-                    finalReqParams.coordinate_system = 'equatorial';
+                    finalReqParams.coordinate_system = COORD_SYS_EQ_DEG;
                     finalReqParams.ra = raDeg;
                     finalReqParams.dec = decDeg;
                     coordsAreValid = true;
                 } else {
                      throw new Error("Equatorial parsing succeeded but did not return RA/Dec degrees.");
+                }
+            } else if (coordinateSystem === COORD_SYS_EQ_HMS) {
+             if (raDeg !== null && decDeg !== null) {
+                finalReqParams.coordinate_system = COORD_SYS_EQ_HMS;
+                finalReqParams.ra = raDeg;
+                finalReqParams.dec = decDeg;
+                coordsAreValid = true;
+            } else {
+                     throw new Error("Equatorial parsing succeeded but did not return hms/dms.");
                 }
             }
 
