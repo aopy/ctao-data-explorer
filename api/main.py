@@ -101,6 +101,11 @@ async def search_coords(
 
     # Process Time - prioritize MJD
     if mjd_start is not None and mjd_end is not None:
+        MIN_VALID_MJD = 0  # roughly Nov 17, 1858
+        MAX_VALID_MJD = 100000  # roughly Nov 22, 2132
+        if not (MIN_VALID_MJD <= mjd_start <= MAX_VALID_MJD and MIN_VALID_MJD <= mjd_end <= MAX_VALID_MJD):
+            raise HTTPException(status_code=400,
+                                detail=f"MJD values out of expected range ({MIN_VALID_MJD}-{MAX_VALID_MJD}).")
         if mjd_end <= mjd_start:
             raise HTTPException(status_code=400, detail="mjd_end must be greater than mjd_start.")
         fields['search_mjd_start'] = {'value': mjd_start}
@@ -113,14 +118,18 @@ async def search_coords(
             dt_end = datetime.strptime(obs_end, "%d/%m/%Y %H:%M:%S")
             if dt_end <= dt_start:
                 raise HTTPException(status_code=400, detail="obs_end must be after obs_start.")
+
+            if not (datetime.MINYEAR <= dt_start.year <= datetime.MAXYEAR and
+                    datetime.MINYEAR <= dt_end.year <= datetime.MAXYEAR):
+                raise ValueError("Date year is out of representable range.")
             t_start = Time(dt_start, scale='utc')
             t_end = Time(dt_end, scale='utc')
             fields['search_mjd_start'] = {'value': t_start.mjd}
             fields['search_mjd_end'] = {'value': t_end.mjd}
             time_filter_present = True
             print(f"DEBUG search_coords: Using Date/Time filter (converted to MJD): {t_start.mjd} - {t_end.mjd}")
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid date/time format...")
+        except ValueError as ve:  # Catch strptime errors or our custom ValueError
+            raise HTTPException(status_code=400, detail=f"Invalid date/time format or value: {ve}")
         except Exception as e:
             print(f"ERROR: Unexpected error during time processing: {e}")
             raise HTTPException(status_code=500, detail="Error processing time parameters.")

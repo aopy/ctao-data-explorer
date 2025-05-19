@@ -2,16 +2,33 @@ import { format, parse, isValid } from 'date-fns';
 
 // Converts MJD to UTC Date object
 export function mjdToDate(mjd) {
-  if (mjd === null || mjd === undefined || isNaN(mjd)) {
+  if (mjd === null || mjd === undefined) return null;
+  const mjdNum = parseFloat(mjd);
+
+  if (isNaN(mjdNum)) {
+    console.warn("mjdToDate: Input MJD is not a number:", mjd);
     return null;
   }
+  const JS_MIN_MJD_APPROX = -678999; // approx 0000-01-01
+  const JS_MAX_MJD_APPROX = 1507000; // approx 9999-12-31
+
+  if (mjdNum < JS_MIN_MJD_APPROX || mjdNum > JS_MAX_MJD_APPROX) {
+    console.warn("mjdToDate: MJD value is outside the representable range for JS Date:", mjdNum);
+    return null;
+  }
+
   try {
-    const jd = parseFloat(mjd) + 2400000.5;
-    // Formula to convert Julian Date to timestamp
-    const unixEpochJD = 2440587.5; // JD for 1970-01-01T00:00:00Z
+    const jd = mjdNum + 2400000.5;
+    const unixEpochJD = 2440587.5;
     const msPerDay = 86400000;
     const timestamp = (jd - unixEpochJD) * msPerDay;
-    return new Date(timestamp);
+
+    const date = new Date(timestamp);
+    if (isNaN(date.getTime())) {
+        console.warn("mjdToDate: Resulting date is invalid for MJD:", mjdNum);
+        return null;
+    }
+    return date;
   } catch (e) {
     console.error("Error converting MJD to Date:", e);
     return null;
@@ -21,6 +38,7 @@ export function mjdToDate(mjd) {
 // Converts a Date object (UTC) to MJD
  export function dateToMjd(date) {
   if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
+    console.warn("dateToMjd: Invalid input date object.");
     return null;
   }
   try {

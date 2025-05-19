@@ -100,32 +100,126 @@ function SearchForm({ setResults, isLoggedIn }) {
     }
   }, []);
 
+  const [timeWarning, setTimeWarning] = useState(''); // state for time-related warnings
+
   // Effects for Synchronization
   useEffect(() => {
-    // Sync from Date/Time changes to MJD
     if (lastChangedType === 'start_dt') {
-      syncDateTimeToMjd(obsStartDateObj, obsStartTime, setObsStartMJD);
+      setTimeWarning('');
+      if (obsStartDateObj && obsStartTime.trim()) {
+        const dateStrForParsing = format(obsStartDateObj, 'dd/MM/yyyy');
+        const dateTimeObj = parseDateTimeStrings(dateStrForParsing, obsStartTime.trim());
+
+        if (dateTimeObj) {
+          // valid date and time, convert to MJD
+          const mjd = dateToMjd(dateTimeObj);
+          setObsStartMJD(mjd !== null ? mjd.toString() : '');
+          if (mjd === null) {
+            setTimeWarning('Could not convert Start Date/Time to MJD.');
+          }
+        } else {
+          // Date and/or Time format is invalid
+          setTimeWarning('Invalid Start Date/Time format. Use dd/MM/yyyy and HH:MM:SS.');
+          setObsStartMJD('');
+        }
+      } else if (!obsStartDateObj && !obsStartTime.trim()) {
+        // Both are empty, clear MJD
+        setObsStartMJD('');
+      } else {
+        // One is filled, one is not - MJD cannot be fully determined
+        setObsStartMJD('');
+      }
     }
-  }, [obsStartDateObj, obsStartTime, lastChangedType, syncDateTimeToMjd]);
+  }, [obsStartDateObj, obsStartTime, lastChangedType, setObsStartMJD]);
 
   useEffect(() => {
-    // Sync FROM MJD change to Date/Time
     if (lastChangedType === 'start_mjd') {
-      syncMjdToDateTime(obsStartMJD, setObsStartDateObj, setObsStartTime);
+      setTimeWarning('');
+      const mjdStr = obsStartMJD.trim();
+
+      if (mjdStr === "") {
+        setObsStartDateObj(null);
+        setObsStartTime('');
+        return;
+      }
+
+      const mjdNum = parseFloat(mjdStr);
+      if (isNaN(mjdNum)) {
+        setTimeWarning('Start MJD must be a number.');
+        setObsStartDateObj(null);
+        setObsStartTime('');
+        return;
+      }
+
+      // Attempt to convert MJD to Date object
+      const dateObjFromMjd = mjdToDate(mjdNum);
+
+      if (dateObjFromMjd) {
+        // Conversion successful
+        const { timeStr } = formatDateTimeStrings(dateObjFromMjd);
+        setObsStartDateObj(dateObjFromMjd);
+        setObsStartTime(timeStr);
+      } else {
+        // Conversion failed
+        setTimeWarning('Start MJD resulted in an out-of-range or invalid date.');
+        setObsStartDateObj(null);
+        setObsStartTime('');
+      }
     }
-  }, [obsStartMJD, lastChangedType, syncMjdToDateTime]);
+  }, [obsStartMJD, lastChangedType, setObsStartDateObj, setObsStartTime]);
 
   useEffect(() => {
     if (lastChangedType === 'end_dt') {
-      syncDateTimeToMjd(obsEndDateObj, obsEndTime, setObsEndMJD);
+      setTimeWarning('');
+      if (obsEndDateObj && obsEndTime.trim()) {
+        const dateStrForParsing = format(obsEndDateObj, 'dd/MM/yyyy');
+        const dateTimeObj = parseDateTimeStrings(dateStrForParsing, obsEndTime.trim());
+        if (dateTimeObj) {
+          const mjd = dateToMjd(dateTimeObj);
+          setObsEndMJD(mjd !== null ? mjd.toString() : '');
+          if (mjd === null) {
+            setTimeWarning('Could not convert End Date/Time to MJD.');
+          }
+        } else {
+          setTimeWarning('Invalid End Date/Time format. Use dd/MM/yyyy and HH:MM:SS.');
+          setObsEndMJD('');
+        }
+      } else if (!obsEndDateObj && !obsEndTime.trim()) {
+        setObsEndMJD('');
+      } else {
+        setObsEndMJD('');
+      }
     }
-  }, [obsEndDateObj, obsEndTime, lastChangedType, syncDateTimeToMjd]);
+  }, [obsEndDateObj, obsEndTime, lastChangedType, setObsEndMJD]);
 
   useEffect(() => {
     if (lastChangedType === 'end_mjd') {
-      syncMjdToDateTime(obsEndMJD, setObsEndDateObj, setObsEndTime);
+      setTimeWarning('');
+      const mjdStr = obsEndMJD.trim();
+      if (mjdStr === "") {
+        setObsEndDateObj(null);
+        setObsEndTime('');
+        return;
+      }
+      const mjdNum = parseFloat(mjdStr);
+      if (isNaN(mjdNum)) {
+        setTimeWarning('End MJD must be a number.');
+        setObsEndDateObj(null);
+        setObsEndTime('');
+        return;
+      }
+      const dateObjFromMjd = mjdToDate(mjdNum);
+      if (dateObjFromMjd) {
+        const { timeStr } = formatDateTimeStrings(dateObjFromMjd);
+        setObsEndDateObj(dateObjFromMjd);
+        setObsEndTime(timeStr);
+      } else {
+        setTimeWarning('End MJD resulted in an out-of-range or invalid date.');
+        setObsEndDateObj(null);
+        setObsEndTime('');
+      }
     }
-  }, [obsEndMJD, lastChangedType, syncMjdToDateTime]);
+  }, [obsEndMJD, lastChangedType, setObsEndDateObj, setObsEndTime]);
 
   // Event Handlers
   const handleResolve = () => {
@@ -190,6 +284,12 @@ function SearchForm({ setResults, isLoggedIn }) {
     // Coordinate Processing
     const coord1Input = coord1.trim();
     const coord2Input = coord2.trim();
+
+    if (timeWarning) {
+        setWarningMessage(timeWarning);
+        setIsSubmitting(false);
+        return;
+    }
 
     if (coord1Input && coord2Input) {
         let systemForBackend = '';
@@ -420,6 +520,12 @@ function SearchForm({ setResults, isLoggedIn }) {
                         </div>
                     </div>
                 </div>
+
+                {timeWarning && (
+                  <div className="alert alert-sm alert-warning mt-1 mb-2 p-1" role="alert">
+                    {timeWarning}
+                  </div>
+                )}
 
                 {/* Time Search Section */}
                 <div className="card mb-3">
