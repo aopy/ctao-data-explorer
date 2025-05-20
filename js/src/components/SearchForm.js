@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import axios from 'axios';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
@@ -13,39 +13,91 @@ import {
     COORD_SYS_GAL
 } from './datetimeUtils';
 
-function SearchForm({ setResults, isLoggedIn }) {
-  // Object Resolve
-  const [objectName, setObjectName] = useState('');
-  const [useSimbad, setUseSimbad] = useState(true);
-  const [useNed, setUseNed] = useState(false);
+const FORM_STATE_SESSION_KEY = 'searchFormStateBeforeLogin';
 
-  // Coordinates
-  const [coordinateSystem, setCoordinateSystem] = useState(COORD_SYS_EQ_DEG);
-  const [coord1, setCoord1] = useState('');
-  const [coord2, setCoord2] = useState('');
-  const [searchRadius, setSearchRadius] = useState('5');
+const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
-  // Time/MJD
-  // Store Date objects for DatePicker, strings for MJD/Time input
-  const [obsStartDateObj, setObsStartDateObj] = useState(null);
-  const [obsStartTime, setObsStartTime] = useState('');
-  const [obsStartMJD, setObsStartMJD] = useState('');   // MJD string
+  // Helper to load state from sessionStorage
+  const loadInitialState = () => {
+    try {
+      const saved = sessionStorage.getItem(FORM_STATE_SESSION_KEY);
+      if (saved) {
+        sessionStorage.removeItem(FORM_STATE_SESSION_KEY);
+        const parsed = JSON.parse(saved);
+        // Convert date strings back to Date objects
+        if (parsed.obsStartDateObj) parsed.obsStartDateObj = new Date(parsed.obsStartDateObj);
+        if (parsed.obsEndDateObj) parsed.obsEndDateObj = new Date(parsed.obsEndDateObj);
+        console.log("SearchForm: Loaded state from session storage:", parsed);
+        return parsed;
+      }
+    } catch (e) {
+      console.error("SearchForm: Failed to load form state from session storage:", e);
+      sessionStorage.removeItem(FORM_STATE_SESSION_KEY);
+    }
+    return {
+      objectName: '', useSimbad: true, useNed: false,
+      coordinateSystem: COORD_SYS_EQ_DEG, coord1: '', coord2: '', searchRadius: '5',
+      obsStartDateObj: null, obsStartTime: '', obsStartMJD: '',
+      obsEndDateObj: null, obsEndTime: '', obsEndMJD: '',
+      tapUrl: 'http://voparis-tap-he.obspm.fr/tap',
+      obscoreTable: 'hess_dr.obscore_sdc',
+      showAdvanced: false,
+    };
+  };
 
-  const [obsEndDateObj, setObsEndDateObj] = useState(null);
-  const [obsEndTime, setObsEndTime] = useState('');
-  const [obsEndMJD, setObsEndMJD] = useState('');
+  // Initialize state using the helper
+  const [initialFormState] = useState(loadInitialState);
 
-  // Tracks which field type initiated the last change
-  const [lastChangedType, setLastChangedType] = useState(null); // 'start_dt', 'start_mjd', 'end_dt', 'end_mjd'
+  const [objectName, setObjectName] = useState(initialFormState.objectName);
+  const [useSimbad, setUseSimbad] = useState(initialFormState.useSimbad);
+  const [useNed, setUseNed] = useState(initialFormState.useNed);
+  const [coordinateSystem, setCoordinateSystem] = useState(initialFormState.coordinateSystem);
+  const [coord1, setCoord1] = useState(initialFormState.coord1);
+  const [coord2, setCoord2] = useState(initialFormState.coord2);
+  const [searchRadius, setSearchRadius] = useState(initialFormState.searchRadius);
+  const [obsStartDateObj, setObsStartDateObj] = useState(initialFormState.obsStartDateObj);
+  const [obsStartTime, setObsStartTime] = useState(initialFormState.obsStartTime);
+  const [obsStartMJD, setObsStartMJD] = useState(initialFormState.obsStartMJD);
+  const [obsEndDateObj, setObsEndDateObj] = useState(initialFormState.obsEndDateObj);
+  const [obsEndTime, setObsEndTime] = useState(initialFormState.obsEndTime);
+  const [obsEndMJD, setObsEndMJD] = useState(initialFormState.obsEndMJD);
+  const [tapUrl, setTapUrl] = useState(initialFormState.tapUrl);
+  const [obscoreTable, setObscoreTable] = useState(initialFormState.obscoreTable);
+  const [showAdvanced, setShowAdvanced] = useState(initialFormState.showAdvanced);
 
-  // Advanced
-  const [tapUrl, setTapUrl] = useState('http://voparis-tap-he.obspm.fr/tap');
-  const [obscoreTable, setObscoreTable] = useState('hess_dr.obscore_sdc');
-  const [showAdvanced, setShowAdvanced] = useState(false);
-
-  // UI Feedback
+  const [lastChangedType, setLastChangedType] = useState(null);
   const [warningMessage, setWarningMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Function to get current form state
+  const getCurrentFormState = useCallback(() => {
+    return {
+      objectName, useSimbad, useNed,
+      coordinateSystem, coord1, coord2, searchRadius,
+      obsStartDateObj: obsStartDateObj ? obsStartDateObj.toISOString() : null, // Store as ISO string
+      obsStartTime, obsStartMJD,
+      obsEndDateObj: obsEndDateObj ? obsEndDateObj.toISOString() : null,
+      obsEndTime, obsEndMJD,
+      tapUrl, obscoreTable, showAdvanced
+    };
+  }, [
+    objectName, useSimbad, useNed, coordinateSystem, coord1, coord2, searchRadius,
+    obsStartDateObj, obsStartTime, obsStartMJD, obsEndDateObj, obsEndTime, obsEndMJD,
+    tapUrl, obscoreTable, showAdvanced
+  ]);
+
+    // Expose a saveState method to the parent App.js using useImperativeHandle
+  useImperativeHandle(ref, () => ({
+    saveState: () => {
+      try {
+        const stateToSave = getCurrentFormState();
+        sessionStorage.setItem(FORM_STATE_SESSION_KEY, JSON.stringify(stateToSave));
+        console.log("SearchForm: State explicitly saved to session storage.", stateToSave);
+      } catch (e) {
+        console.error("SearchForm: Error explicitly saving state to session storage:", e);
+      }
+    }
+  }));
 
   let coord1Placeholder = "e.g., 83.633";
     let coord2Placeholder = "e.g., 22.014";
@@ -639,6 +691,6 @@ function SearchForm({ setResults, isLoggedIn }) {
         </div>
     </div>
   );
-}
+});
 
 export default SearchForm;

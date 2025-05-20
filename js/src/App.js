@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import SearchForm from './components/SearchForm';
 import ResultsTable from './components/ResultsTable';
@@ -130,6 +130,8 @@ function App() {
   const [allBasketGroups, setAllBasketGroups] = useState([]);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
+  const searchFormRef = useRef(null);
+
   const handleBasketGroupsChange = (groups) => {
       setAllBasketGroups(groups || []);
       // Persist active group ID if the active group still exists
@@ -185,6 +187,12 @@ function App() {
   // const handleLogin = () => { window.location.href = '/oidc/login'; };
 
 const handleLogin = () => {
+  // call the saveState method on the SearchForm instance via the ref
+    if (searchFormRef.current && typeof searchFormRef.current.saveState === 'function') {
+      searchFormRef.current.saveState();
+    } else {
+      console.warn("SearchForm ref not available or saveState not exposed.");
+    }
   window.location.href = `${API_PREFIX}/oidc/login`;
 };
 
@@ -323,7 +331,7 @@ const handleLogin = () => {
           <div className="card">
             <div className="card-header bg-secondary text-white">Search Form</div>
             {/* Pass isLoggedIn instead of authToken */}
-            <div className="card-body"><SearchForm setResults={handleSearchResults} isLoggedIn={isLoggedIn} /></div>
+            <div className="card-body"><SearchForm ref={searchFormRef} setResults={handleSearchResults} isLoggedIn={isLoggedIn} /></div>
           </div>
         </div>
 
