@@ -15,6 +15,16 @@ import {
 
 const FORM_STATE_SESSION_KEY = 'searchFormStateBeforeLogin';
 
+const defaultFormValues = {
+  objectName: '', useSimbad: true, useNed: false,
+  coordinateSystem: COORD_SYS_EQ_DEG, coord1: '', coord2: '', searchRadius: '5',
+  obsStartDateObj: null, obsStartTime: '', obsStartMJD: '',
+  obsEndDateObj: null, obsEndTime: '', obsEndMJD: '',
+  tapUrl: 'http://voparis-tap-he.obspm.fr/tap',
+  obscoreTable: 'hess_dr.obscore_sdc',
+  showAdvanced: false,
+};
+
 const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
   // Helper to load state from sessionStorage
@@ -28,21 +38,13 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
         if (parsed.obsStartDateObj) parsed.obsStartDateObj = new Date(parsed.obsStartDateObj);
         if (parsed.obsEndDateObj) parsed.obsEndDateObj = new Date(parsed.obsEndDateObj);
         console.log("SearchForm: Loaded state from session storage:", parsed);
-        return parsed;
+        return { ...defaultFormValues, ...parsed };
       }
     } catch (e) {
-      console.error("SearchForm: Failed to load form state from session storage:", e);
+      console.error("SearchForm: Failed to load state:", e);
       sessionStorage.removeItem(FORM_STATE_SESSION_KEY);
     }
-    return {
-      objectName: '', useSimbad: true, useNed: false,
-      coordinateSystem: COORD_SYS_EQ_DEG, coord1: '', coord2: '', searchRadius: '5',
-      obsStartDateObj: null, obsStartTime: '', obsStartMJD: '',
-      obsEndDateObj: null, obsEndTime: '', obsEndMJD: '',
-      tapUrl: 'http://voparis-tap-he.obspm.fr/tap',
-      obscoreTable: 'hess_dr.obscore_sdc',
-      showAdvanced: false,
-    };
+    return { ...defaultFormValues };
   };
 
   // Initialize state using the helper
@@ -314,6 +316,31 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   const handleEndDateChange = (date) => { setObsEndDateObj(date); setLastChangedType('end_dt'); };
   const handleEndTimeChange = (e) => { setObsEndTime(e.target.value); setLastChangedType('end_dt'); };
   const handleEndMjdChange = (e) => { setObsEndMJD(e.target.value); setLastChangedType('end_mjd'); };
+
+  // handle clear form
+  const handleClearForm = () => {
+    setObjectName(defaultFormValues.objectName);
+    setUseSimbad(defaultFormValues.useSimbad);
+    setUseNed(defaultFormValues.useNed);
+    setCoordinateSystem(defaultFormValues.coordinateSystem);
+    setCoord1(defaultFormValues.coord1);
+    setCoord2(defaultFormValues.coord2);
+    setSearchRadius(defaultFormValues.searchRadius);
+    setObsStartDateObj(defaultFormValues.obsStartDateObj);
+    setObsStartTime(defaultFormValues.obsStartTime);
+    setObsStartMJD(defaultFormValues.obsStartMJD);
+    setObsEndDateObj(defaultFormValues.obsEndDateObj);
+    setObsEndTime(defaultFormValues.obsEndTime);
+    setObsEndMJD(defaultFormValues.obsEndMJD);
+    // TAP URL and Table Name
+    // setTapUrl(defaultFormValues.tapUrl);
+    // setObscoreTable(defaultFormValues.obscoreTable);
+    // setShowAdvanced(defaultFormValues.showAdvanced); // hide advanced
+
+    setWarningMessage('');
+    setLastChangedType(null); // Reset change tracker
+    console.log("Search form cleared.");
+  };
 
   // Submit Handler
   const handleSubmit = async (e) => {
@@ -669,8 +696,18 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
                  </div>
 
 
-                {/* Search Button */}
+                {/* Action Buttons: Search and Clear */}
                 <div className="d-flex justify-content-end mb-3">
+                    {/* Clear Button */}
+                    <button
+                        type="button"
+                        className="btn btn-outline-secondary me-2"
+                        onClick={handleClearForm}
+                        disabled={isSubmitting}
+                    >
+                        Clear Form
+                    </button>
+                    {/* Search Button */}
                     <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
                          {isSubmitting ? (
                             <><span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Searching...</>
