@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useEffect, useCallback, forwardRef, useImperativeHandle, useRef } from 'react';
 import axios from 'axios';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
@@ -70,6 +70,12 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   const [lastChangedType, setLastChangedType] = useState(null);
   const [warningMessage, setWarningMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Ref for debounce timer
+  const timeInputDebounceTimer = useRef(null);
+  const MJDInputDebounceTimer = useRef(null);
+  const endTimeInputDebounceTimer = useRef(null);
+  const endMJDInputDebounceTimer = useRef(null);
 
   // Function to get current form state
   const getCurrentFormState = useCallback(() => {
@@ -159,120 +165,121 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   // Effects for Synchronization
   useEffect(() => {
     if (lastChangedType === 'start_dt') {
-      setTimeWarning('');
-      if (obsStartDateObj && obsStartTime.trim()) {
-        const dateStrForParsing = format(obsStartDateObj, 'dd/MM/yyyy');
-        const dateTimeObj = parseDateTimeStrings(dateStrForParsing, obsStartTime.trim());
+      clearTimeout(timeInputDebounceTimer.current);
 
-        if (dateTimeObj) {
-          // valid date and time, convert to MJD
-          const mjd = dateToMjd(dateTimeObj);
-          setObsStartMJD(mjd !== null ? mjd.toString() : '');
-          if (mjd === null) {
-            setTimeWarning('Could not convert Start Date/Time to MJD.');
+      timeInputDebounceTimer.current = setTimeout(() => {
+        setTimeWarning('');
+        if (obsStartDateObj && obsStartTime.trim()) {
+          const dateStrForParsing = format(obsStartDateObj, 'dd/MM/yyyy');
+          const dateTimeObj = parseDateTimeStrings(dateStrForParsing, obsStartTime.trim());
+          if (dateTimeObj) {
+            const mjd = dateToMjd(dateTimeObj);
+            setObsStartMJD(mjd !== null ? mjd.toString() : '');
+            if (mjd === null) setTimeWarning('Could not convert Start Date/Time to MJD.');
+          } else {
+            setTimeWarning('Invalid Start Date/Time format. Use dd/MM/yyyy and HH:MM:SS.');
+            setObsStartMJD('');
           }
-        } else {
-          // Date and/or Time format is invalid
-          setTimeWarning('Invalid Start Date/Time format. Use dd/MM/yyyy and HH:MM:SS.');
+        } else if (!obsStartDateObj && !obsStartTime.trim()) {
           setObsStartMJD('');
+        } else {
+          setObsStartMJD('');
+          if (obsStartDateObj || obsStartTime.trim()) {
+            // setTimeWarning('Start time is incomplete for MJD calculation.');
+          }
         }
-      } else if (!obsStartDateObj && !obsStartTime.trim()) {
-        // Both are empty, clear MJD
-        setObsStartMJD('');
-      } else {
-        // One is filled, one is not - MJD cannot be fully determined
-        setObsStartMJD('');
-      }
+      }, 750); // Wait 750ms after user stops typing
     }
+    return () => clearTimeout(timeInputDebounceTimer.current);
   }, [obsStartDateObj, obsStartTime, lastChangedType, setObsStartMJD]);
 
   useEffect(() => {
     if (lastChangedType === 'start_mjd') {
-      setTimeWarning('');
-      const mjdStr = obsStartMJD.trim();
+      clearTimeout(MJDInputDebounceTimer.current);
 
-      if (mjdStr === "") {
-        setObsStartDateObj(null);
-        setObsStartTime('');
-        return;
-      }
-
-      const mjdNum = parseFloat(mjdStr);
-      if (isNaN(mjdNum)) {
-        setTimeWarning('Start MJD must be a number.');
-        setObsStartDateObj(null);
-        setObsStartTime('');
-        return;
-      }
-
-      // Attempt to convert MJD to Date object
-      const dateObjFromMjd = mjdToDate(mjdNum);
-
-      if (dateObjFromMjd) {
-        // Conversion successful
-        const { timeStr } = formatDateTimeStrings(dateObjFromMjd);
-        setObsStartDateObj(dateObjFromMjd);
-        setObsStartTime(timeStr);
-      } else {
-        // Conversion failed
-        setTimeWarning('Start MJD resulted in an out-of-range or invalid date.');
-        setObsStartDateObj(null);
-        setObsStartTime('');
-      }
+      MJDInputDebounceTimer.current = setTimeout(() => {
+        setTimeWarning('');
+        const mjdStr = obsStartMJD.trim();
+        if (mjdStr === "") {
+          setObsStartDateObj(null); setObsStartTime(''); return;
+        }
+        const mjdNum = parseFloat(mjdStr);
+        if (isNaN(mjdNum)) {
+          setTimeWarning('Start MJD must be a number.');
+          setObsStartDateObj(null); setObsStartTime(''); return;
+        }
+        const dateObjFromMjd = mjdToDate(mjdNum);
+        if (dateObjFromMjd) {
+          const { timeStr } = formatDateTimeStrings(dateObjFromMjd);
+          setObsStartDateObj(dateObjFromMjd); setObsStartTime(timeStr);
+        } else {
+          setTimeWarning('Start MJD resulted in an out-of-range or invalid date.');
+          setObsStartDateObj(null); setObsStartTime('');
+        }
+      }, 750);
     }
+    return () => clearTimeout(MJDInputDebounceTimer.current);
   }, [obsStartMJD, lastChangedType, setObsStartDateObj, setObsStartTime]);
 
   useEffect(() => {
     if (lastChangedType === 'end_dt') {
-      setTimeWarning('');
-      if (obsEndDateObj && obsEndTime.trim()) {
-        const dateStrForParsing = format(obsEndDateObj, 'dd/MM/yyyy');
-        const dateTimeObj = parseDateTimeStrings(dateStrForParsing, obsEndTime.trim());
-        if (dateTimeObj) {
-          const mjd = dateToMjd(dateTimeObj);
-          setObsEndMJD(mjd !== null ? mjd.toString() : '');
-          if (mjd === null) {
-            setTimeWarning('Could not convert End Date/Time to MJD.');
+      clearTimeout(endTimeInputDebounceTimer.current);
+      endTimeInputDebounceTimer.current = setTimeout(() => {
+        setTimeWarning('');
+        if (obsEndDateObj && obsEndTime.trim()) {
+          const dateStrForParsing = format(obsEndDateObj, 'dd/MM/yyyy');
+          const dateTimeObj = parseDateTimeStrings(dateStrForParsing, obsEndTime.trim());
+          if (dateTimeObj) {
+            const mjd = dateToMjd(dateTimeObj);
+            setObsEndMJD(mjd !== null ? mjd.toString() : '');
+            if (mjd === null) {
+              setTimeWarning('Could not convert End Date/Time to MJD.');
+            }
+          } else {
+            setTimeWarning('Invalid End Date/Time format. Use dd/MM/yyyy and HH:MM:SS.');
+            setObsEndMJD('');
           }
+        } else if (!obsEndDateObj && !obsEndTime.trim()) {
+          setObsEndMJD('');
         } else {
-          setTimeWarning('Invalid End Date/Time format. Use dd/MM/yyyy and HH:MM:SS.');
           setObsEndMJD('');
         }
-      } else if (!obsEndDateObj && !obsEndTime.trim()) {
-        setObsEndMJD('');
-      } else {
-        setObsEndMJD('');
-      }
+      }, 750);
     }
+    return () => clearTimeout(endTimeInputDebounceTimer.current);
   }, [obsEndDateObj, obsEndTime, lastChangedType, setObsEndMJD]);
 
   useEffect(() => {
     if (lastChangedType === 'end_mjd') {
-      setTimeWarning('');
-      const mjdStr = obsEndMJD.trim();
-      if (mjdStr === "") {
-        setObsEndDateObj(null);
-        setObsEndTime('');
-        return;
-      }
-      const mjdNum = parseFloat(mjdStr);
-      if (isNaN(mjdNum)) {
-        setTimeWarning('End MJD must be a number.');
-        setObsEndDateObj(null);
-        setObsEndTime('');
-        return;
-      }
-      const dateObjFromMjd = mjdToDate(mjdNum);
-      if (dateObjFromMjd) {
-        const { timeStr } = formatDateTimeStrings(dateObjFromMjd);
-        setObsEndDateObj(dateObjFromMjd);
-        setObsEndTime(timeStr);
-      } else {
-        setTimeWarning('End MJD resulted in an out-of-range or invalid date.');
-        setObsEndDateObj(null);
-        setObsEndTime('');
-      }
+      clearTimeout(endMJDInputDebounceTimer.current);
+      endMJDInputDebounceTimer.current = setTimeout(() => {
+        setTimeWarning('');
+        const mjdStr = obsEndMJD.trim();
+        if (mjdStr === "") {
+          setObsEndDateObj(null);
+          setObsEndTime('');
+          return;
+        }
+        const mjdNum = parseFloat(mjdStr);
+        if (isNaN(mjdNum)) {
+          setTimeWarning('End MJD must be a number.');
+          setObsEndDateObj(null);
+          setObsEndTime('');
+          return;
+        }
+        const dateObjFromMjd = mjdToDate(mjdNum);
+        if (dateObjFromMjd) {
+          const { timeStr } = formatDateTimeStrings(dateObjFromMjd);
+          setObsEndDateObj(dateObjFromMjd);
+          setObsEndTime(timeStr);
+        } else {
+          setTimeWarning('End MJD resulted in an out-of-range or invalid date.');
+          setObsEndDateObj(null);
+          setObsEndTime('');
+        }
+      }, 750);
     }
+    return () => clearTimeout(endMJDInputDebounceTimer.current);
   }, [obsEndMJD, lastChangedType, setObsEndDateObj, setObsEndTime]);
 
   // Event Handlers
