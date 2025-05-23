@@ -12,6 +12,7 @@ import {
     COORD_SYS_EQ_HMS,
     COORD_SYS_GAL
 } from './datetimeUtils';
+import './styles.css';
 
 const FORM_STATE_SESSION_KEY = 'searchFormStateBeforeLogin';
 
@@ -107,26 +108,23 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     }
   }));
 
-  let coord1Placeholder = "e.g., 83.633";
-    let coord2Placeholder = "e.g., 22.014";
+  // State to manage tooltip visibility
+  const [showCoord1Tooltip, setShowCoord1Tooltip] = useState(false);
+  const [showCoord2Tooltip, setShowCoord2Tooltip] = useState(false);
 
-    if (coordinateSystem === COORD_SYS_EQ_HMS) {
-        coord1Placeholder = "e.g., 05 34 31.9";
-        coord2Placeholder = "e.g., +22 00 52";
-    } else if (coordinateSystem === COORD_SYS_GAL) {
-        coord1Placeholder = "e.g., 184.557";
-        coord2Placeholder = "e.g., -5.784";
-    }
-
-  // Coordinate System Labels
   let coord1Label = 'RA (deg)';
   let coord2Label = 'Dec (deg)';
+  let coord1Example = "e.g., 83.633";
+  let coord2Example = "e.g., 22.014";
+
   if (coordinateSystem === COORD_SYS_EQ_HMS) {
-    coord1Label = 'RA (hms)';
-    coord2Label = 'Dec (dms)';
+    coord1Label = 'RA (hms)'; coord2Label = 'Dec (dms)';
+    coord1Example = "e.g., 05 34 31.9";
+    coord2Example = "e.g., +22 00 52";
   } else if (coordinateSystem === COORD_SYS_GAL) {
-    coord1Label = 'l (deg)';
-    coord2Label = 'b (deg)';
+    coord1Label = 'l (deg)'; coord2Label = 'b (deg)';
+    coord1Example = "e.g., 184.557";
+    coord2Example = "e.g., -5.784";
   }
 
   // Time/MJD synchronization
@@ -563,29 +561,49 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
                         <div className="row g-2 mb-3">
                             <div className="col-md">
                                 <label htmlFor="coord1Input" className="form-label">{coord1Label}</label>
-                                <input
+                                <div className="input-tooltip-container"> {/* Container for input and tooltip */}
+                                  <input
                                     type="text"
                                     className="form-control"
                                     id="coord1Input"
                                     value={coord1}
                                     onChange={(e) => setCoord1(e.target.value)}
-                                    placeholder={coord1Placeholder}
+                                    // placeholder={coord1Placeholder}
+                                    onFocus={() => setShowCoord1Tooltip(true)}
+                                    onBlur={() => setShowCoord1Tooltip(false)}
                                     disabled={isSubmitting}
                                     aria-label={coord1Label}
-                                />
+                                    aria-describedby="coord1Tooltip" // For accessibility
+                                  />
+                                  {showCoord1Tooltip && (
+                                    <span id="coord1Tooltip" className="input-tooltip-text" role="tooltip">
+                                      {coord1Example}
+                                    </span>
+                                  )}
+                               </div>
                             </div>
                             <div className="col-md">
                                  <label htmlFor="coord2Input" className="form-label">{coord2Label}</label>
-                                 <input
-                                    type="text"
-                                    className="form-control"
-                                    id="coord2Input"
-                                    value={coord2}
-                                    onChange={(e) => setCoord2(e.target.value)}
-                                    placeholder={coord2Placeholder}
-                                    disabled={isSubmitting}
-                                    aria-label={coord2Label}
-                                />
+                                 <div className="input-tooltip-container">
+                                   <input
+                                     type="text"
+                                     className="form-control"
+                                     id="coord2Input"
+                                     value={coord2}
+                                     onChange={(e) => setCoord2(e.target.value)}
+                                     // placeholder={coord2Placeholder}
+                                     onFocus={() => setShowCoord2Tooltip(true)}
+                                     onBlur={() => setShowCoord2Tooltip(false)}
+                                     disabled={isSubmitting}
+                                     aria-label={coord2Label}
+                                     aria-describedby="coord2Tooltip"
+                                   />
+                                   {showCoord2Tooltip && (
+                                     <span id="coord2Tooltip" className="input-tooltip-text" role="tooltip">
+                                       {coord2Example}
+                                     </span>
+                                   )}
+                               </div>
                             </div>
                         </div>
 
