@@ -103,6 +103,25 @@ const ResultsTable = ({
           Toggle Columns
         </button>
         <div className="dropdown-menu p-2" aria-labelledby="columnToggleButton">
+          {/* Bulk actions */}
+          <div className="d-flex justify-content-between mb-2">
+            <button
+              type="button"
+              className="btn btn-link btn-sm"
+              onClick={() => setHiddenColumns(toggleableColumns)}
+            >
+              Hide All
+            </button>
+            <button
+              type="button"
+              className="btn btn-link btn-sm"
+              onClick={() => setHiddenColumns([])}
+            >
+              Show All
+            </button>
+          </div>
+          <div className="dropdown-divider"></div>
+          {/* Individual column toggles */}
           {toggleableColumns.map((col) => (
             <div key={col} className="form-check">
               <input
