@@ -217,6 +217,7 @@ const ResultsTable = ({
             {col}
           </div>
         ),
+        selector: row => row[col],
         cell: (row) => (
           <div
             style={{
@@ -231,6 +232,14 @@ const ResultsTable = ({
           </div>
         ),
         sortable: true,
+        sortFunction: (a, b) => {
+          const aVal = parseFloat(a[col]);
+          const bVal = parseFloat(b[col]);
+          if (!isNaN(aVal) && !isNaN(bVal)) {
+            return aVal - bVal;
+          }
+          return String(a[col]).localeCompare(String(b[col]));
+        },
         omit: hiddenColumns.includes(col),
       });
     });
