@@ -38,8 +38,9 @@ const EmRangeChart = ({ results, selectedIds }) => {
       const em_min_val = parseFloat(row[em_min_index]);
       const em_max_val = parseFloat(row[em_max_index]);
 
-      const em_min_tev = wavelengthToTeV(em_max_val);
-      const em_max_tev = wavelengthToTeV(em_min_val);
+      const em_min_tev = wavelengthToTeV(em_min_val);
+      const em_max_tev = wavelengthToTeV(em_max_val);
+
       console.log(
           `Observation ID: ${row[id_index]}, em_min: ${em_min_val}, em_max: ${em_max_val}, em_min_tev: ${em_min_tev}, em_max_tev: ${em_max_tev}`
         );
@@ -173,7 +174,7 @@ const EmRangeChart = ({ results, selectedIds }) => {
         useResizeHandler={true}
            config={{
              responsive: true,
-             displayModeBar: false,
+             displayModeBar: true,
            }}
       />
          <p style={{fontSize: '12px', marginTop: '5px'}}>
