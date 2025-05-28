@@ -101,14 +101,9 @@ const TimelineChart = ({ results, selectedIds }) => {
       title: 'Observation Timeline',
       xaxis: {
         type: 'date',
-        // Let Plotly automatically determine the range
         autorange: true,
-        // For fixed range:
-        // range: [
-        //   earliest_t_min.toISOString(),
-        //   latest_t_max.toISOString()
-        // ],
-        title: 'Time',
+        title: 'Time (UTC)',
+        tickformat: '%Y-%m-%d\n%H:%M:%S UTC',
       },
       yaxis: {
         visible: false,
@@ -134,17 +129,17 @@ const TimelineChart = ({ results, selectedIds }) => {
         type: 'scatter',
         mode: 'markers',
         x: timelineData.map((item) =>
-          new Date(
-            (item.t_min.getTime() + item.t_max.getTime()) / 2
-          ).toISOString()
+          new Date((item.t_min.getTime() + item.t_max.getTime()) / 2)
+            .toISOString()
         ),
         y: timelineData.map(() => 0.5),
         marker: { size: 20, opacity: 0 },
         hoverinfo: 'text',
-        hovertext: timelineData.map(
-          (item) =>
-            `ID: ${item.id}<br>Start: ${item.t_min.toUTCString()}<br>End: ${item.t_max.toUTCString()}`
-        ),
+        hovertext: timelineData.map((item) => {
+          const start = item.t_min.toISOString().replace('Z', ' UTC');
+          const end   = item.t_max.toISOString().replace('Z', ' UTC');
+          return `ID: ${item.id}<br>Start: ${start}<br>End: ${end}`;
+        }),
       },
     ];
   }, [timelineData]);
