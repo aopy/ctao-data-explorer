@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, forwardRef, useImperativeHandl
 import axios from 'axios';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
-import { format, parse, isValid } from 'date-fns';
 import {
     mjdToDate,
     dateToMjd,
@@ -13,6 +12,7 @@ import {
     COORD_SYS_GAL
 } from './datetimeUtils';
 import './styles.css';
+import { formatInTimeZone } from 'date-fns-tz';
 
 const FORM_STATE_SESSION_KEY = 'searchFormStateBeforeLogin';
 
@@ -131,8 +131,8 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   // Use useCallback to memoize handlers
   const syncDateTimeToMjd = useCallback((dateObj, timeStr, setMjdState) => {
     const dateWithTime = parseDateTimeStrings(
-        dateObj ? format(dateObj, 'dd/MM/yyyy') : '', // Get dd/MM/yyyy from date obj
-        timeStr
+      dateObj ? formatInTimeZone(dateObj, 'UTC', 'dd/MM/yyyy') : '',
+      timeStr
     );
     if (dateWithTime) {
       const mjd = dateToMjd(dateWithTime);
@@ -148,13 +148,15 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
       const dateObj = mjdToDate(mjdNum);
       if (dateObj) {
         const { timeStr } = formatDateTimeStrings(dateObj);
-        setDateObjState(dateObj); // Set date object state
-        setTimeState(timeStr);    // Set time string state
+        setDateObjState(dateObj);
+        setTimeState(timeStr);
       } else {
-         setDateObjState(null); setTimeState('');
+        setDateObjState(null);
+        setTimeState('');
       }
     } else {
-       setDateObjState(null); setTimeState('');
+      setDateObjState(null);
+      setTimeState('');
     }
   }, []);
 
@@ -168,7 +170,7 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
       timeInputDebounceTimer.current = setTimeout(() => {
         setTimeWarning('');
         if (obsStartDateObj && obsStartTime.trim()) {
-          const dateStrForParsing = format(obsStartDateObj, 'dd/MM/yyyy');
+          const dateStrForParsing = formatInTimeZone(obsStartDateObj, 'UTC', 'dd/MM/yyyy');
           const dateTimeObj = parseDateTimeStrings(dateStrForParsing, obsStartTime.trim());
           if (dateTimeObj) {
             const mjd = dateToMjd(dateTimeObj);
@@ -182,11 +184,8 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
           setObsStartMJD('');
         } else {
           setObsStartMJD('');
-          if (obsStartDateObj || obsStartTime.trim()) {
-            // setTimeWarning('Start time is incomplete for MJD calculation.');
-          }
         }
-      }, 750); // Wait 750ms after user stops typing
+      }, 750);
     }
     return () => clearTimeout(timeInputDebounceTimer.current);
   }, [obsStartDateObj, obsStartTime, lastChangedType, setObsStartMJD]);
@@ -225,14 +224,12 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
       endTimeInputDebounceTimer.current = setTimeout(() => {
         setTimeWarning('');
         if (obsEndDateObj && obsEndTime.trim()) {
-          const dateStrForParsing = format(obsEndDateObj, 'dd/MM/yyyy');
+          const dateStrForParsing = formatInTimeZone(obsEndDateObj, 'UTC', 'dd/MM/yyyy');
           const dateTimeObj = parseDateTimeStrings(dateStrForParsing, obsEndTime.trim());
           if (dateTimeObj) {
             const mjd = dateToMjd(dateTimeObj);
             setObsEndMJD(mjd !== null ? mjd.toString() : '');
-            if (mjd === null) {
-              setTimeWarning('Could not convert End Date/Time to MJD.');
-            }
+            if (mjd === null) setTimeWarning('Could not convert End Date/Time to MJD.');
           } else {
             setTimeWarning('Invalid End Date/Time format. Use dd/MM/yyyy and HH:MM:SS.');
             setObsEndMJD('');
@@ -460,8 +457,14 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     }
     // Fallback to Date/Time strings only if MJD wasn't provided/valid
     else if (obsStartDateObj && obsStartTime.trim() && obsEndDateObj && obsEndTime.trim()) {
-        const startDateTime = parseDateTimeStrings(format(obsStartDateObj, 'dd/MM/yyyy'), obsStartTime.trim());
-         const endDateTime = parseDateTimeStrings(format(obsEndDateObj, 'dd/MM/yyyy'), obsEndTime.trim());
+        const startDateTime = parseDateTimeStrings(
+        formatInTimeZone(obsStartDateObj, 'UTC', 'dd/MM/yyyy'),
+        obsStartTime.trim()
+        );
+        const endDateTime = parseDateTimeStrings(
+        formatInTimeZone(obsEndDateObj, 'UTC', 'dd/MM/yyyy'),
+        obsEndTime.trim()
+        );
 
         if (!startDateTime || !endDateTime || endDateTime <= startDateTime) {
             setWarningMessage("Invalid Date/Time format. Use dd/MM/yyyy and HH:mm:ss."); setIsSubmitting(false); return;

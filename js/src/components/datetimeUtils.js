@@ -1,4 +1,4 @@
-import { format, parse, isValid } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
 
 // Converts MJD to UTC Date object
 export function mjdToDate(mjd) {
@@ -92,19 +92,14 @@ export function parseDateTimeStrings(dateStr, timeStr) {
 }
 
 // Formats a Date object into "dd/MM/yyyy" and "HH:mm:ss" UTC strings using date-fns
-export function formatDateTimeStrings(date) {
-  if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
+export function formatDateTimeStrings(date: Date) {
+  if (!date || isNaN(date.getTime())) {
     return { dateStr: '', timeStr: '' };
   }
-  try {
-      // Ensure formatting uses UTC values
-      const dateStr = format(date, 'dd/MM/yyyy', { timeZone: 'UTC' });
-      const timeStr = format(date, 'HH:mm:ss', { timeZone: 'UTC' });
-      return { dateStr, timeStr };
-  } catch(e) {
-      console.error("Error formatting date:", e);
-      return { dateStr: '', timeStr: '' };
-  }
+  return {
+    dateStr: formatInTimeZone(date, 'UTC', 'dd/MM/yyyy'),
+    timeStr: formatInTimeZone(date, 'UTC', 'HH:mm:ss'),
+  };
 }
 
 // Function to convert decimal RA (degrees) to HMS string
