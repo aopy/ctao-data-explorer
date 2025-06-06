@@ -1,110 +1,164 @@
 from fastapi.responses import RedirectResponse
-from .auth import UserTable, fastapi_users, auth_backend, cookie_transport
-from fastapi_users.db import SQLAlchemyUserDatabase
-from authlib.integrations.starlette_client import OAuth
-from starlette.config import Config
-from fastapi import APIRouter, Request, Depends, HTTPException
+from fastapi import APIRouter, Request, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from .db import get_async_session
+from sqlalchemy.future import select
+from authlib.integrations.starlette_client import OAuth
+from starlette.config import Config as StarletteConfig
+import json
+import time
+import uuid # for generating session IDs
 from datetime import datetime
-from urllib.parse import urljoin
-import os
-from fastapi_users.password import PasswordHelper
 
-password_helper = PasswordHelper()
+from .db import get_async_session, get_redis_client, encrypt_token
+from .models import UserTable, UserRefreshToken
+from .auth import SESSION_KEY_PREFIX, SESSION_USER_ID_KEY, SESSION_IAM_SUB_KEY, \
+                  SESSION_IAM_EMAIL_KEY, SESSION_ACCESS_TOKEN_KEY, \
+                  SESSION_ACCESS_TOKEN_EXPIRY_KEY, SESSION_DURATION_SECONDS, \
+                  CTAO_PROVIDER_NAME, PRODUCTION
+import redis.asyncio as redis
+
 
 # OIDC config
-config = Config('.env')
-oauth = OAuth(config)
-
+config_env = StarletteConfig('.env')
+oauth = OAuth(config_env)
 oauth.register(
-    name='ctao',
+    name=CTAO_PROVIDER_NAME,
     server_metadata_url=f'https://iam-ctao.cloud.cnaf.infn.it/.well-known/openid-configuration',
-    client_id=config("CTAO_CLIENT_ID"),
-    client_secret=config("CTAO_CLIENT_SECRET"),
-    client_kwargs={
-        'scope': 'openid profile email'
-    }
+    client_id=config_env("CTAO_CLIENT_ID"),
+    client_secret=config_env("CTAO_CLIENT_SECRET"),
+    client_kwargs={'scope': 'openid profile email offline_access'} # Ensure offline_access
 )
 
 oidc_router = APIRouter(prefix="/oidc", tags=["oidc"])
-BASE_URL = os.getenv("BASE_URL")
 
 @oidc_router.get("/login")
 async def login(request: Request):
-    # let FastAPI compute the right path automatically
-    callback_url = request.url_for("auth_callback")
-    return await oauth.ctao.authorize_redirect(request, callback_url)
+    redirect_uri = config_env("OIDC_REDIRECT_URI", default="http://localhost:8000/api/oidc/callback")
+    base_url_env = config_env("BASE_URL", default=None)
+    if PRODUCTION and base_url_env:
+        redirect_uri = f"{base_url_env}/oidc/callback"
+
+    print(f"DEBUG OIDC Login: Using redirect_uri: {redirect_uri}")
+    # Store state in Starlette's temporary session (ctao_session_temp)
+    return await oauth.ctao.authorize_redirect(request, redirect_uri)
 
 
 @oidc_router.get("/callback")
 async def auth_callback(
         request: Request,
-        session: AsyncSession = Depends(get_async_session),
+        db_session: AsyncSession = Depends(get_async_session),
+        redis: redis.Redis = Depends(get_redis_client),
 ):
     try:
-        token = await oauth.ctao.authorize_access_token(request)
-        userinfo = await oauth.ctao.userinfo(token=token)
+        # This uses the temporary OIDC state session cookie
+        token_response = await oauth.ctao.authorize_access_token(request)
     except Exception as e:
-        print(f"OIDC Error: {e}")
+        print(f"OIDC Error during authorize_access_token: {e}")
+        # import traceback; traceback.print_exc()
         raise HTTPException(status_code=400, detail="OIDC authentication failed or was cancelled.")
 
-    email = userinfo.get("email")
-    given_name = userinfo.get("given_name")
-    family_name = userinfo.get("family_name")
-    # sub = userinfo.get("sub") # Not used
+    userinfo = token_response.get('userinfo')
+    if not userinfo or not userinfo.get('sub'):
+        raise HTTPException(status_code=400, detail="User identifier (sub) not found in OIDC token.")
 
-    if not email:
-        raise HTTPException(status_code=400, detail="Email not provided by OIDC provider")
+    iam_subject_id = userinfo['sub']
+    email = userinfo.get('email')
+    # given_name = userinfo.get('given_name')
+    # family_name = userinfo.get('family_name')
 
-    # Check if user exists or create/update
-    user_db = SQLAlchemyUserDatabase(session, UserTable)
-    user = await user_db.get_by_email(email)
+    iam_access_token = token_response['access_token']
+    iam_refresh_token = token_response.get('refresh_token')
+    expires_in = token_response.get('expires_in', 3600) # Default to 1 hour
+    iam_access_token_expiry = time.time() + expires_in
 
-    if not user:
-        # Create new user
-        # Generate a dummy password hash, fastapi-users requires it
-        dummy_password_hash = password_helper.hash("a_very_long_random_dummy_password_that_wont_be_used")
-        new_data = {
-            "email": email,
-            "hashed_password": dummy_password_hash,
-            "is_active": True,
-            "is_verified": True,
-            "first_name": given_name,
-            "last_name": family_name,
-            "first_login_at": datetime.utcnow(),
-        }
-        user = await user_db.create(new_data)
+    # find or create minimal user in app db
+    stmt = select(UserTable).where(UserTable.iam_subject_id == iam_subject_id)
+    result = await db_session.execute(stmt)
+    user_record = result.scalars().first()
+
+    if not user_record:
+        print(f"Creating new minimal user for IAM sub: {iam_subject_id}")
+        user_record = UserTable(
+            iam_subject_id=iam_subject_id,
+            email=email, # Store email?
+            hashed_password="", # Dummy
+            is_active=True,
+            is_verified=True # Verified by IAM
+        )
+        db_session.add(user_record)
+        await db_session.flush()
+        await db_session.refresh(user_record)
+    elif email and user_record.email != email: # Update email if changed in IAM
+        user_record.email = email
+        db_session.add(user_record)
+        await db_session.flush()
+        await db_session.refresh(user_record)
+
+    app_user_id = user_record.id
+
+    # Store Refresh Token in DB (Encrypted)
+    if iam_refresh_token:
+        encrypted_rt = encrypt_token(iam_refresh_token)
+        if encrypted_rt:
+            rt_stmt = select(UserRefreshToken).where(
+                UserRefreshToken.user_id == app_user_id,
+                UserRefreshToken.iam_provider_name == CTAO_PROVIDER_NAME
+            )
+            rt_result = await db_session.execute(rt_stmt)
+            existing_rt_record = rt_result.scalars().first()
+            if existing_rt_record:
+                existing_rt_record.encrypted_refresh_token = encrypted_rt
+                existing_rt_record.last_used_at = datetime.utcnow() # or creation time
+                db_session.add(existing_rt_record)
+            else:
+                new_rt_record = UserRefreshToken(
+                    user_id=app_user_id,
+                    iam_provider_name=CTAO_PROVIDER_NAME,
+                    encrypted_refresh_token=encrypted_rt
+                )
+                db_session.add(new_rt_record)
+            print(f"Stored/Updated refresh token for user_id: {app_user_id}")
+        else:
+            print(f"WARNING: Failed to encrypt refresh token for user_id: {app_user_id}")
     else:
-        # Update existing user
-        update_data = {}
-        if user.first_login_at is None:
-            update_data["first_login_at"] = datetime.utcnow()
-        if user.first_name != given_name:
-             update_data["first_name"] = given_name
-        if user.last_name != family_name:
-             update_data["last_name"] = family_name
+        print(f"WARNING: No refresh token received from IAM for user_id: {app_user_id}")
 
-        if update_data:
-            user = await user_db.update(user, update_data)
 
-    # Generate the JWT token using the strategy from the backend
-    strategy = auth_backend.get_strategy()
-    token = await strategy.write_token(user) # The actual JWT string
-
-    # Create the RedirectResponse
-    redirect_response = RedirectResponse(url="/")
-
-    # Use the RedirectResponse's set_cookie method
-    redirect_response.set_cookie(
-        key=cookie_transport.cookie_name,
-        value=token,
-        max_age=cookie_transport.cookie_max_age,
-        path=cookie_transport.cookie_path,
-        secure=cookie_transport.cookie_secure,
-        httponly=cookie_transport.cookie_httponly,
-        samesite=cookie_transport.cookie_samesite,
+    # Create Server-Side Session in Redis
+    session_id = str(uuid.uuid4()) # Generate a secure random session ID
+    session_data_to_store = {
+        SESSION_USER_ID_KEY: app_user_id,
+        SESSION_IAM_SUB_KEY: iam_subject_id,
+        SESSION_IAM_EMAIL_KEY: email, # Optional
+        SESSION_ACCESS_TOKEN_KEY: iam_access_token,
+        SESSION_ACCESS_TOKEN_EXPIRY_KEY: iam_access_token_expiry,
+    }
+    await redis.setex(
+        f"{SESSION_KEY_PREFIX}{session_id}",
+        SESSION_DURATION_SECONDS, # Session TTL in Redis
+        json.dumps(session_data_to_store)
     )
+    print(f"Created Redis session {session_id} for user_id: {app_user_id}")
 
-    return redirect_response
+    # Commit DB changes
+    try:
+        await db_session.commit()
+    except Exception as db_exc:
+        await db_session.rollback()
+        print(f"Error committing user/refresh token to DB: {db_exc}")
+        raise HTTPException(status_code=500, detail="Failed to finalize user session setup.")
 
+
+    # Set Session ID Cookie and Redirect
+    response = RedirectResponse(url="/")
+    response.set_cookie(
+        key="ctao_session_main",
+        value=session_id,
+        max_age=SESSION_DURATION_SECONDS, # Match Redis TTL
+        path="/",
+        domain=config_env("COOKIE_DOMAIN", default=None) if PRODUCTION else None,
+        secure=config_env("COOKIE_SECURE", cast=bool, default=False) if PRODUCTION else False,
+        httponly=True,
+        samesite="lax"
+    )
+    return response

@@ -14,41 +14,75 @@ from astropy.io.votable import parse_single_table
 from io import BytesIO
 import astropy.units as u
 from astropy.coordinates import SkyCoord
-from .auth import router as auth_router, current_optional_active_user
+# from .auth import router as auth_router, current_optional_active_user
+from .auth import get_optional_session_user
 from starlette.middleware.sessions import SessionMiddleware
-from .oidc import oidc_router
 from starlette.staticfiles import StaticFiles
 from .basket import basket_router
 import urllib.parse
 from astropy.time import Time
 from datetime import datetime
-from .query_history import query_history_router, QueryHistoryCreate, create_query_history
+from .query_history import query_history_router, QueryHistoryCreate, _internal_create_query_history
 from typing import Optional
 import fastapi_users
 from .db import AsyncSessionLocal
 import traceback
 from .coords import coord_router
+from typing import Dict, Any
+
+from .db import get_redis_pool # For app startup/shutdown
+from .auth import router as auth_api_router
+from .oidc import oidc_router
+from starlette.config import Config as StarletteConfig
+from contextlib import asynccontextmanager
+
+config_env = StarletteConfig('.env')
+PRODUCTION = config_env("BASE_URL", default="") is not None
 
 # coordinate cystem constants
 COORD_SYS_EQ_DEG = 'equatorial_deg'
 COORD_SYS_EQ_HMS = 'equatorial_hms'
 COORD_SYS_GAL = 'galactic'
 
+# App Event Handlers for Redis Pool
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Initialize Redis Pool
+    await get_redis_pool()
+    print("FastAPI app startup: Redis pool initialized.")
+    yield
+    # Shutdown: Close Redis Pool
+    global redis_pool # from db.py
+    if redis_pool:
+        await redis_pool.disconnect()
+        print("FastAPI app shutdown: Redis pool closed.")
 
 app = FastAPI(
     title="CTAO Data Explorer API",
     description="An API to access and analyse high-energy astrophysics data from CTAO",
     version="1.0.0",
+    lifespan=lifespan
+)
+
+# Middleware
+# SessionMiddleware for OIDC state/nonce (temporary cookie)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=config_env("SESSION_SECRET_KEY_OIDC", default="a_different_strong_secret_for_oidc_state"),
+    session_cookie="ctao_oidc_state_session",
+    https_only=PRODUCTION,
+    # same_site="lax",
+    max_age=600
 )
 
 # Add session middleware
-app.add_middleware(
-    SessionMiddleware,
-    secret_key="SECRET_KEY",
-    session_cookie="ctao_session",
-    same_site="lax",  # 'lax'/'strict','none'
-    https_only=False,
-)
+# app.add_middleware(
+#    SessionMiddleware,
+#    secret_key="SECRET_KEY",
+#    session_cookie="ctao_session",
+#    same_site="lax",  # 'lax'/'strict','none'
+#    https_only=False,
+#)
 
 # CORS configuration
 origins = [
@@ -86,7 +120,8 @@ async def search_coords(
     tap_url: str = 'http://voparis-tap-he.obspm.fr/tap',
     obscore_table: str = 'hess_dr.obscore_sdc',
     # Auth
-    user: Optional[UserTable] = Depends(current_optional_active_user),
+    # user: Optional[UserTable] = Depends(current_optional_active_user),
+    user_session_data: Optional[Dict[str, Any]] = Depends(get_optional_session_user),
 ):
     base_api_url = f"{request.url.scheme}://{request.headers['host']}"
     print(f"DEBUG search_coords: START. Params received: {request.query_params}")
@@ -235,8 +270,11 @@ async def search_coords(
             search_result_obj = SearchResult(columns=columns_with_datalink, data=data_with_datalink)
             print(f"DEBUG search_coords: SearchResult RECREATED with datalink.")
 
-            if user:
-                print(f"DEBUG: User {user.id} logged in, attempting to save history. ADQL: {adql_query_str}")
+            if user_session_data:
+                app_user_id = user_session_data["app_user_id"]
+                iam_sub = user_session_data.get("iam_subject_id")
+                print(f"DEBUG: User app_id={app_user_id} (IAM sub={iam_sub}) logged in, "
+                      f"attempting to save history. ADQL: {adql_query_str}")
                 try:
                     params_to_save = {
                         "tap_url": tap_url,
@@ -262,10 +300,14 @@ async def search_coords(
                         results=search_result_obj.model_dump()
                     )
                     async with AsyncSessionLocal() as history_session:
-                        await create_query_history(history=history_payload, user=user, session=history_session)
-                    print(f"DEBUG: Called create_query_history for user {user.id} with params: {params_to_save}")
+                        await _internal_create_query_history(
+                            history=history_payload,
+                            app_user_id=app_user_id,
+                            session=history_session
+                        )
+                    print(f"DEBUG: Called create_query_history for user app_id={app_user_id}")
                 except Exception as history_error:
-                    print(f"ERROR saving query history for user {user.id}: {history_error}")
+                    print(f"ERROR saving query history for user app_id={app_user_id}: {history_error}")
                     traceback.print_exc()
 
             print(f"DEBUG search_coords: Returning SearchResult object.")
@@ -465,7 +507,8 @@ async def datalink_endpoint(
     return Response(content=votable_xml, media_type="application/x-votable+xml")
 
 
-app.include_router(auth_router)
+# app.include_router(auth_router)
+app.include_router(auth_api_router, prefix="/api") # For /users/me_from_session, /auth/logout_session
 # app.include_router(oidc_router)
 app.include_router(oidc_router, prefix="/api")
 app.include_router(basket_router)

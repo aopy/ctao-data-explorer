@@ -12,11 +12,18 @@ const UserProfileModal = ({ show, onClose, isLoggedIn }) => {
     if (isLoggedIn && show) {
       setIsLoading(true);
       setError(null);
-      axios
-        .get(`${API_PREFIX}/users/me`)
-        .then(res => setProfile(res.data))
-        .catch(err => console.error("Error fetching user profile", err));
-
+      axios.get('/api/users/me_from_session')
+        .then(res => {
+            setProfile(res.data);
+        })
+        .catch(err => {
+            console.error("Error fetching user profile", err);
+            setError("Could not load profile data.");
+            setProfile(null);
+        })
+        .finally(() => setIsLoading(false));
+    } else if (!show) {
+      setProfile(null); setError(null);
     }
   }, [isLoggedIn, show]);
 
@@ -33,18 +40,8 @@ const UserProfileModal = ({ show, onClose, isLoggedIn }) => {
           <div className="modal-body">
             {profile && (
               <div>
-                <p>
-                  <strong>Full Name:</strong> {profile.first_name} {profile.last_name}
-                </p>
-                <p>
-                  <strong>Email:</strong> {profile.email}
-                </p>
-                <p>
-                  <strong>First Login:</strong>{" "}
-                  {profile.first_login_at
-                    ? new Date(profile.first_login_at).toLocaleString()
-                    : 'N/A'}
-                </p>
+                <p><strong>User ID (App):</strong> {profile.id}</p>
+                <p><strong>Email:</strong> {profile.email}</p>
               </div>
             )}
 

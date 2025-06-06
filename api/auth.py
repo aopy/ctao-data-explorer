@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Response, HTTPException, status
+from fastapi import APIRouter, Depends, Response, HTTPException, status, Request
 from fastapi_users import FastAPIUsers
 from fastapi_users.db import SQLAlchemyUserDatabase
 from fastapi_users.authentication import (
@@ -9,146 +9,234 @@ from fastapi_users.authentication import (
 from starlette.config import Config
 from fastapi_users import schemas
 from sqlalchemy.ext.asyncio import AsyncSession
-from .db import get_async_session
-from .models import UserTable
+from sqlalchemy.future import select
+from .db import get_async_session, get_redis_client, encrypt_token, decrypt_token
+from .models import UserTable, UserRefreshToken
+from authlib.integrations.starlette_client import OAuth
+from starlette.config import Config as StarletteConfig
+import json
+import time
+from typing import Optional, Dict, Any
 from fastapi_users.manager import BaseUserManager
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi.responses import JSONResponse
-import os
+# import os
+import redis.asyncio as redis
 
-PRODUCTION = os.getenv("BASE_URL") is not None
+# PRODUCTION = os.getenv("BASE_URL") is not None
+
+# OIDC Configuration
+config_env = StarletteConfig(".env")
+oauth = OAuth(config_env)
+CTAO_PROVIDER_NAME = 'ctao'
+
+PRODUCTION = config_env("BASE_URL", default="") is not None
 
 # User Schemas
 class UserRead(schemas.BaseUser[int]):
-    first_name: str | None = None
-    last_name: str | None = None
-    first_login_at: datetime | None = None
-    email: str
+    id: int
+    email: Optional[str] = None
+    iam_subject_id: Optional[str] = None
+    is_active: bool # From fastapi-users BaseUser
+    # first_name, last_name
+
     class Config:
         from_attributes = True
 
-# class UserCreate(schemas.BaseUserCreate):
-#    first_name: str | None = None
-#    last_name: str | None = None
+class UserUpdate(schemas.BaseUserUpdate): # If we allow updates to email or flags
+    email: Optional[str] = None
+    # No name updates
 
-class UserUpdate(schemas.BaseUserUpdate):
-    first_name: str | None = None
-    last_name: str | None = None
-
-# JWT Secret from .env
-config = Config(".env")
-JWT_SECRET = config("JWT_SECRET", default="CHANGE_ME_PLEASE")
-
-class UserManager(BaseUserManager[UserTable, int]):
-    reset_password_token_secret = JWT_SECRET
-    verification_token_secret = JWT_SECRET
-    def parse_id(self, user_id: str) -> int:
-        return int(user_id)
-
-async def get_user_db(
-    session: AsyncSession = Depends(get_async_session),
-) -> SQLAlchemyUserDatabase[UserTable, int]:
-    yield SQLAlchemyUserDatabase(session, UserTable)
-
-async def get_user_manager(
-    user_db: SQLAlchemyUserDatabase[UserTable, int] = Depends(get_user_db),
-) -> UserManager:
-    yield UserManager(user_db)
+# Constants for session
+SESSION_KEY_PREFIX = "user_session:"
+SESSION_USER_ID_KEY = "app_user_id"
+SESSION_IAM_SUB_KEY = "iam_sub"
+SESSION_IAM_EMAIL_KEY = "iam_email" # Optional
+SESSION_ACCESS_TOKEN_KEY = "iam_at" # Key for storing IAM Access Token in session
+SESSION_ACCESS_TOKEN_EXPIRY_KEY = "iam_at_exp"
+SESSION_DURATION_SECONDS = config_env("SESSION_DURATION_SECONDS", cast=int, default=3600 * 8) # 8 hours
 
 
-# Configure Cookie Transport
-cookie_transport = CookieTransport(
-    cookie_name="ctao_access_token",
-    cookie_max_age=3600,
-    cookie_path="/",
-    cookie_secure=False, # PRODUCTION
-    cookie_httponly=True,
-    cookie_samesite="lax",
-    cookie_domain="ctao-data-explorer.obspm.fr" if PRODUCTION else None,
-)
+# Session-Based Authentication Dependency
+async def get_current_session_user_data(
+        request: Request,
+        db_session: AsyncSession = Depends(get_async_session),  # For DB operations
+        redis: redis.Redis = Depends(get_redis_client)  # For session store
+) -> Optional[Dict[str, Any]]:  # Returns dict with user data or None
+    session_id = request.cookies.get("ctao_session_main")
+    if not session_id:
+        return None
 
-# JWT Strategy
-def get_jwt_strategy() -> JWTStrategy:
-    """Create a JWT strategy with the secret loaded from .env."""
-    return JWTStrategy(secret=JWT_SECRET, lifetime_seconds=3600)
+    session_data_json = await redis.get(f"{SESSION_KEY_PREFIX}{session_id}")
+    if not session_data_json:
+        return None
 
-# Authentication Backend: Use CookieTransport
-auth_backend = AuthenticationBackend(
-    name="cookie",
-    transport=cookie_transport,
-    get_strategy=get_jwt_strategy,
-)
-
-# FastAPI-Users setup
-fastapi_users = FastAPIUsers[UserTable, int](
-    get_user_manager,
-    [auth_backend],
-)
-
-# User Dependency
-# This will extract the user from the cookie via the transport
-current_active_user = fastapi_users.current_user(active=True)
-
-current_optional_active_user = fastapi_users.current_user(active=True, optional=True)
-
-# Routes
-auth_router = APIRouter()
-
-@auth_router.post("/auth/logout", tags=["auth"])
-async def logout(
-    response: Response,
-    user: UserTable = Depends(current_active_user),
-    transport: CookieTransport = Depends(lambda: cookie_transport),
-) -> Response:
-    """
-    Logout user by returning a response that clears the authentication cookie.
-    """
     try:
-        success_content = {"status": "logout successful"}
-        logout_response = await transport.get_logout_response()
-        final_response = JSONResponse(content=success_content)
-        cookie_header = logout_response.headers.get("set-cookie")
+        session_data = json.loads(session_data_json)
+    except json.JSONDecodeError:
+        print(f"Error decoding session data for session_id: {session_id}")
+        return None  # Invalid session data
 
-        if cookie_header:
-            final_response.headers["set-cookie"] = cookie_header
-        else:
-             print("WARNING: get_logout_response did not return a Set-Cookie header.")
+    app_user_id = session_data.get(SESSION_USER_ID_KEY)
+    iam_access_token = session_data.get(SESSION_ACCESS_TOKEN_KEY)
+    iam_access_token_expiry = session_data.get(SESSION_ACCESS_TOKEN_EXPIRY_KEY)
 
-        return final_response
+    if not app_user_id or not iam_access_token or not iam_access_token_expiry:
+        print(f"Incomplete session data for app_user_id: {app_user_id}")
+        return None  # Essential data missing
 
-    except Exception as e:
-        print(f"Error during transport logout: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An error occurred during logout."
+    # Check Access Token Expiry (give a small buffer, e.g., 60 seconds)
+    if time.time() >= (iam_access_token_expiry - 60):
+        print(f"IAM Access Token expired for user {app_user_id}. Attempting refresh.")
+        # Refresh Logic
+        stmt = select(UserRefreshToken).where(
+            UserRefreshToken.user_id == app_user_id,
+            UserRefreshToken.iam_provider_name == CTAO_PROVIDER_NAME
         )
+        result = await db_session.execute(stmt)
+        user_rt_record = result.scalars().first()
 
-@auth_router.post("/api/auth/logout", include_in_schema=False)
-async def logout_alias(response: Response,
-                       user: UserTable = Depends(current_active_user),
-                       transport: CookieTransport = Depends(lambda: cookie_transport)):
-    return await logout(response, user, transport)
+        if not user_rt_record or not user_rt_record.encrypted_refresh_token:
+            print(f"No valid refresh token found for user {app_user_id}. Clearing session.")
+            await redis.delete(f"{SESSION_KEY_PREFIX}{session_id}")  # Delete invalid session
+            return None
 
-@auth_router.get("/users/me", include_in_schema=False)
-async def whoami_alias(user: UserTable = Depends(current_active_user)):
-    return user
+        decrypted_rt = decrypt_token(user_rt_record.encrypted_refresh_token)
+        if not decrypted_rt:
+            print(f"Failed to decrypt refresh token for user {app_user_id}. Clearing session.")
+            await redis.delete(f"{SESSION_KEY_PREFIX}{session_id}")
+            return None
 
-@auth_router.get("/api/users/me", include_in_schema=False)
-async def users_me_alias(user: UserTable = Depends(current_active_user)):
-    return user
+        try:
+            # Ensure oauth.ctao client is available
+            if not hasattr(oauth, CTAO_PROVIDER_NAME):
+                raise Exception(f"OIDC provider '{CTAO_PROVIDER_NAME}' not configured in oauth object for refresh.")
 
-@auth_router.post("/auth/logout", include_in_schema=False)
-async def logout_alias(response: Response,
-                       user: UserTable = Depends(current_active_user)):
-    return await logout(response, user)
+            # Use authlib to refresh the token
+            token_response = await oauth.ctao.fetch_access_token(
+                grant_type='refresh_token',
+                refresh_token=decrypted_rt,
+            )
+            print(f"DEBUG: Refresh token response: {token_response}")
 
-# Users routes (get/update user info)
-auth_router.include_router(
-    fastapi_users.get_users_router(UserRead, UserUpdate),
-    prefix="/users",
-    tags=["users"],
-)
+            new_iam_access_token = token_response['access_token']
+            new_iam_access_token_expiry = time.time() + token_response['expires_in']
+            # Update stored refresh token if a new one is issued
+            if 'refresh_token' in token_response:
+                new_decrypted_rt = token_response['refresh_token']
+                user_rt_record.encrypted_refresh_token = encrypt_token(new_decrypted_rt)
+                user_rt_record.last_used_at = datetime.utcnow()  # Should be timezone aware
+                db_session.add(user_rt_record)
 
-router = auth_router
+            # Update session data in Redis
+            session_data[SESSION_ACCESS_TOKEN_KEY] = new_iam_access_token
+            session_data[SESSION_ACCESS_TOKEN_EXPIRY_KEY] = new_iam_access_token_expiry
+            await redis.setex(
+                f"{SESSION_KEY_PREFIX}{session_id}",
+                SESSION_DURATION_SECONDS,
+                json.dumps(session_data)
+            )
+            print(f"Successfully refreshed IAM Access Token for user {app_user_id}")
+            iam_access_token = new_iam_access_token  # Use the new token for this request
+
+        except Exception as refresh_exc:
+            print(f"ERROR: Refresh token grant failed for user {app_user_id}: {refresh_exc}")
+            # import traceback; traceback.print_exc()
+            await redis.delete(f"{SESSION_KEY_PREFIX}{session_id}")  # Delete invalid session
+            # delete the refresh token from DB if it's definitively invalid
+            # await db_session.delete(user_rt_record)
+            return None
+        finally:
+            pass
+
+    return {
+        "app_user_id": app_user_id,
+        "iam_subject_id": session_data.get(SESSION_IAM_SUB_KEY),
+        "email": session_data.get(SESSION_IAM_EMAIL_KEY),
+        "iam_access_token": iam_access_token,
+        "is_active": True,
+        "is_superuser": False
+    }
+
+
+# Dependency for required Authenticated User
+async def get_required_session_user(
+        user_data: Optional[Dict[str, Any]] = Depends(get_current_session_user_data)
+) -> Dict[str, Any]:
+    if not user_data:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    return user_data
+
+
+# Dependency for optional Authenticated User
+async def get_optional_session_user(
+        user_data: Optional[Dict[str, Any]] = Depends(get_current_session_user_data)
+) -> Optional[Dict[str, Any]]:
+    return user_data
+
+
+# Router for User-related endpoints (e.g., /users/me)
+auth_api_router = APIRouter()
+
+
+@auth_api_router.get("/users/me_from_session", response_model=UserRead, tags=["users"])
+async def get_me(
+        user_session_data: Dict[str, Any] = Depends(get_required_session_user),
+        db_session: AsyncSession = Depends(get_async_session)
+):
+    app_user_id = user_session_data.get("app_user_id")
+    if not app_user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User ID not found in session")
+
+    # Fetch the minimal UserTable record from your database
+    stmt = select(UserTable).where(UserTable.id == app_user_id)
+    result = await db_session.execute(stmt)
+    user_db_record = result.scalars().first()
+
+    if not user_db_record:
+        print(f"ERROR: User with app_id {app_user_id} found in session but not in DB.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User record not found")
+
+    return UserRead.model_validate(user_db_record)
+
+
+# Logout Endpoint (uses new session logic)
+@auth_api_router.post("/auth/logout_session", tags=["auth"])
+async def logout_session(
+        request: Request,
+        response: Response,  # Keep Response for cookie clearing
+        redis: redis.Redis = Depends(get_redis_client),
+        # Optional: get user_id for RT deletion
+        user_session_data: Optional[Dict[str, Any]] = Depends(get_optional_session_user),
+        db_session: AsyncSession = Depends(get_async_session)
+):
+    session_id = request.cookies.get("ctao_session_main")
+    if session_id:
+        await redis.delete(f"{SESSION_KEY_PREFIX}{session_id}")
+        print(f"Session {session_id} deleted from Redis.")
+
+        if user_session_data and user_session_data.get("app_user_id"):
+            app_user_id = user_session_data["app_user_id"]
+            # Delete refresh token from DB
+            stmt = select(UserRefreshToken).where(UserRefreshToken.user_id == app_user_id)
+            result = await db_session.execute(stmt)
+            rt_to_delete = result.scalars().all()
+            for rt_rec in rt_to_delete:
+                await db_session.delete(rt_rec)
+            await db_session.commit()
+            print(f"Refresh token(s) for user {app_user_id} deleted from DB.")
+            # TODO: Optionally call IAM token revocation endpoint with the RT if we had it
+
+    # Clear the session cookie from the browser
+    cookie_name = "ctao_session_main"
+    response.delete_cookie(
+        key=cookie_name,
+        path="/",
+        domain=config_env("COOKIE_DOMAIN", default=None) if PRODUCTION else None,
+        secure=config_env("COOKIE_SECURE", cast=bool, default=False) if PRODUCTION else False,
+        httponly=True,
+        samesite="lax"
+    )
+    return {"status": "logout successful"}
+
+router = auth_api_router

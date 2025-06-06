@@ -19,13 +19,15 @@ class SearchResult(BaseModel):
 
 class UserTable(Base, SQLAlchemyBaseUserTable):
     __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
-    first_name = Column(String, nullable=True)
-    last_name = Column(String, nullable=True)
-    first_login_at = Column(DateTime(timezone=True), nullable=True)
+    id = Column(Integer, primary_key=True, index=True) # internal app user ID
+    iam_subject_id = Column(String, unique=True, index=True, nullable=False) # IAM's sub
+    email = Column(String, unique=True, index=True, nullable=True) # store email for linking or display?
+    # first_name, last_name, first_login_at are removed
     saved_datasets = relationship("SavedDataset", back_populates="user", cascade="all, delete-orphan")
     basket_groups = relationship("BasketGroup", back_populates="user", cascade="all, delete-orphan")
     query_history = relationship("QueryHistory", back_populates="user", cascade="all, delete-orphan")
+    # Relationship to stored refresh tokens
+    refresh_tokens = relationship("UserRefreshToken", back_populates="user", cascade="all, delete-orphan")
 
 class QueryHistory(Base):
     __tablename__ = "query_history"
@@ -68,3 +70,14 @@ class SavedDataset(Base):
         secondary=basket_items_association,
         back_populates="saved_datasets"
     )
+
+class UserRefreshToken(Base):
+    __tablename__ = "user_refresh_tokens"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    iam_provider_name = Column(String, nullable=False, default="ctao") # multiple IAMs?
+    encrypted_refresh_token = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_used_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
+
+    user = relationship("UserTable", back_populates="refresh_tokens")

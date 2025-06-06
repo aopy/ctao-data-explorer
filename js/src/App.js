@@ -168,7 +168,7 @@ function App() {
   useEffect(() => {
   setIsLoadingUser(true);
   const timer = setTimeout(() => {
-     axios.get(`${API_PREFIX}/users/me`)
+     axios.get(`${API_PREFIX}/users/me_from_session`)
        .then(res => {
          setUser(res.data);
        })
@@ -197,7 +197,7 @@ const handleLogin = () => {
 };
 
   const handleLogout = () => {
-    axios.post(`${API_PREFIX}/auth/logout`) // POST to the cookie logout endpoint
+    axios.post(`${API_PREFIX}/auth/logout_session`)
       .then(() => {
         setUser(null); // Clear user state
         setResults(null);
@@ -291,7 +291,7 @@ const handleLogin = () => {
           {isLoggedIn ? (
             <>
               <span className="me-3 text-success">
-                {user ? `Logged in as ${user.first_name || user.email}` : 'Logged in'}
+                {user ? `Logged in as ${user.email || user.iam_subject_id || `User ID: ${user.id}`}` : 'Logged in'}
               </span>
               <button className="btn btn-outline-secondary me-2" onClick={() => setShowProfileModal(true)}>
                 Profile

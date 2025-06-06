@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 import json
 from .db import get_async_session
-from .auth import current_active_user
+# from .auth import current_active_user
+from .auth import get_required_session_user
 from .models import SavedDataset, UserTable, BasketGroup, basket_items_association
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List
@@ -46,13 +47,15 @@ basket_router = APIRouter(prefix="/basket", tags=["basket"])
 
 @basket_router.get("/groups", response_model=List[BasketGroupRead])
 async def get_basket_groups(
-    user: UserTable = Depends(current_active_user),
+    # user: UserTable = Depends(current_active_user),
+    user_session_data: Dict[str, Any] = Depends(get_required_session_user),
     session: AsyncSession = Depends(get_async_session),
 ):
+    app_user_id = user_session_data["app_user_id"]
     result = await session.execute(
         select(BasketGroup)
         .options(selectinload(BasketGroup.saved_datasets))
-        .where(BasketGroup.user_id == user.id)
+        .where(BasketGroup.user_id == app_user_id)
         .order_by(BasketGroup.created_at.desc())
     )
     groups = result.unique().scalars().all()
@@ -73,7 +76,8 @@ async def get_basket_groups(
 @basket_router.post("/items", response_model=BasketItemRead)
 async def add_item_to_basket(
     basket_data: BasketCreate,
-    user: UserTable = Depends(current_active_user),
+    # user: UserTable = Depends(current_active_user),
+    user_session_data: Dict[str, Any] = Depends(get_required_session_user),
     session: AsyncSession = Depends(get_async_session),
 ):
     """
@@ -81,13 +85,14 @@ async def add_item_to_basket(
     Creates the base SavedDataset if it doesn't exist for the user.
     Prevents adding the same dataset to the same group multiple times.
     """
+    app_user_id = user_session_data["app_user_id"]
     if not basket_data.obs_id:
         raise HTTPException(status_code=400, detail="obs_id is required")
     if not basket_data.basket_group_id:
          raise HTTPException(status_code=400, detail="basket_group_id is required")
 
     stmt_find = select(SavedDataset).where(
-        SavedDataset.user_id == user.id,
+        SavedDataset.user_id == app_user_id,
         SavedDataset.obs_id == basket_data.obs_id
     )
     result = await session.execute(stmt_find)
@@ -95,7 +100,7 @@ async def add_item_to_basket(
 
     if not saved_dataset:
         saved_dataset = SavedDataset(
-            user_id=user.id,
+            user_id=app_user_id,
             obs_id=basket_data.obs_id,
             dataset_json=json.dumps(basket_data.dataset_dict),
         )
@@ -112,7 +117,7 @@ async def add_item_to_basket(
         selectinload(BasketGroup.saved_datasets)
         ).where(
         BasketGroup.id == basket_data.basket_group_id,
-        BasketGroup.user_id == user.id
+        BasketGroup.user_id == app_user_id
     )
     result_group = await session.execute(stmt_group)
     basket_group = result_group.scalars().first()
@@ -146,14 +151,16 @@ async def add_item_to_basket(
 async def remove_item_from_basket_group(
     group_id: int,
     item_id: int,
-    user: UserTable = Depends(current_active_user),
+    # user: UserTable = Depends(current_active_user),
+    user_session_data: Dict[str, Any] = Depends(get_required_session_user),
     session: AsyncSession = Depends(get_async_session),
 ):
     """Removes the link between a specific dataset and a specific basket group."""
+    app_user_id = user_session_data["app_user_id"]
 
     stmt_group = select(BasketGroup).options(selectinload(BasketGroup.saved_datasets)).where(
         BasketGroup.id == group_id,
-        BasketGroup.user_id == user.id
+        BasketGroup.user_id == app_user_id
     )
     result_group = await session.execute(stmt_group)
     basket_group = result_group.scalars().first()
@@ -166,7 +173,7 @@ async def remove_item_from_basket_group(
 
     stmt_item = select(SavedDataset).where(
         SavedDataset.id == item_id,
-        SavedDataset.user_id == user.id
+        SavedDataset.user_id == app_user_id
     )
     result_item = await session.execute(stmt_item)
     saved_dataset = result_item.scalars().first()
@@ -196,15 +203,17 @@ async def remove_item_from_basket_group(
 
 @basket_router.get("/items", response_model=List[BasketItemRead])
 async def get_all_saved_datasets_for_user(
-    user: UserTable = Depends(current_active_user),
+    # user: UserTable = Depends(current_active_user),
+    user_session_data: Dict[str, Any] = Depends(get_required_session_user),
     session: AsyncSession = Depends(get_async_session),
 ):
     """Gets all unique SavedDataset items associated with any of the user's baskets."""
+    app_user_id = user_session_data["app_user_id"]
     stmt = (
         select(SavedDataset)
         .join(basket_items_association)
         .join(BasketGroup)
-        .where(BasketGroup.user_id == user.id)
+        .where(BasketGroup.user_id == app_user_id)
         .distinct()
         .order_by(SavedDataset.created_at.desc())
     )
@@ -234,12 +243,14 @@ async def get_all_saved_datasets_for_user(
 @basket_router.get("/items/{item_id}", response_model=BasketItemRead)
 async def get_saved_dataset_item(
     item_id: int,
-    user: UserTable = Depends(current_active_user),
+    # user: UserTable = Depends(current_active_user),
+    user_session_data: Dict[str, Any] = Depends(get_required_session_user),
     session: AsyncSession = Depends(get_async_session),
 ):
     """Retrieve a single saved dataset by ID, checking user ownership."""
+    app_user_id = user_session_data["app_user_id"]
 
-    stmt = select(SavedDataset).where(SavedDataset.id == item_id, SavedDataset.user_id == user.id)
+    stmt = select(SavedDataset).where(SavedDataset.id == item_id, SavedDataset.user_id == app_user_id)
     result = await session.execute(stmt)
     saved_item = result.scalars().first()
 
@@ -262,11 +273,13 @@ async def get_saved_dataset_item(
 @basket_router.post("/groups", response_model=BasketGroupRead)
 async def create_basket_group(
     group_data: BasketGroupCreate,
-    user: UserTable = Depends(current_active_user),
+    # user: UserTable = Depends(current_active_user),
+    user_session_data: Dict[str, Any] = Depends(get_required_session_user),
     session: AsyncSession = Depends(get_async_session),
 ):
+    app_user_id = user_session_data["app_user_id"]
     group = BasketGroup(
-        user_id=user.id,
+        user_id=app_user_id,
         name=group_data.name,
     )
     session.add(group)
@@ -283,14 +296,16 @@ async def create_basket_group(
 async def update_basket_group(
     group_id: int,
     group_data: BasketGroupUpdate,
-    user: UserTable = Depends(current_active_user),
+    # user: UserTable = Depends(current_active_user),
+    user_session_data: Dict[str, Any] = Depends(get_required_session_user),
     session: AsyncSession = Depends(get_async_session),
 ):
+    app_user_id = user_session_data["app_user_id"]
 
     result = await session.execute(
         select(BasketGroup)
         .options(selectinload(BasketGroup.saved_datasets))
-        .where(BasketGroup.id == group_id, BasketGroup.user_id == user.id)
+        .where(BasketGroup.id == group_id, BasketGroup.user_id == app_user_id)
     )
     group = result.scalars().first()
     if not group:
@@ -313,13 +328,15 @@ async def update_basket_group(
 @basket_router.delete("/groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_basket_group(
     group_id: int,
-    user: UserTable = Depends(current_active_user),
+    # user: UserTable = Depends(current_active_user),
+    user_session_data: Dict[str, Any] = Depends(get_required_session_user),
     session: AsyncSession = Depends(get_async_session),
 ):
+    app_user_id = user_session_data["app_user_id"]
     # Deleting a group might leave SavedDataset records orphaned
     # if they are not in any other group. Cleanup needed?
     result = await session.execute(
-        select(BasketGroup).where(BasketGroup.id == group_id, BasketGroup.user_id == user.id)
+        select(BasketGroup).where(BasketGroup.id == group_id, BasketGroup.user_id == app_user_id)
     )
     group = result.scalars().first()
     if not group:
@@ -332,18 +349,20 @@ async def delete_basket_group(
 @basket_router.get("/groups/{group_id}", response_model=BasketGroupRead)
 async def get_basket_group_by_id(
     group_id: int,
-    user: UserTable = Depends(current_active_user),
+    # user: UserTable = Depends(current_active_user),
+    user_session_data: Dict[str, Any] = Depends(get_required_session_user),
     session: AsyncSession = Depends(get_async_session),
 ):
     """
     Retrieves a specific basket group by its ID, including its items (datasets).
     Ensures the requesting user owns the basket group.
     """
+    app_user_id = user_session_data["app_user_id"]
 
     stmt = (
         select(BasketGroup)
         .options(selectinload(BasketGroup.saved_datasets))
-        .where(BasketGroup.id == group_id, BasketGroup.user_id == user.id)
+        .where(BasketGroup.id == group_id, BasketGroup.user_id == app_user_id)
     )
 
     result = await session.execute(stmt)
