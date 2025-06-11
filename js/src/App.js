@@ -6,7 +6,7 @@ import AladinLiteViewer from './components/AladinLiteViewer';
 import TimelineChart from './components/TimelineChart';
 import EmRangeChart from './components/EmRangeChart';
 import BasketPage from './components/BasketPage';
-import UserProfileModal from './components/UserProfileModal';
+import UserProfilePage from './components/UserProfilePage';
 import QueryStorePage from './components/QueryStorePage';
 import { API_PREFIX } from './index';
 
@@ -128,7 +128,7 @@ function App() {
   const [activeBasketItems, setActiveBasketItems] = useState([]);
   const [basketRefreshCounter, setBasketRefreshCounter] = useState(0);
   const [allBasketGroups, setAllBasketGroups] = useState([]);
-  const [showProfileModal, setShowProfileModal] = useState(false);
+  // const [showProfileModal, setShowProfileModal] = useState(false);
 
   const searchFormRef = useRef(null);
 
@@ -288,19 +288,20 @@ const handleLogin = () => {
         <h2>CTAO Data Explorer</h2>
         <div>
           {/* isLoggedIn flag */}
-          {isLoggedIn ? (
+          {isLoggedIn && user ? (
             <>
               <span className="me-3 text-success">
-                {user ? `Logged in as ${user.email || user.iam_subject_id || `User ID: ${user.id}`}` : 'Logged in'}
+                Logged in as {user.first_name ? `${user.first_name}` : (user.email || `User ID: ${user.id}`)}
               </span>
-              <button className="btn btn-outline-secondary me-2" onClick={() => setShowProfileModal(true)}>
+              <button
+                className="btn btn-outline-secondary me-2"
+                onClick={() => setActiveTab('profile')} // Switch to profile tab
+              >
                 Profile
               </button>
               <button className="btn btn-outline-danger" onClick={handleLogout}>Logout</button>
             </>
-          ) : (
-            <button className="btn btn-outline-primary" onClick={handleLogin}>Login</button>
-          )}
+          ) : ( <button className="btn btn-outline-primary" onClick={handleLogin}>Login</button> )}
         </div>
       </div>
 
@@ -319,6 +320,9 @@ const handleLogin = () => {
         </li>
         <li className="nav-item">
         <button className={`nav-link ${activeTab==='queryStore'?'active':''}`} onClick={() => setActiveTab('queryStore')} type="button">Query Store</button>
+        </li>
+        <li className="nav-item">
+        <button className={`nav-link ${activeTab==='profile'?'active':''}`} onClick={() => setActiveTab('profile')} type="button">Profile</button>
         </li>
         </>
         )}
@@ -425,11 +429,18 @@ const handleLogin = () => {
                           /> )
            : ( <div className="alert alert-warning">Please log in to view your query history.</div> )}
         </div>
+        {/* PROFILE TAB PANE */}
+        <div className={`tab-pane fade ${activeTab === 'profile' ? 'show active' : ''}`} role="tabpanel">
+            {isLoggedIn && user ? (
+                <UserProfilePage user={user} />
+            ) : (
+                <div className="alert alert-warning">Please log in to view your profile.</div>
+            )}
+        </div>
 
       </div>
 
        {/* isLoggedIn */}
-      <UserProfileModal show={showProfileModal} onClose={() => setShowProfileModal(false)} isLoggedIn={isLoggedIn} />
       <BasketItemModal show={showBasketModal} onClose={closeBasketModal} basketItem={basketModalItem} />
     </div>
   );

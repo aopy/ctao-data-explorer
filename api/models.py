@@ -1,9 +1,10 @@
 from pydantic import BaseModel, Field
 from typing import List, Any, Optional
 from .db import Base
-from fastapi_users.db import SQLAlchemyBaseUserTable
-from sqlalchemy import Column, Integer, String, DateTime, Text, func, ForeignKey, Table
+# from fastapi_users.db import SQLAlchemyBaseUserTable
+from sqlalchemy import Column, Integer, String, DateTime, Text, func, ForeignKey, Table, Boolean
 from sqlalchemy.orm import relationship
+from sqlalchemy.ext.declarative import declarative_base
 
 
 basket_items_association = Table(
@@ -17,12 +18,17 @@ class SearchResult(BaseModel):
     columns: List[str] = Field(..., title="Column Names", description="List of column names in the result set")
     data: List[List[Any]] = Field(..., title="Data Rows", description="List of data rows")
 
-class UserTable(Base, SQLAlchemyBaseUserTable):
+class UserTable(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True) # internal app user ID
     iam_subject_id = Column(String, unique=True, index=True, nullable=False) # IAM's sub
-    email = Column(String, unique=True, index=True, nullable=True) # store email for linking or display?
+    # email = Column(String, unique=True, index=True, nullable=True)
     # first_name, last_name, first_login_at are removed
+    hashed_password = Column(String, nullable=False, server_default="dummy_hash_not_used")
+    is_active = Column(Boolean, default=True, nullable=False)
+    is_superuser = Column(Boolean, default=False, nullable=False)
+    is_verified = Column(Boolean, default=True, nullable=False)
+
     saved_datasets = relationship("SavedDataset", back_populates="user", cascade="all, delete-orphan")
     basket_groups = relationship("BasketGroup", back_populates="user", cascade="all, delete-orphan")
     query_history = relationship("QueryHistory", back_populates="user", cascade="all, delete-orphan")

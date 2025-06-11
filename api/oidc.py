@@ -11,10 +11,13 @@ from datetime import datetime
 
 from .db import get_async_session, get_redis_client, encrypt_token
 from .models import UserTable, UserRefreshToken
-from .auth import SESSION_KEY_PREFIX, SESSION_USER_ID_KEY, SESSION_IAM_SUB_KEY, \
-                  SESSION_IAM_EMAIL_KEY, SESSION_ACCESS_TOKEN_KEY, \
-                  SESSION_ACCESS_TOKEN_EXPIRY_KEY, SESSION_DURATION_SECONDS, \
-                  CTAO_PROVIDER_NAME, PRODUCTION
+from .auth import ( # Or a central constants.py
+    SESSION_KEY_PREFIX, SESSION_USER_ID_KEY, SESSION_IAM_SUB_KEY,
+    SESSION_IAM_EMAIL_KEY, SESSION_ACCESS_TOKEN_KEY,
+    SESSION_ACCESS_TOKEN_EXPIRY_KEY, SESSION_DURATION_SECONDS,
+    CTAO_PROVIDER_NAME, PRODUCTION,
+    SESSION_IAM_GIVEN_NAME_KEY, SESSION_IAM_FAMILY_NAME_KEY
+)
 import redis.asyncio as redis
 
 
@@ -63,8 +66,20 @@ async def auth_callback(
 
     iam_subject_id = userinfo['sub']
     email = userinfo.get('email')
-    # given_name = userinfo.get('given_name')
-    # family_name = userinfo.get('family_name')
+    full_name_from_iam = userinfo.get('name')
+    given_name_to_store = None
+    family_name_to_store = None
+
+    if full_name_from_iam and isinstance(full_name_from_iam, str):
+        name_parts = full_name_from_iam.strip().split(' ', 1)
+        given_name_to_store = name_parts[0]
+        if len(name_parts) > 1:
+            family_name_to_store = name_parts[1]
+        else:
+            family_name_to_store = ""
+    # print(f"DEBUG OIDC Callback: UserInfo from IAM: {userinfo}")
+    # print(f"DEBUG OIDC Callback: Parsed given_name: {given_name_to_store}, family_name: {family_name_to_store}")
+
 
     iam_access_token = token_response['access_token']
     iam_refresh_token = token_response.get('refresh_token')
@@ -80,19 +95,19 @@ async def auth_callback(
         print(f"Creating new minimal user for IAM sub: {iam_subject_id}")
         user_record = UserTable(
             iam_subject_id=iam_subject_id,
-            email=email, # Store email?
-            hashed_password="", # Dummy
+            # email=email,
+            hashed_password="",
             is_active=True,
             is_verified=True # Verified by IAM
         )
         db_session.add(user_record)
         await db_session.flush()
         await db_session.refresh(user_record)
-    elif email and user_record.email != email: # Update email if changed in IAM
-        user_record.email = email
-        db_session.add(user_record)
-        await db_session.flush()
-        await db_session.refresh(user_record)
+    #elif email and user_record.email != email:
+    #    user_record.email = email
+    #    db_session.add(user_record)
+    #    await db_session.flush()
+    #    await db_session.refresh(user_record)
 
     app_user_id = user_record.id
 
@@ -130,6 +145,8 @@ async def auth_callback(
         SESSION_USER_ID_KEY: app_user_id,
         SESSION_IAM_SUB_KEY: iam_subject_id,
         SESSION_IAM_EMAIL_KEY: email, # Optional
+        SESSION_IAM_GIVEN_NAME_KEY: given_name_to_store,
+        SESSION_IAM_FAMILY_NAME_KEY: family_name_to_store,
         SESSION_ACCESS_TOKEN_KEY: iam_access_token,
         SESSION_ACCESS_TOKEN_EXPIRY_KEY: iam_access_token_expiry,
     }

@@ -20,10 +20,9 @@ from typing import Optional, Dict, Any
 from fastapi_users.manager import BaseUserManager
 from datetime import datetime, timedelta
 from fastapi.responses import JSONResponse
-# import os
 import redis.asyncio as redis
+import traceback
 
-# PRODUCTION = os.getenv("BASE_URL") is not None
 
 # OIDC Configuration
 config_env = StarletteConfig(".env")
@@ -37,13 +36,14 @@ class UserRead(schemas.BaseUser[int]):
     id: int
     email: Optional[str] = None
     iam_subject_id: Optional[str] = None
-    is_active: bool # From fastapi-users BaseUser
-    # first_name, last_name
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    # is_active: bool # From fastapi-users BaseUser
 
     class Config:
         from_attributes = True
 
-class UserUpdate(schemas.BaseUserUpdate): # If we allow updates to email or flags
+class UserUpdate(schemas.BaseUserUpdate):
     email: Optional[str] = None
     # No name updates
 
@@ -51,7 +51,9 @@ class UserUpdate(schemas.BaseUserUpdate): # If we allow updates to email or flag
 SESSION_KEY_PREFIX = "user_session:"
 SESSION_USER_ID_KEY = "app_user_id"
 SESSION_IAM_SUB_KEY = "iam_sub"
-SESSION_IAM_EMAIL_KEY = "iam_email" # Optional
+SESSION_IAM_EMAIL_KEY = "iam_email"
+SESSION_IAM_GIVEN_NAME_KEY = "first_name"
+SESSION_IAM_FAMILY_NAME_KEY = "last_name"
 SESSION_ACCESS_TOKEN_KEY = "iam_at" # Key for storing IAM Access Token in session
 SESSION_ACCESS_TOKEN_EXPIRY_KEY = "iam_at_exp"
 SESSION_DURATION_SECONDS = config_env("SESSION_DURATION_SECONDS", cast=int, default=3600 * 8) # 8 hours
@@ -73,6 +75,7 @@ async def get_current_session_user_data(
 
     try:
         session_data = json.loads(session_data_json)
+        # print("DEBUG: Raw session data from Redis:", session_data)
     except json.JSONDecodeError:
         print(f"Error decoding session data for session_id: {session_id}")
         return None  # Invalid session data
@@ -153,6 +156,8 @@ async def get_current_session_user_data(
         "app_user_id": app_user_id,
         "iam_subject_id": session_data.get(SESSION_IAM_SUB_KEY),
         "email": session_data.get(SESSION_IAM_EMAIL_KEY),
+        "first_name": session_data.get(SESSION_IAM_GIVEN_NAME_KEY),
+        "last_name": session_data.get(SESSION_IAM_FAMILY_NAME_KEY),
         "iam_access_token": iam_access_token,
         "is_active": True,
         "is_superuser": False
@@ -182,22 +187,27 @@ auth_api_router = APIRouter()
 @auth_api_router.get("/users/me_from_session", response_model=UserRead, tags=["users"])
 async def get_me(
         user_session_data: Dict[str, Any] = Depends(get_required_session_user),
-        db_session: AsyncSession = Depends(get_async_session)
 ):
-    app_user_id = user_session_data.get("app_user_id")
-    if not app_user_id:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User ID not found in session")
+    # print("DEBUG get_me: user_session_data received:", user_session_data)
+    try:
+        data_for_pydantic = {
+            "id": user_session_data.get("app_user_id"),
+            "email": user_session_data.get("email"),
+            "first_name": user_session_data.get("first_name"),
+            "last_name": user_session_data.get("last_name"),
+            "iam_subject_id": user_session_data.get("iam_subject_id"),
+            "is_active": user_session_data.get("is_active", True),
+            "is_superuser": user_session_data.get("is_superuser", False),
+            "is_verified": True  # Assuming from IAM
+        }
 
-    # Fetch the minimal UserTable record from your database
-    stmt = select(UserTable).where(UserTable.id == app_user_id)
-    result = await db_session.execute(stmt)
-    user_db_record = result.scalars().first()
-
-    if not user_db_record:
-        print(f"ERROR: User with app_id {app_user_id} found in session but not in DB.")
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User record not found")
-
-    return UserRead.model_validate(user_db_record)
+        validated_user = UserRead.model_validate(data_for_pydantic)
+        # print(f"DEBUG get_me: Returning validated UserRead: {validated_user.model_dump_json(indent=2)}")
+        return validated_user
+    except Exception as e:
+        print(f"ERROR in get_me constructing UserRead: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Error creating user response object.")
 
 
 # Logout Endpoint (uses new session logic)
