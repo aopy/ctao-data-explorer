@@ -12,6 +12,7 @@ import {
     COORD_SYS_GAL
 } from './datetimeUtils';
 import './styles.css';
+import { format } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 
 const FORM_STATE_SESSION_KEY = 'searchFormStateBeforeLogin';
@@ -131,7 +132,7 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   // Use useCallback to memoize handlers
   const syncDateTimeToMjd = useCallback((dateObj, timeStr, setMjdState) => {
     const dateWithTime = parseDateTimeStrings(
-      dateObj ? formatInTimeZone(dateObj, 'UTC', 'dd/MM/yyyy') : '',
+      dateObj ? format(dateObj, 'dd/MM/yyyy') : '',
       timeStr
     );
     if (dateWithTime) {
@@ -170,7 +171,7 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
       timeInputDebounceTimer.current = setTimeout(() => {
         setTimeWarning('');
         if (obsStartDateObj && obsStartTime.trim()) {
-          const dateStrForParsing = formatInTimeZone(obsStartDateObj, 'UTC', 'dd/MM/yyyy');
+          const dateStrForParsing = format(obsStartDateObj, 'dd/MM/yyyy');
           const dateTimeObj = parseDateTimeStrings(dateStrForParsing, obsStartTime.trim());
           if (dateTimeObj) {
             const mjd = dateToMjd(dateTimeObj);
@@ -224,7 +225,7 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
       endTimeInputDebounceTimer.current = setTimeout(() => {
         setTimeWarning('');
         if (obsEndDateObj && obsEndTime.trim()) {
-          const dateStrForParsing = formatInTimeZone(obsEndDateObj, 'UTC', 'dd/MM/yyyy');
+          const dateStrForParsing = format(obsEndDateObj, 'dd/MM/yyyy');
           const dateTimeObj = parseDateTimeStrings(dateStrForParsing, obsEndTime.trim());
           if (dateTimeObj) {
             const mjd = dateToMjd(dateTimeObj);
