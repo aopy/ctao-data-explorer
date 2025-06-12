@@ -39,7 +39,7 @@ async def login(request: Request):
     redirect_uri = config_env("OIDC_REDIRECT_URI", default="http://localhost:8000/api/oidc/callback")
     base_url_env = config_env("BASE_URL", default=None)
     if PRODUCTION and base_url_env:
-        redirect_uri = f"{base_url_env}/oidc/callback"
+        redirect_uri = f"{base_url_env}/api/oidc/callback"
 
     print(f"DEBUG OIDC Login: Using redirect_uri: {redirect_uri}")
     # Store state in Starlette's temporary session (ctao_session_temp)
