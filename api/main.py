@@ -47,15 +47,11 @@ COORD_SYS_GAL = 'galactic'
 # App Event Handlers for Redis Pool
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Initialize Redis Pool
-    await get_redis_pool()
-    print("FastAPI app startup: Redis pool initialized.")
+    app.state.redis = await get_redis_pool()
+    print("Redis pool initialised.")
     yield
-    # Shutdown: Close Redis Pool
-    global redis_pool # from db.py
-    if redis_pool:
-        await redis_pool.disconnect()
-        print("FastAPI app shutdown: Redis pool closed.")
+    await app.state.redis.disconnect()
+    print("Redis pool closed.")
 
 app = FastAPI(
     title="CTAO Data Explorer API",
@@ -70,7 +66,7 @@ app.add_middleware(
     SessionMiddleware,
     secret_key=config_env("SESSION_SECRET_KEY_OIDC", default="a_different_strong_secret_for_oidc_state"),
     session_cookie="ctao_oidc_state_session",
-    https_only=PRODUCTION,
+    https_only=False,
     # same_site="lax",
     max_age=600
 )
