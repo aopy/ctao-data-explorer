@@ -6,12 +6,12 @@ from authlib.integrations.starlette_client import OAuth
 from starlette.config import Config as StarletteConfig
 import json
 import time
-import uuid # for generating session IDs
+import uuid
 from datetime import datetime
 
 from .db import get_async_session, get_redis_client, encrypt_token
 from .models import UserTable, UserRefreshToken
-from .auth import ( # Or a central constants.py
+from .auth import (
     SESSION_KEY_PREFIX, SESSION_USER_ID_KEY, SESSION_IAM_SUB_KEY,
     SESSION_IAM_EMAIL_KEY, SESSION_ACCESS_TOKEN_KEY,
     SESSION_ACCESS_TOKEN_EXPIRY_KEY, SESSION_DURATION_SECONDS,

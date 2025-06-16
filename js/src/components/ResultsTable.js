@@ -21,6 +21,48 @@ const ResultsTable = ({
   // State to track which row's dropdown is open (by row id).
   const [openDropdownId, setOpenDropdownId] = useState(null);
 
+  const [selectedRows, setSelectedRows] = useState([]);
+
+  const handleSelectedRowsChange = (state) => {
+  setSelectedRows(state.selectedRows);
+  if (onRowSelected) onRowSelected(state);
+  };
+
+  const addManyToBasket = async () => {
+  if (!isLoggedIn) {
+    setAlertMessage('You must be logged in to add to basket!');
+    return;
+  }
+  if (!activeBasketGroupId) {
+    setAlertMessage('Please select an active basket group first!');
+    return;
+  }
+  if (!selectedRows.length) return;
+
+  // Build items list
+  const items = selectedRows.map((row) => ({
+    obs_id: row.obs_id,
+    dataset_dict: row,
+  }));
+
+  try {
+    const res = await axios.post(`${API_PREFIX}/basket/items/bulk`, {
+      basket_group_id: activeBasketGroupId,
+      items,
+    });
+    const added = res.data || [];
+    setAlertMessage(`Added ${added.length} item(s) to basket!`);
+    if (onAddedBasketItem) {
+    added.forEach(item =>
+      onAddedBasketItem(item, activeBasketGroupId)
+    );
+  }
+  } catch (err) {
+    console.error('Bulk add failed', err);
+    setAlertMessage('Error adding items. Some may already be present.');
+  }
+};
+
  // Find the currently active basket group object
   const activeBasketGroup = useMemo(() => {
     return allBasketGroups.find(group => group.id === activeBasketGroupId);
@@ -91,7 +133,7 @@ const ResultsTable = ({
 
   // Custom subheader for column visibility using Bootstrap dropdown
   const SubHeader = () => (
-    <div className="p-2 border-bottom bg-light w-100 d-flex">
+    <div className="p-2 border-bottom bg-light w-100 d-flex align-items-center">
       <div className="dropdown ms-2">
         <button
           className="btn btn-secondary btn-sm dropdown-toggle"
@@ -144,6 +186,14 @@ const ResultsTable = ({
           ))}
         </div>
       </div>
+      <button
+      className="btn btn-primary btn-sm ms-auto"
+      onClick={addManyToBasket}
+      disabled={!selectedRows.length}
+      title="Send all selected rows to active basket"
+      >
+      Add {selectedRows.length || ''} selected
+      </button>
     </div>
   );
 
@@ -284,6 +334,8 @@ const ResultsTable = ({
           subHeader
           subHeaderComponent={<SubHeader />}
           customStyles={customStyles}
+          onSelectedRowsChange={handleSelectedRowsChange}
+          selectableRows
         />
       </div>
     </div>

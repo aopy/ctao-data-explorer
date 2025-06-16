@@ -160,6 +160,17 @@ onBasketGroupsChange, allBasketGroups = [], activeBasketGroupId }) {
     }
   };
 
+  const duplicateGroup = async (groupId) => {
+  setError(null);
+  try {
+    await axios.post(`${API_PREFIX}/basket/groups/${groupId}/duplicate`);
+    fetchBasketGroups();
+  } catch (err) {
+    console.error('Error duplicating basket group', err);
+    setError('Failed to duplicate group.');
+  }
+  };
+
   const openItemModal = (item) => {
     onOpenItem(item);
   };
@@ -198,6 +209,15 @@ onBasketGroupsChange, allBasketGroups = [], activeBasketGroupId }) {
                     aria-label="Current basket name"
                     placeholder="Basket name..."
                 />
+                {/* Duplicate basket */}
+                <button
+                  className="btn btn-sm btn-outline-secondary me-2"
+                  onClick={() => duplicateGroup(activeGroup.id)}
+                  title="Duplicate this basket"
+                >
+                  <i className="bi bi-files me-1" />
+                  Duplicate
+                </button>
                 <button
                     className="btn btn-sm btn-danger"
                     onClick={() => deleteGroup(activeGroup.id)}

@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 import json
 from .db import get_async_session
-# from .auth import current_active_user
 from .auth import get_required_session_user
 from .models import SavedDataset, UserTable, BasketGroup, basket_items_association
 from pydantic import BaseModel, Field
@@ -10,6 +9,7 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload, selectinload, Session
+from sqlalchemy import func
 
 
 class BasketCreate(BaseModel):
@@ -43,34 +43,179 @@ class BasketGroupRead(BaseModel):
         from_attributes = True
         extra = "ignore"
 
+class BasketBulkItem(BaseModel):
+    """One item inside a bulk-add payload."""
+    obs_id: str
+    dataset_dict: Dict[str, Any]
+
+class BasketBulkCreate(BaseModel):
+    basket_group_id: int
+    items: List[BasketBulkItem]
+
 basket_router = APIRouter(prefix="/basket", tags=["basket"])
 
-@basket_router.get("/groups", response_model=List[BasketGroupRead])
-async def get_basket_groups(
-    # user: UserTable = Depends(current_active_user),
+@basket_router.post("/items/bulk", response_model=List[BasketItemRead])
+async def add_items_bulk(
+    payload: BasketBulkCreate,
     user_session_data: Dict[str, Any] = Depends(get_required_session_user),
     session: AsyncSession = Depends(get_async_session),
 ):
     app_user_id = user_session_data["app_user_id"]
+
+    stmt_group = (
+        select(BasketGroup)
+        .options(selectinload(BasketGroup.saved_datasets))
+        .where(BasketGroup.id == payload.basket_group_id, BasketGroup.user_id == app_user_id)
+    )
+    res = await session.execute(stmt_group)
+    group = res.scalars().first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Basket group not found")
+
+    added: List[SavedDataset] = []
+
+    for it in payload.items:
+        # skip duplicates quickly
+        if any(ds.obs_id == it.obs_id for ds in group.saved_datasets):
+            continue
+
+        stmt_find = (
+            select(SavedDataset)
+            .where(SavedDataset.user_id == app_user_id, SavedDataset.obs_id == it.obs_id)
+        )
+        res_ds = await session.execute(stmt_find)
+        ds = res_ds.scalars().first()
+        if not ds:
+            ds = SavedDataset(
+                user_id=app_user_id,
+                obs_id=it.obs_id,
+                dataset_json=json.dumps(it.dataset_dict),
+            )
+            session.add(ds)
+            await session.flush()
+            await session.refresh(ds)
+
+        group.saved_datasets.append(ds)
+        added.append(ds)
+
+    await session.commit()
+
+    out: List[BasketItemRead] = []
+    for ds in added:
+        try:
+            parsed = json.loads(ds.dataset_json) if isinstance(ds.dataset_json, str) else ds.dataset_json
+        except Exception:
+            parsed = {}
+        out.append(BasketItemRead(id=ds.id, obs_id=ds.obs_id, dataset_json=parsed, created_at=ds.created_at))
+
+    return out
+
+
+async def _ensure_default_group(session: AsyncSession, user_id: int) -> BasketGroup:
+    """
+    Make sure the user has at least one basket group.
+    Returns the (first) group that should be considered active.
+    """
+    stmt = (
+        select(BasketGroup)
+        .where(BasketGroup.user_id == user_id)
+        .order_by(BasketGroup.created_at.asc())
+    )
+    result = await session.execute(stmt)
+    first_group = result.scalars().first()
+    if first_group:
+        return first_group
+    # create “Basket 1”
+    first_group = BasketGroup(user_id=user_id, name="Basket 1")
+    session.add(first_group)
+    await session.commit()
+    await session.refresh(first_group)
+    return first_group
+
+
+async def _next_default_group_name(session: AsyncSession, user_id: int) -> str:
+    """
+    Returns “Basket N” where N is 1 + the amount the user already has.
+    Guaranteed unique for that user.
+    """
+    stmt = select(func.count(BasketGroup.id)).where(BasketGroup.user_id == user_id)
+    result = await session.execute(stmt)
+    count = result.scalar_one() or 0
+    return f"Basket {count + 1}"
+
+@basket_router.get("/groups", response_model=List[BasketGroupRead])
+async def get_basket_groups(
+    user_session_data: Dict[str, Any] = Depends(get_required_session_user),
+    session: AsyncSession = Depends(get_async_session),
+):
+    app_user_id = user_session_data["app_user_id"]
+
+    # guarantee at least one group exists
+    await _ensure_default_group(session, app_user_id)
+
     result = await session.execute(
         select(BasketGroup)
         .options(selectinload(BasketGroup.saved_datasets))
         .where(BasketGroup.user_id == app_user_id)
-        .order_by(BasketGroup.created_at.desc())
+        .order_by(BasketGroup.created_at.asc())
     )
     groups = result.unique().scalars().all()
 
-    # Convert dataset_json from string to dict for each basket item
-    for group in groups:
-        for item in group.saved_datasets:
+    for g in groups:
+        for item in g.saved_datasets:
             if isinstance(item.dataset_json, str):
                 try:
                     item.dataset_json = json.loads(item.dataset_json)
-                except json.JSONDecodeError:
+                except Exception:
                     item.dataset_json = {"error": "invalid json"}
-            elif item.dataset_json is None:
-                item.dataset_json = {"error": "missing json"}
+
     return groups
+
+@basket_router.post("/groups/{group_id}/duplicate", response_model=BasketGroupRead)
+async def duplicate_basket_group(
+    group_id: int,
+    user_session_data: Dict[str, Any] = Depends(get_required_session_user),
+    session: AsyncSession = Depends(get_async_session),
+):
+    app_user_id = user_session_data["app_user_id"]
+
+    orig_stmt = (
+        select(BasketGroup)
+        .options(selectinload(BasketGroup.saved_datasets))
+        .where(BasketGroup.id == group_id, BasketGroup.user_id == app_user_id)
+    )
+    res = await session.execute(orig_stmt)
+    orig = res.scalars().first()
+    if not orig:
+        raise HTTPException(status_code=404, detail="Basket group not found")
+
+    new_name = await _next_default_group_name(session, app_user_id)
+
+    clone = BasketGroup(user_id=app_user_id, name=new_name)
+
+    clone.saved_datasets.extend(orig.saved_datasets)
+
+    session.add(clone)
+    await session.commit()
+
+    await session.refresh(clone, attribute_names=["saved_datasets"])
+
+    items_out = [
+        BasketItemRead(
+            id=ds.id,
+            obs_id=ds.obs_id,
+            dataset_json=json.loads(ds.dataset_json) if isinstance(ds.dataset_json, str) else ds.dataset_json,
+            created_at=ds.created_at,
+        )
+        for ds in clone.saved_datasets
+    ]
+
+    return BasketGroupRead(
+        id=clone.id,
+        name=clone.name,
+        created_at=clone.created_at,
+        saved_datasets=items_out,
+    )
 
 
 @basket_router.post("/items", response_model=BasketItemRead)
