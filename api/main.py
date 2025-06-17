@@ -5,7 +5,8 @@ from .tap import (
     perform_coords_query,
     perform_time_query,
     perform_coords_time_query,
-    astropy_table_to_list
+    astropy_table_to_list,
+    get_column_info
 )
 import pyvo as vo
 import math
@@ -501,6 +502,18 @@ async def datalink_endpoint(
 </VOTABLE>
 '''
     return Response(content=votable_xml, media_type="application/x-votable+xml")
+
+
+@app.get("/api/column_info", tags=["metadata"])
+async def column_info(
+    tap_url: str = Query(..., description="TAP base URL"),
+    table:   str = Query(..., description="Table name (e.g. hess_dr.obscore_sdc)"),
+):
+    """
+    Return a mapping  {column_name: {"label": "...", "unit": "..."}}.
+    Cached in memory so the TAP server is contacted only once.
+    """
+    return get_column_info(tap_url, table)
 
 
 # app.include_router(auth_router)

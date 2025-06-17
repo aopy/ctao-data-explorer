@@ -129,6 +129,8 @@ function App() {
   const [basketRefreshCounter, setBasketRefreshCounter] = useState(0);
   const [allBasketGroups, setAllBasketGroups] = useState([]);
   // const [showProfileModal, setShowProfileModal] = useState(false);
+  const [tapUrl, setTapUrl] = useState('http://voparis-tap-he.obspm.fr/tap');
+  const [obscoreTable, setObscoreTable] = useState('hess_dr.obscore_sdc');
 
   const searchFormRef = useRef(null);
 
@@ -388,6 +390,8 @@ const handleLogin = () => {
                         allBasketGroups={allBasketGroups}
                         activeBasketGroupId={activeBasketGroupId}
                         onAddedBasketItem={handleBasketItemAdded}
+                        tapUrl={tapUrl}
+                        obsCoreTable={obscoreTable}
                       />
                     </div>
                   </div>

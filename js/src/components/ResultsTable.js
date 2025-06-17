@@ -1,8 +1,23 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import DataTable from 'react-data-table-component';
 import axios from 'axios';
 import DataLinkDropdown from './DataLinkDropdown';
 import { API_PREFIX } from '../index';
+
+const LABEL_OVERRIDES = {
+  muoneff:  "Muon efficiency",
+  quality:  "Quality flag",
+  coverage: "Coverage (MOC)",
+};
+
+const shortLabel = (rawName, fullLabel) => {
+  if (LABEL_OVERRIDES[rawName]) return LABEL_OVERRIDES[rawName];
+
+  let short = fullLabel.split(/[.;]/)[0].trim();
+  if (!short) short = fullLabel;
+
+  return short.length > 80 ? `${short.slice(0, 37)}…` : short;
+};
 
 const ResultsTable = ({
   results,
@@ -11,6 +26,8 @@ const ResultsTable = ({
   onAddedBasketItem,
   allBasketGroups = [],
   activeBasketGroupId,
+  tapUrl,
+  obsCoreTable,
 }) => {
   const { columns, data } = results;
 
@@ -20,6 +37,21 @@ const ResultsTable = ({
   const [alertMessage, setAlertMessage] = useState(null);
   // State to track which row's dropdown is open (by row id).
   const [openDropdownId, setOpenDropdownId] = useState(null);
+
+  const [colMeta, setColMeta] = useState({});
+
+  // whenever a new results object arrives, fetch column info
+  useEffect(() => {
+    if (!results?.columns?.length) return;
+    if (!tapUrl || !obsCoreTable) return;
+
+    axios
+      .get(`${API_PREFIX}/column_info`, {
+        params: { tap_url: tapUrl, table: obsCoreTable },
+      })
+      .then(r => setColMeta(r.data))
+      .catch(() => setColMeta({}));
+  }, [results, tapUrl, obsCoreTable]);
 
   const [selectedRows, setSelectedRows] = useState([]);
 
@@ -254,19 +286,31 @@ const ResultsTable = ({
       if (col === "datalink_url") return;
       cols.push({
         id: `column-${col}-${index}`,
-        name: (
+        name: (() => {
+          const meta   = colMeta[col] || {};
+          const label  = meta.label || col;
+          const unitStr = meta.unit ? ` (${meta.unit})` : '';
+
+          const headerText = shortLabel(col, label) + unitStr;
+          const tooltip    = `${label}${unitStr}`; // mouse-over text
+
+          const width = Math.min(headerText.length * 8 + 24, 260);
+
+          return (
           <div
             style={{
-              width: colWidth,
+              width,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap'
+              whiteSpace: 'normal',
+              lineHeight: 1.1,
             }}
-            title={col}
-          >
-            {col}
-          </div>
-        ),
+          title={tooltip}
+        >
+          {headerText}
+        </div>
+      );
+    })(),
         selector: row => row[col],
         cell: (row) => (
           <div

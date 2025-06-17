@@ -4,6 +4,38 @@ import numpy as np
 import math
 from astropy.table import Table
 import traceback
+from functools import lru_cache
+
+
+@lru_cache(maxsize=32)
+def get_column_info(tap_url: str, table_name: str) -> dict[str, dict[str, str]]:
+    """
+    Return {column_name: {"label": str, "unit": str}} for one TAP table.
+    Result is cached in memory.
+    """
+    out: dict[str, dict[str, str]] = {}
+    try:
+        srv = vo.dal.TAPService(tap_url)
+        if hasattr(srv, "describe_tables"):
+            tables = srv.describe_tables()
+        else:
+            tables = srv.tables.values()
+        tmeta = next((t for t in tables if t.name == table_name), None)
+        if tmeta is None:
+            print(f"get_column_info: table {table_name} not found on service")
+            return out
+
+        for col in tmeta.columns:
+            label = (getattr(col, "description", "") or
+                     getattr(col, "utype", "") or
+                     col.name).strip()
+            unit  = (getattr(col, "unit", "") or "").strip()
+            out[col.name] = {"label": label, "unit": unit}
+
+    except Exception as e:
+        print(f"get_column_info: failed for {tap_url} {table_name}: {e}")
+
+    return out
 
 
 def _process_tap_results(tap_results: vo.dal.TAPResults) -> Table | None:
