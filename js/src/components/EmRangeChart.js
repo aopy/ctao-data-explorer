@@ -1,4 +1,5 @@
 import React, { useMemo, useEffect, useState } from 'react';
+import { palette, rgba } from './chartColours';
 import Plot from 'react-plotly.js';
 
 const EmRangeChart = ({ results, selectedIds }) => {
@@ -85,7 +86,9 @@ const EmRangeChart = ({ results, selectedIds }) => {
 
     return emData.map((item) => {
       const isSelected = selectedIds && selectedIds.includes(item.id);
-      const color = isSelected ? 'rgba(255, 165, 0, 0.7)' : 'rgba(0, 0, 255, 0.4)'; // Orange for selected blue for others
+      const color = isSelected
+        ? rgba(palette.orange, 0.75)
+        : rgba(palette.blue,   0.35);
 
       return {
         type: 'rect',
@@ -112,8 +115,10 @@ const EmRangeChart = ({ results, selectedIds }) => {
       xaxis: {
         type: 'log',
         autorange: true,
-        title: 'Energy (TeV)',
-          tickformat: '.1e',
+        title: { text: 'Energy (TeV)', standoff: 8 },
+        tickformat: '.1e',
+        tickangle: -30,
+        automargin: true,
       },
       yaxis: {
         visible: false,
@@ -121,8 +126,9 @@ const EmRangeChart = ({ results, selectedIds }) => {
         fixedrange: true,
       },
       showlegend: false,
+      autosize: true,
       height: 200,
-      margin: { l: 50, r: 50, t: 50, b: 50 },
+      margin: { l: 40, r: 10, t: 42, b: 65 },
       hovermode: 'closest',
       shapes: shapes,
     };

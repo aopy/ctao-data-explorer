@@ -1,4 +1,5 @@
 import React, { useMemo, useEffect, useState } from 'react';
+import { palette, rgba } from './chartColours';
 import Plot from 'react-plotly.js';
 
 const TimelineChart = ({ results, selectedIds }) => {
@@ -85,11 +86,13 @@ const TimelineChart = ({ results, selectedIds }) => {
         x1: item.t_max.toISOString(),
         y0: 0,
         y1: 1,
-        fillcolor: isSelected ? 'blue' : 'lightblue',
+        fillcolor: isSelected
+          ? rgba(palette.green, 0.75)        // selected: strong green
+          : rgba(palette.grey,  0.35),       // others: light grey
         line: {
-          width: isSelected ? 2 : 1,         // Thicker border for selected
-          color: isSelected ? 'red' : 'blue' // Red border for selected, blue for unselected
-        },
+          width: isSelected ? 2 : 0.5,
+          color: rgba(palette.green, 0.95),
+         },
         layer: 'above'
       };
     });
@@ -102,8 +105,10 @@ const TimelineChart = ({ results, selectedIds }) => {
       xaxis: {
         type: 'date',
         autorange: true,
-        title: 'Time (UTC)',
-        tickformat: '%Y-%m-%d\n%H:%M:%S UTC',
+        title: { text: 'Time (UTC)', standoff: 8 },
+        tickformat: '%Y-%m-%d',
+        tickangle: -45,           // tilt for small widths
+        automargin: true,
       },
       yaxis: {
         visible: false,
@@ -111,8 +116,9 @@ const TimelineChart = ({ results, selectedIds }) => {
         fixedrange: true,
       },
       showlegend: false,
+      autosize: true,
       height: 200,
-      margin: { l: 50, r: 50, t: 50, b: 50 },
+      margin: { l: 40, r: 10, t: 42, b: 75 },
       hovermode: 'closest',
       shapes: shapes,
     };
