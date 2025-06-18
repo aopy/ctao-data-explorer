@@ -117,6 +117,8 @@ const EmRangeChart = ({ results, selectedIds }) => {
         autorange: true,
         title: { text: 'Energy (TeV)', standoff: 8 },
         tickformat: '.1e',
+        nticks: 6,
+        automargin: true,
         tickangle: -30,
         automargin: true,
       },
