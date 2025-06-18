@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 
-const UNSELECTED_COLOR = 'yellow';
-const SELECTED_COLOR = 'red';
-const CIRCLE_COLOR_UNSELECTED = 'cyan';
-const CIRCLE_COLOR_SELECTED = 'red';
+// Okabe–Ito colour-blind-safe palette
+const UNSELECTED_COLOR       = '#56B4E9'; // blue
+const SELECTED_COLOR         = '#F0E442'; // yellow
+const CIRCLE_COLOR_UNSELECTED= '#999999'; // grey
+const CIRCLE_COLOR_SELECTED  = '#F0E442'; // yellow
 const MARKER_SIZE = 8;
 const CIRCLE_LINE_WIDTH = 1;
 
@@ -18,12 +19,18 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [] }) => {
     const fovDeg = parseFloat(data.s_fov);
 
     canvasCtx.beginPath();
-    const baseSize = isSelected ? MARKER_SIZE + 2 : MARKER_SIZE;
+    const baseSize = isSelected ? MARKER_SIZE + 3 : MARKER_SIZE;
+    canvasCtx.lineWidth = isSelected ? 2 : 0.5;
+    canvasCtx.strokeStyle = '#00000055';
+    canvasCtx.stroke();
     canvasCtx.moveTo(source.x, source.y - baseSize * 0.7);
     canvasCtx.lineTo(source.x - baseSize * 0.6, source.y + baseSize * 0.4);
     canvasCtx.lineTo(source.x + baseSize * 0.6, source.y + baseSize * 0.4);
     canvasCtx.closePath();
     canvasCtx.fillStyle = isSelected ? SELECTED_COLOR : UNSELECTED_COLOR;
+    canvasCtx.lineWidth   = isSelected ? 2 : 0.5;
+    canvasCtx.strokeStyle = '#00000099';
+    canvasCtx.stroke();
     canvasCtx.fill();
 
     if (!isNaN(fovDeg) && fovDeg > 0) {
