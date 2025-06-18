@@ -182,7 +182,7 @@ const EmRangeChart = ({ results, selectedIds }) => {
         useResizeHandler={true}
            config={{
              responsive: true,
-             displayModeBar: true,
+             //displayModeBar: true,
            }}
       />
          <p style={{fontSize: '12px', marginTop: '5px'}}>
