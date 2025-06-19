@@ -1,23 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import DataTable from 'react-data-table-component';
 import axios from 'axios';
 import DataLinkDropdown from './DataLinkDropdown';
 import { API_PREFIX } from '../index';
-
-const LABEL_OVERRIDES = {
-  muoneff:  "Muon efficiency",
-  quality:  "Quality flag",
-  coverage: "Coverage (MOC)",
-};
-
-const shortLabel = (rawName, fullLabel) => {
-  if (LABEL_OVERRIDES[rawName]) return LABEL_OVERRIDES[rawName];
-
-  let short = fullLabel.split(/[.;]/)[0].trim();
-  if (!short) short = fullLabel;
-
-  return short.length > 80 ? `${short.slice(0, 37)}…` : short;
-};
+import { getColumnDisplayInfo } from './columnConfig';
 
 const ResultsTable = ({
   results,
@@ -26,10 +12,8 @@ const ResultsTable = ({
   onAddedBasketItem,
   allBasketGroups = [],
   activeBasketGroupId,
-  tapUrl,
-  obsCoreTable,
 }) => {
-  const { columns, data } = results;
+  const { columns: backendColumnNames, data } = results;
 
   // State to track hidden columns
   const [hiddenColumns, setHiddenColumns] = useState([]);
@@ -38,20 +22,14 @@ const ResultsTable = ({
   // State to track which row's dropdown is open (by row id).
   const [openDropdownId, setOpenDropdownId] = useState(null);
 
-  const [colMeta, setColMeta] = useState({});
+   const [selectedTableRows, setSelectedTableRows] = useState([]);
 
-  // whenever a new results object arrives, fetch column info
-  useEffect(() => {
-    if (!results?.columns?.length) return;
-    if (!tapUrl || !obsCoreTable) return;
-
-    axios
-      .get(`${API_PREFIX}/column_info`, {
-        params: { tap_url: tapUrl, table: obsCoreTable },
-      })
-      .then(r => setColMeta(r.data))
-      .catch(() => setColMeta({}));
-  }, [results, tapUrl, obsCoreTable]);
+   const handleSelectedTableRowsChange = (state) => {
+    setSelectedTableRows(state.selectedRows);
+    if (onRowSelected) {
+        onRowSelected(state);
+    }
+  };
 
   const [selectedRows, setSelectedRows] = useState([]);
 
@@ -69,10 +47,10 @@ const ResultsTable = ({
     setAlertMessage('Please select an active basket group first!');
     return;
   }
-  if (!selectedRows.length) return;
+  if (!selectedTableRows.length) return;
 
   // Build items list
-  const items = selectedRows.map((row) => ({
+  const items = selectedTableRows.map((row) => ({
     obs_id: row.obs_id,
     dataset_dict: row,
   }));
@@ -157,8 +135,16 @@ const ResultsTable = ({
   // Function to close alert messages
   const handleCloseAlert = () => setAlertMessage(null);
 
+  const toggleableBackendCols = useMemo(() => {
+    if (!backendColumnNames) return [];
+    return backendColumnNames.filter(colName =>
+        colName !== "datalink_url"
+        && colName !== "obs_publisher_did"
+    );
+  }, [backendColumnNames]);
+
   // Define which columns are toggleable
-  const toggleableColumns = columns.filter(col => col !== "datalink_url");
+  // const toggleableColumns = columns.filter(col => col !== "datalink_url");
 
   // Fixed column width
   const colWidth = "150px";
@@ -182,7 +168,7 @@ const ResultsTable = ({
             <button
               type="button"
               className="btn btn-link btn-sm"
-              onClick={() => setHiddenColumns(toggleableColumns)}
+              onClick={() => setHiddenColumns(toggleableBackendCols)}
             >
               Hide All
             </button>
@@ -195,42 +181,44 @@ const ResultsTable = ({
             </button>
           </div>
           <div className="dropdown-divider"></div>
-          {/* Individual column toggles */}
-          {toggleableColumns.map((col) => (
-            <div key={col} className="form-check">
-              <input
-                type="checkbox"
-                className="form-check-input"
-                id={`column-${col}`}
-                checked={!hiddenColumns.includes(col)}
-                onChange={() => {
-                  setHiddenColumns((current) =>
-                    current.includes(col)
-                      ? current.filter((c) => c !== col)
-                      : [...current, col]
-                  );
-                }}
-              />
-              <label className="form-check-label" htmlFor={`column-${col}`}>
-                {col}
-              </label>
-            </div>
-          ))}
+          {toggleableBackendCols.map((backendColName) => {
+            const displayInfo = getColumnDisplayInfo(backendColName);
+            return (
+              <div key={backendColName} className="form-check">
+                <input
+                  type="checkbox"
+                  className="form-check-input"
+                  id={`column-${backendColName}`}
+                  checked={!hiddenColumns.includes(backendColName)}
+                  onChange={() => {
+                    setHiddenColumns((current) =>
+                      current.includes(backendColName)
+                        ? current.filter((c) => c !== backendColName)
+                        : [...current, backendColName]
+                    );
+                  }}
+                />
+                <label className="form-check-label" htmlFor={`column-${backendColName}`}>
+                  {displayInfo.displayName}
+                </label>
+              </div>
+            );
+          })}
         </div>
       </div>
       <button
       className="btn btn-primary btn-sm ms-auto"
       onClick={addManyToBasket}
-      disabled={!selectedRows.length}
-      title="Send all selected rows to active basket"
-      >
-      Add {selectedRows.length || ''} selected
+      disabled={!selectedTableRows.length} >
+
+      Add {selectedTableRows.length || ''} selected
       </button>
     </div>
   );
 
   // Build table columns
   const tableColumns = useMemo(() => {
+    if (!backendColumnNames) return [];
     let cols = [];
 
     // Basket "Action" column
@@ -247,7 +235,7 @@ const ResultsTable = ({
 
         return (
           <button
-            className={`btn btn-sm ${inActive ? 'btn-secondary' : 'btn-primary'}`} // Style differently if already in
+            className={`btn btn-sm ${inActive ? 'btn-secondary' : 'btn-primary'}`}
             onClick={() => addToBasket(row)}
             disabled={buttonDisabled}
             title={title}
@@ -281,76 +269,67 @@ const ResultsTable = ({
       button: true,
     });
 
-    // Toggleable columns from the original result
-    toggleableColumns.forEach((col, index) => {
-      if (col === "datalink_url") return;
+    toggleableBackendCols.forEach((backendColName) => {
+      // if (backendColName === "datalink_url") return;
+
+      const displayInfo = getColumnDisplayInfo(backendColName);
+      let currentWidth = "150px";
+      if (displayInfo.unit) {
+          currentWidth = "180px"; // Wider if unit is present
+      } else if (displayInfo.displayName.length > 15) {
+          currentWidth = "200px"; // Wider for long names
+      }
+
+
       cols.push({
-        id: `column-${col}-${index}`,
-        name: (() => {
-          const meta   = colMeta[col] || {};
-          const label  = meta.label || col;
-          const unitStr = meta.unit ? ` (${meta.unit})` : '';
-
-          const headerText = shortLabel(col, label) + unitStr;
-          const tooltip    = `${label}${unitStr}`; // mouse-over text
-
-          const width = Math.min(headerText.length * 8 + 24, 260);
-
-          return (
-          <div
-            style={{
-              width,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'normal',
-              lineHeight: 1.1,
-            }}
-          title={tooltip}
-        >
-          {headerText}
-        </div>
-      );
-    })(),
-        selector: row => row[col],
+        id: `column-${backendColName}`, // Unique ID for the column
+        name: (
+          <div title={displayInfo.displayName + (displayInfo.unit ? ` [${displayInfo.unit}]` : '')}>
+            {displayInfo.displayName}
+            {displayInfo.unit && <span className="text-muted small ms-1">[{displayInfo.unit}]</span>}
+          </div>
+        ),
+        selector: row => row[backendColName],
         cell: (row) => (
           <div
             style={{
-              width: colWidth,
+              // width: currentWidth,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap'
             }}
-            title={row[col]}
+            title={row[backendColName] === null || row[backendColName] === undefined ? '' : String(row[backendColName])}
           >
-            {row[col]}
+            {row[backendColName] === null || row[backendColName] === undefined ? '' : String(row[backendColName])}
           </div>
         ),
         sortable: true,
         sortFunction: (a, b) => {
-          const aVal = parseFloat(a[col]);
-          const bVal = parseFloat(b[col]);
+          const aVal = parseFloat(a[backendColName]);
+          const bVal = parseFloat(b[backendColName]);
           if (!isNaN(aVal) && !isNaN(bVal)) {
             return aVal - bVal;
           }
-          return String(a[col]).localeCompare(String(b[col]));
+          return String(a[backendColName]).localeCompare(String(b[backendColName]));
         },
-        omit: hiddenColumns.includes(col),
+        omit: hiddenColumns.includes(backendColName),
+        width: currentWidth,
       });
     });
-
     return cols;
-  }, [columns, hiddenColumns, isLoggedIn, activeBasketGroupId, allBasketGroups, toggleableColumns, openDropdownId]); // toggleableColumns?
+  }, [backendColumnNames, hiddenColumns, isLoggedIn, activeBasketGroupId, allBasketGroups, openDropdownId, toggleableBackendCols]);
 
   // Map raw data (array of arrays) to objects keyed by column names.
   const tableData = useMemo(() => {
-    return data.map((row, rowIndex) => {
-      const rowData = { id: `row-${rowIndex}` };
-      columns.forEach((col, index) => {
-        rowData[col] = row[index];
+    if (!backendColumnNames || !data) return [];
+    return data.map((rowArray, rowIndex) => {
+      const rowData = { id: `datatable-row-${rowIndex}` };
+      backendColumnNames.forEach((colName, index) => {
+        rowData[colName] = rowArray[index]; // Use backendColName as key
       });
       return rowData;
     });
-  }, [data, columns]);
+  }, [data, backendColumnNames]);
 
   // Custom styles for DataTable
   const customStyles = {
@@ -371,14 +350,14 @@ const ResultsTable = ({
           data={tableData}
           keyField="id"
           pagination
-          selectableRows
-          onSelectedRowsChange={onRowSelected}
+          //selectableRows
+          onSelectedRowsChange={handleSelectedTableRowsChange}
+          //onSelectedRowsChange={onRowSelected}
           pointerOnHover
           highlightOnHover
           subHeader
           subHeaderComponent={<SubHeader />}
           customStyles={customStyles}
-          onSelectedRowsChange={handleSelectedRowsChange}
           selectableRows
         />
       </div>
