@@ -31,12 +31,12 @@ const ResultsTable = ({
     }
   };
 
-  const [selectedRows, setSelectedRows] = useState([]);
+  // const [selectedRows, setSelectedRows] = useState([]);
 
-  const handleSelectedRowsChange = (state) => {
-  setSelectedRows(state.selectedRows);
-  if (onRowSelected) onRowSelected(state);
-  };
+  //const handleSelectedRowsChange = (state) => {
+  //setSelectedRows(state.selectedRows);
+  //if (onRowSelected) onRowSelected(state);
+  //};
 
   const addManyToBasket = async () => {
   if (!isLoggedIn) {
@@ -284,7 +284,7 @@ const ResultsTable = ({
       cols.push({
         id: `column-${backendColName}`, // Unique ID for the column
         name: (
-          <div title={displayInfo.displayName + (displayInfo.unit ? ` [${displayInfo.unit}]` : '')}>
+          <div title={displayInfo.description || displayInfo.displayName}>
             {displayInfo.displayName}
             {displayInfo.unit && <span className="text-muted small ms-1">[{displayInfo.unit}]</span>}
           </div>
