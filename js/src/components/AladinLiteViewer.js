@@ -8,10 +8,12 @@ const CIRCLE_COLOR_SELECTED  = '#F0E442'; // yellow
 const MARKER_SIZE = 8;
 const CIRCLE_LINE_WIDTH = 1;
 
-const AladinLiteViewer = ({ overlays = [], selectedIds = [] }) => {
+const AladinLiteViewer = ({ overlays = [], selectedIds = [], onSelectIds = () => {} }) => {
   const aladinRef = useRef(null);
   const aladinInstance = useRef(null);
   const resultsCatalogRef = useRef(null);
+  const clickHandlerRef   = useRef(null);
+  const isRefreshingRef   = useRef(false);
 
   const customDrawFunction = useCallback((source, canvasCtx, viewParams) => {
     const data = source.data || {};
@@ -99,6 +101,12 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [] }) => {
             aladinInstance.current.addCatalog(resultsCatalogRef.current);
 
             console.log("Aladin Instance and Catalog created.");
+            clickHandlerRef.current = (obj) => {
+              if (isRefreshingRef.current) return;
+              const id = obj?.data?.id?.toString();
+              if (id) onSelectIds([id]);
+            }
+            aladinInstance.current.on('objectClicked', clickHandlerRef.current);
 
             updateMarkers(); // Update markers after init
 
@@ -114,8 +122,11 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [] }) => {
     return () => {
       isMounted = false;
       console.log("AladinLiteViewer unmounting...");
+      if (aladinInstance.current && clickHandlerRef.current) {
+        aladinInstance.current.off?.('objectClicked', clickHandlerRef.current);
+      }
     };
-  }, [customDrawFunction]);
+  }, [customDrawFunction, onSelectIds]);
 
   // effect to update markers when data changes
   useEffect(() => {
@@ -130,6 +141,8 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [] }) => {
         return;
     }
     console.log("Updating markers...");
+
+    isRefreshingRef.current = true;
 
     const resultsCatalog = resultsCatalogRef.current;
     resultsCatalog.removeAll();
@@ -169,6 +182,8 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [] }) => {
 
     resultsCatalog.addSources(sources); // Add all sources at once
     console.log(`Added ${sources.length} sources to catalog.`);
+
+    isRefreshingRef.current = false;
 
     // Auto-zoom if we have valid coordinates
     if (validCoords.length > 0) {

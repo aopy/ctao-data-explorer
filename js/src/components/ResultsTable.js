@@ -8,6 +8,7 @@ import { getColumnDisplayInfo } from './columnConfig';
 const ResultsTable = ({
   results,
   onRowSelected,
+  selectedIds = [],
   isLoggedIn,
   onAddedBasketItem,
   allBasketGroups = [],
@@ -25,18 +26,24 @@ const ResultsTable = ({
    const [selectedTableRows, setSelectedTableRows] = useState([]);
 
    const handleSelectedTableRowsChange = (state) => {
+    const ids = (state.selectedRows || []).map((r) => r.obs_id.toString());
+    const same =
+      ids.length === selectedIds.length &&
+      ids.every((id) => selectedIds.includes(id));
+    if (same) return;
     setSelectedTableRows(state.selectedRows);
-    if (onRowSelected) {
-        onRowSelected(state);
-    }
+    onRowSelected?.(state);
   };
 
-  // const [selectedRows, setSelectedRows] = useState([]);
+  const selectableRowSelected = (row) =>
+    selectedIds.includes(row.obs_id?.toString());
 
-  //const handleSelectedRowsChange = (state) => {
-  //setSelectedRows(state.selectedRows);
-  //if (onRowSelected) onRowSelected(state);
-  //};
+  const conditionalRowStyles = [
+    {
+      when: (row) => selectableRowSelected(row),
+      style: { backgroundColor: 'rgba(100, 149, 237, 0.15)' }
+    }
+  ];
 
   const addManyToBasket = async () => {
   if (!isLoggedIn) {
@@ -350,7 +357,10 @@ const ResultsTable = ({
           data={tableData}
           keyField="id"
           pagination
-          //selectableRows
+          selectableRows
+          selectableRowsHighlight
+          selectableRowSelected={selectableRowSelected}
+          conditionalRowStyles={conditionalRowStyles}
           onSelectedRowsChange={handleSelectedTableRowsChange}
           //onSelectedRowsChange={onRowSelected}
           pointerOnHover
@@ -358,7 +368,6 @@ const ResultsTable = ({
           subHeader
           subHeaderComponent={<SubHeader />}
           customStyles={customStyles}
-          selectableRows
         />
       </div>
     </div>

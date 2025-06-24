@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import SearchForm from './components/SearchForm';
 import ResultsTable from './components/ResultsTable';
@@ -132,6 +132,16 @@ function App() {
 
   const searchFormRef = useRef(null);
 
+  const handleIdsSelected = useCallback((ids) => {
+    const newIds = (ids || []).map(String);
+    setSelectedIds((prev) => {
+      const same =
+        prev.length === newIds.length &&
+        prev.every((id) => newIds.includes(id));
+      return same ? prev : newIds;
+    });
+  }, []);
+
   const handleBasketGroupsChange = (groups) => {
       setAllBasketGroups(groups || []);
       // Persist active group ID if the active group still exists
@@ -241,11 +251,9 @@ const handleLogin = () => {
     }, 0);
   };
 
-  const handleRowSelected = (selectedRowsChange) => {
-    const { selectedRows } = selectedRowsChange || {};
-    if (!selectedRows || !Array.isArray(selectedRows)) return;
-    const ids = selectedRows.map(row => row['obs_id'].toString());
-    setSelectedIds(ids);
+  const handleRowSelected = (state) => {
+    const ids = (state?.selectedRows || []).map((r) => r.obs_id.toString());
+    handleIdsSelected(ids);
   };
 
   const handleOpenBasketItem = (item) => {
@@ -348,7 +356,7 @@ const handleLogin = () => {
                   <div className="card h-100">
                     <div className="card-header bg-primary text-white">Sky Map</div>
                     <div className="card-body p-0" style={{ height: '400px', overflow: 'hidden' }}>
-                      <AladinLiteViewer overlays={allCoordinates} selectedIds={selectedIds} />
+                      <AladinLiteViewer overlays={allCoordinates} selectedIds={selectedIds} onSelectIds={handleIdsSelected} />
                     </div>
                   </div>
                 </div>
@@ -366,10 +374,10 @@ const handleLogin = () => {
                       </ul>
                       <div className="tab-content flex-grow-1" id="chartTabsContent">
                         <div className="tab-pane fade show active mt-2" id="timelinePane" role="tabpanel" aria-labelledby="timeline-tab">
-                          <TimelineChart results={results} selectedIds={selectedIds} />
+                          <TimelineChart results={results} selectedIds={selectedIds} onSelectIds={handleIdsSelected}  />
                         </div>
                         <div className="tab-pane fade mt-2" id="emrangePane" role="tabpanel" aria-labelledby="emrange-tab">
-                          <EmRangeChart results={results} selectedIds={selectedIds} />
+                          <EmRangeChart results={results} selectedIds={selectedIds} onSelectIds={handleIdsSelected} />
                         </div>
                       </div>
                     </div>
@@ -384,6 +392,7 @@ const handleLogin = () => {
                       <ResultsTable
                         results={results}
                         isLoggedIn={isLoggedIn}
+                        selectedIds={selectedIds}
                         onRowSelected={handleRowSelected}
                         allBasketGroups={allBasketGroups}
                         activeBasketGroupId={activeBasketGroupId}

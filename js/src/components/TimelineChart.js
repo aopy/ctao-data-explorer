@@ -2,7 +2,7 @@ import React, { useMemo, useEffect, useState } from 'react';
 import { palette, rgba } from './chartColours';
 import Plot from 'react-plotly.js';
 
-const TimelineChart = ({ results, selectedIds }) => {
+const TimelineChart = ({ results, selectedIds, onSelectIds = () => {} }) => {
   const { columns, data } = results || {};
 
   // Convert the results data into a format suitable for plotting
@@ -140,6 +140,7 @@ const TimelineChart = ({ results, selectedIds }) => {
         ),
         y: timelineData.map(() => 0.5),
         marker: { size: 20, opacity: 0 },
+        customdata: timelineData.map((item) => item.id),
         hoverinfo: 'text',
         hovertext: timelineData.map((item) => {
           const start = item.t_min.toISOString().replace('Z', ' UTC');
@@ -165,6 +166,12 @@ const TimelineChart = ({ results, selectedIds }) => {
     return <div>No data available for the timeline.</div>;
   }
 
+  const handleClick = (e) => {
+    if (!e?.points?.length) return;
+    const clickedId = e.points[0].customdata;
+    onSelectIds([clickedId]);
+  };
+
   return (
     <div style={{ width: '100%', height: '200px' }}>
       <Plot
@@ -174,6 +181,7 @@ const TimelineChart = ({ results, selectedIds }) => {
         style={{ width: '100%', height: '100%' }}
         useResizeHandler={true}
         config={{ responsive: true }}
+        onClick={handleClick}
       />
     </div>
   );

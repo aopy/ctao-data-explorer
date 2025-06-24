@@ -2,7 +2,7 @@ import React, { useMemo, useEffect, useState } from 'react';
 import { palette, rgba } from './chartColours';
 import Plot from 'react-plotly.js';
 
-const EmRangeChart = ({ results, selectedIds }) => {
+const EmRangeChart = ({ results, selectedIds, onSelectIds = () => {} }) => {
   const { columns, data } = results || {};
 
   // Conversion factor from wavelength in meters to energy in TeV
@@ -149,6 +149,7 @@ const EmRangeChart = ({ results, selectedIds }) => {
         x: emData.map((item) => (item.em_min + item.em_max) / 2),
         y: emData.map(() => 0.5),
         marker: { size: 30, opacity: 0.1 },
+        customdata: emData.map((it) => it.id),
         hoverinfo: 'text',
         hovertext: emData.map(
           (item) =>
@@ -172,6 +173,12 @@ const EmRangeChart = ({ results, selectedIds }) => {
     return <div>No data available for the EM range chart.</div>;
   }
 
+  const handleClick = (e) => {
+    if (!e?.points?.length) return;
+    const clickedId = e.points[0].customdata;
+    onSelectIds([clickedId]);
+  };
+
   return (
     <div style={{ width: '100%', height: '200px' }}>
       <Plot
@@ -180,10 +187,8 @@ const EmRangeChart = ({ results, selectedIds }) => {
         revision={revision}
         style={{ width: '100%', height: '100%' }}
         useResizeHandler={true}
-           config={{
-             responsive: true,
-             //displayModeBar: true,
-           }}
+        config={{ responsive: true }}
+        onClick={handleClick}
       />
          <p style={{fontSize: '12px', marginTop: '5px'}}>
           * The Energy (TeV) values were converted from wavelength (m) measurements.
