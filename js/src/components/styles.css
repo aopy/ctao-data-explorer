@@ -38,3 +38,6 @@
 .input-tooltip-container .form-control {
     width: 100%;
 }
+
+/* Stop parent cards from clipping the dropdown’s absolute positioning */
+.position-relative { position: relative; }

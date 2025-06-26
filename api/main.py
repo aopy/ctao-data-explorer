@@ -29,7 +29,10 @@ from .db import AsyncSessionLocal
 import traceback
 from .coords import coord_router
 from typing import Dict, Any
-
+import asyncio, re, json
+from io import BytesIO
+import requests
+from astropy.io.votable import parse_single_table
 from .db import get_redis_pool # For app startup/shutdown
 from .auth import router as auth_api_router
 from .oidc import oidc_router
@@ -47,11 +50,16 @@ COORD_SYS_GAL = 'galactic'
 # App Event Handlers for Redis Pool
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.redis = await get_redis_pool()
+    import redis.asyncio as redis
+    pool = await get_redis_pool()
+    app.state.redis = redis.Redis(connection_pool=pool)
     print("Redis pool initialised.")
-    yield
-    await app.state.redis.disconnect()
-    print("Redis pool closed.")
+    try:
+        yield
+    finally:
+        await app.state.redis.close()
+        await pool.disconnect()
+        print("Redis pool closed.")
 
 app = FastAPI(
     title="CTAO Data Explorer API",
@@ -96,6 +104,154 @@ app.add_middleware(
     allow_methods=["*"],  # Allow all HTTP methods
     allow_headers=["*"],  # Allow all headers
 )
+
+
+CATALOG_RE = re.compile(r"^(M\d{1,3}|NGC\d{1,4}|IC\d{1,4})$", re.I)
+def _is_short_catalog(q: str) -> bool:
+    return bool(CATALOG_RE.match(q.strip()))
+
+SIMBAD_TAP_SYNC = "https://simbad.cds.unistra.fr/simbad/sim-tap/sync"
+NED_TAP_SYNC    = "https://ned.ipac.caltech.edu/tap/sync"
+
+def _adql_escape(s: str) -> str:
+    return s.replace("'", "''")
+
+def _run_tap_sync(url: str, adql: str, maxrec: int = 50):
+    r = requests.get(
+        url,
+        params=dict(QUERY=adql, LANG="ADQL", REQUEST="doQuery",
+                    FORMAT="votable", MAXREC=maxrec),
+        timeout=20,
+    )
+    r.raise_for_status()
+    return parse_single_table(BytesIO(r.content)).to_table()
+
+async def _simbad_suggest(prefix: str, limit: int) -> list[dict]:
+    q = prefix.strip()
+    if len(q) < 2:
+        return []
+
+    q_uc = q.upper()
+    rows: list[str] = []
+
+    exact_sql = (
+        f"SELECT TOP 1 b.main_id "
+        f"FROM ident i JOIN basic b ON i.oidref = b.oid "
+        f"WHERE i.id = '{_adql_escape(q_uc)}'"
+    )
+    try:
+        tab = await asyncio.to_thread(_run_tap_sync, SIMBAD_TAP_SYNC, exact_sql, 1)
+        rows.extend(str(r['main_id']).strip() for r in tab)
+    except Exception as exc:
+        print("SIMBAD exact failed:", exc)
+
+    pat_raw = _adql_escape(q)
+    pat_title = _adql_escape(q.title())
+    pat_name = f"NAME {_adql_escape(q.title())}"
+
+    alias_sql = (
+        f"SELECT DISTINCT TOP 200 b.main_id "
+        f"FROM ident i JOIN basic b ON i.oidref = b.oid "
+        f"WHERE i.id LIKE '{pat_raw}%' "
+        f"   OR i.id LIKE '{pat_title}%' "
+        f"   OR i.id LIKE '{pat_name}%'"
+    )
+    try:
+        tab = await asyncio.to_thread(_run_tap_sync, SIMBAD_TAP_SYNC, alias_sql, 200)
+        rows.extend(str(r['main_id']).strip() for r in tab)
+    except Exception as exc:
+        print("SIMBAD alias LIKE failed:", exc)
+
+    q_cmp = q_uc.replace(" ", "")
+    scored = []
+    for n in rows:
+        n_cmp = n.upper().replace(" ", "")
+        score = 0 if n_cmp == q_cmp else 1 if n_cmp.startswith(q_cmp) else 2
+        scored.append((score, len(n_cmp), n))
+
+    seen, ordered = set(), []
+    for _, _, n in sorted(scored):
+        if n not in seen:
+            ordered.append(n); seen.add(n)
+            if len(ordered) == limit:
+                break
+
+    return [{"service": "SIMBAD", "name": n} for n in ordered]
+
+
+async def _ned_suggest(prefix: str, limit: int) -> list[dict]:
+    if len(prefix) < 2:
+        return []
+
+    pat   = f"{_adql_escape(prefix.capitalize())}%"
+    adql  = (f"SELECT TOP {limit*4} prefname "
+             f"FROM NEDTAP.objdir "
+             f"WHERE prefname LIKE '{pat}'")
+
+    try:
+        tab = await asyncio.to_thread(_run_tap_sync, NED_TAP_SYNC, adql, limit*4)
+        names = [str(r['prefname']).strip() for r in tab]
+    except Exception as exc:
+        print("NED suggest failed:", exc)
+        names = []
+
+    seen, ordered = set(), []
+    for n in names:
+        if n not in seen:
+            ordered.append(n); seen.add(n)
+            if len(ordered) == limit:
+                break
+    return [{"service": "NED", "name": n} for n in ordered]
+
+
+@app.get("/api/object_suggest", tags=["object_resolve"])
+async def object_suggest(
+    q: str = Query(..., min_length=2, max_length=50),
+    use_simbad: bool = True,
+    use_ned: bool = False,
+    limit: int = 15,
+):
+    """
+    Return up to `limit` object names that start with `q`.
+    Response shape:
+      {"results":[{"service":"SIMBAD","name":"Crab Nebula"}, ... ]}
+    """
+    q = q.strip()
+    if len(q) < 4 and not _is_short_catalog(q):
+        return {"results": []}
+    if not q or not (use_simbad or use_ned):
+        return {"results": []}
+
+    # Redis-TTL cache
+    cache_key = f"suggest:{q.lower()}:{use_simbad}:{use_ned}:{limit}"
+    if hasattr(app.state, "redis"):
+        cached = await app.state.redis.get(cache_key)
+        if cached:
+            return json.loads(cached.decode() if isinstance(cached, bytes) else cached)
+
+    tasks = []
+    if use_simbad:
+        tasks.append(_simbad_suggest(q, limit))
+    if use_ned:
+        tasks.append(_ned_suggest(q, limit))
+
+    combined_lists = await asyncio.gather(*tasks)
+    merged = [item for sub in combined_lists for item in sub]
+
+    seen, uniq = set(), []
+    for it in merged:
+        if it["name"] not in seen:
+            uniq.append(it)
+            seen.add(it["name"])
+            if len(uniq) >= limit:
+                break
+
+    # cache for 24 h
+    if uniq and hasattr(app.state, "redis"):
+        await app.state.redis.set(cache_key, json.dumps({"results": uniq}), ex=86400)
+
+    return {"results": uniq}
+
 
 @app.get("/api/search_coords", response_model=SearchResult, tags=["search"])
 async def search_coords(

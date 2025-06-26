@@ -73,6 +73,8 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   const [warningMessage, setWarningMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [justSelected, setJustSelected] = useState(false);
+
   // Ref for debounce timer
   const timeInputDebounceTimer = useRef(null);
   const MJDInputDebounceTimer = useRef(null);
@@ -112,6 +114,10 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   // State to manage tooltip visibility
   const [showCoord1Tooltip, setShowCoord1Tooltip] = useState(false);
   const [showCoord2Tooltip, setShowCoord2Tooltip] = useState(false);
+
+  const [suggestions, setSuggestions] = useState([]);
+  const [highlight, setHighlight] = useState(-1);
+  const debounceRef = useRef(null);
 
   let coord1Label = 'RA (deg)';
   let coord2Label = 'Dec (deg)';
@@ -277,6 +283,55 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     }
     return () => clearTimeout(endMJDInputDebounceTimer.current);
   }, [obsEndMJD, lastChangedType, setObsEndDateObj, setObsEndTime]);
+
+  useEffect(() => {
+    const plain = objectName.trim();
+    if (justSelected) { setJustSelected(false); return; }
+    if (plain.length < 4 && !/^(m\d{1,3}|ngc\d{1,4}|ic\d{1,4})$/i.test(plain)) {
+      setSuggestions([]);
+    return;
+    }
+
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      axios.get('/api/object_suggest', {
+        params: {
+          q:          objectName.trim(),
+          use_simbad: useSimbad,
+          use_ned:    useNed,
+          limit:      15
+        }
+      })
+        .then(res => setSuggestions(res.data.results || []))
+        .catch(()  => setSuggestions([]));
+    }, 300);                       // 300-ms debounce
+
+    return () => clearTimeout(debounceRef.current);
+  }, [objectName, useSimbad, useNed]);
+
+  const applySuggestion = (name) => {
+    setObjectName(name);
+    setSuggestions([]);
+    setJustSelected(true);
+    setHighlight(-1);
+    // optional: launch the normal Resolve action automatically
+    setTimeout(handleResolve, 0);
+  };
+
+  const handleKeyDown = (e) => {
+    if (!suggestions.length) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlight(h => (h + 1) % suggestions.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlight(h => (h - 1 + suggestions.length) % suggestions.length);
+    } else if (e.key === 'Enter' && highlight >= 0) {
+      e.preventDefault();
+      applySuggestion(suggestions[highlight].name);
+    }
+  };
 
   // Event Handlers
   const handleResolve = () => {
@@ -527,19 +582,40 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
                         {/* Object Resolve */}
                         <div className="mb-3">
                             <label htmlFor="objectNameInput" className="form-label">Source Name (optional)</label>
-                            <div className="input-group">
-                            <input
+                            <div className="position-relative">
+                              <input
                                 type="text"
-                                className="form-control"
                                 id="objectNameInput"
+                                className="form-control"
                                 value={objectName}
-                                onChange={(e) => setObjectName(e.target.value)}
-                                placeholder="e.g., M1, Crab Nebula"
+                                onChange={e => { setObjectName(e.target.value); }}
+                                onKeyDown={handleKeyDown}
+                                placeholder="e.g. Crab Nebula"
                                 disabled={isSubmitting}
-                            />
-                            <button type="button" className="btn btn-secondary" onClick={handleResolve} disabled={!objectName || isSubmitting}>
+                                autoComplete="off"
+                                onBlur={() => setTimeout(() => setSuggestions([]), 150)}
+                              />
+
+                              {suggestions.length > 0 && (
+                                <ul className="list-group position-absolute top-100 start-0 w-100 shadow"
+                                    style={{maxHeight: '16rem', overflowY: 'auto', zIndex: 1030}}>
+                                  {suggestions.map((s, idx) => (
+                                    <li key={idx}
+                                        className={`list-group-item list-group-item-action
+                                                    ${idx === highlight ? 'active' : ''}`}
+                                        onMouseDown={() => applySuggestion(s.name)}>
+                                      {s.name} <span className="badge bg-secondary ms-1">{s.service}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                            <div className="input-group mt-2">
+                              <button type="button" className="btn btn-secondary"
+                                      disabled={!objectName || isSubmitting}
+                                      onClick={handleResolve}>
                                 Resolve
-                            </button>
+                              </button>
                             </div>
                             <div className="mt-2">
                                 <div className="form-check form-check-inline">
