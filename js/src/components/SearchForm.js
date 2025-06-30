@@ -75,6 +75,9 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
   const [justSelected, setJustSelected] = useState(false);
 
+  const latestSeq = useRef(0);
+  const lastAccepted = useRef('');
+
   // Ref for debounce timer
   const timeInputDebounceTimer = useRef(null);
   const MJDInputDebounceTimer = useRef(null);
@@ -293,6 +296,11 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     }
 
     clearTimeout(debounceRef.current);
+    if (plain.trim() === lastAccepted.current) {
+      // user hasn’t edited the field since choosing a suggestion
+      setSuggestions([]);
+    return;
+    }
     debounceRef.current = setTimeout(() => {
       axios.get('/api/object_suggest', {
         params: {
@@ -309,13 +317,12 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     return () => clearTimeout(debounceRef.current);
   }, [objectName, useSimbad, useNed]);
 
-  const applySuggestion = (name) => {
+  function applySuggestion(name) {
     setObjectName(name);
+    lastAccepted.current = name.trim();
+    handleResolve(name);
     setSuggestions([]);
-    setJustSelected(true);
     setHighlight(-1);
-    // optional: launch the normal Resolve action automatically
-    setTimeout(handleResolve, 0);
   };
 
   const handleKeyDown = (e) => {
@@ -334,30 +341,42 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   };
 
   // Event Handlers
-  const handleResolve = () => {
-    setWarningMessage('');
-    if (!objectName) return;
+  const handleResolve = (arg) => {
+    const target =
+      typeof arg === 'string' ? arg.trim() : objectName.trim();
+
+    if (arg && arg.preventDefault) arg.preventDefault();
+    if (!target) return;
     setIsSubmitting(true);
+    setWarningMessage('');
+
+    const mySeq = ++latestSeq.current;
+
     axios.post('/api/object_resolve', {
-      object_name: objectName, use_simbad: useSimbad, use_ned: useNed
+      object_name: target,
+      use_simbad: useSimbad,
+      use_ned: useNed
     })
     .then(res => {
-      const firstMatch = res.data?.results?.[0];
-      if (firstMatch?.ra != null && firstMatch?.dec != null) {
-        // Always populate Equ J2000 decimal degrees after resolve
+      if (mySeq !== latestSeq.current) return;
+
+      const first = res.data?.results?.[0];
+      if (first?.ra != null && first?.dec != null) {
         setCoordinateSystem(COORD_SYS_EQ_DEG);
-        setCoord1(firstMatch.ra.toString());
-        setCoord2(firstMatch.dec.toString());
-        setWarningMessage(`Resolved ${objectName} via ${firstMatch.service}`);
+        setCoord1(first.ra.toString());
+        setCoord2(first.dec.toString());
+        setWarningMessage(`Resolved ${target} via ${first.service}`);
       } else {
-        setWarningMessage(`Could not resolve "${objectName}"`);
+        setWarningMessage(`Could not resolve "${target}"`);
       }
     })
     .catch(err => {
-      console.error('Resolve error:', err);
+      if (mySeq !== latestSeq.current) return;
       setWarningMessage(`Error resolving object: ${err.message}`);
     })
-    .finally(() => setIsSubmitting(false));
+    .finally(() => {
+      if (mySeq === latestSeq.current) setIsSubmitting(false);
+    });
   };
 
   const handleCoordSystemChange = (e) => {
@@ -603,7 +622,7 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
                                     <li key={idx}
                                         className={`list-group-item list-group-item-action
                                                     ${idx === highlight ? 'active' : ''}`}
-                                        onMouseDown={() => applySuggestion(s.name)}>
+                                        onClick={() => applySuggestion(s.name)}>
                                       {s.name} <span className="badge bg-secondary ms-1">{s.service}</span>
                                     </li>
                                   ))}
@@ -613,7 +632,7 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
                             <div className="input-group mt-2">
                               <button type="button" className="btn btn-secondary"
                                       disabled={!objectName || isSubmitting}
-                                      onClick={handleResolve}>
+                                      onClick={() => handleResolve()}>
                                 Resolve
                               </button>
                             </div>

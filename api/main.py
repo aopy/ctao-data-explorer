@@ -11,7 +11,6 @@ import pyvo as vo
 import math
 import requests
 from astropy.io.votable import parse_single_table
-from io import BytesIO
 import astropy.units as u
 from astropy.coordinates import SkyCoord
 # from .auth import router as auth_router, current_optional_active_user
@@ -33,7 +32,7 @@ import asyncio, re, json
 from io import BytesIO
 import requests
 from astropy.io.votable import parse_single_table
-from .db import get_redis_pool # For app startup/shutdown
+from .db import get_redis_pool
 from .auth import router as auth_api_router
 from .oidc import oidc_router
 from starlette.config import Config as StarletteConfig
@@ -104,6 +103,21 @@ app.add_middleware(
     allow_methods=["*"],  # Allow all HTTP methods
     allow_headers=["*"],  # Allow all headers
 )
+
+def _catalog_variants(name: str):
+    """
+    Yield 'M  42', 'M   42', … or 'NGC  3242', etc., matching SIMBAD's
+    fixed-width alias layout.  If `name` is not a Messier/NGC/IC code,
+    yields nothing.
+    """
+    m = re.fullmatch(r"\s*(M|NGC|IC)\s*0*(\d+)\s*", name, re.I)
+    if not m:
+        return
+    cat, num = m.group(1).upper(), m.group(2)
+    width = 3 if cat == "M" else 4
+    spaces_needed = max(1, width - len(num))
+    for s in range(spaces_needed, spaces_needed + 3):
+        yield f"{cat}{' ' * s}{num}"
 
 
 CATALOG_RE = re.compile(r"^(M\d{1,3}|NGC\d{1,4}|IC\d{1,4})$", re.I)
@@ -505,36 +519,49 @@ async def object_resolve(data: dict = Body(...)):
     ned_list = []
 
     if use_simbad:
-        SIMBAD_TAP_SERVER = "https://simbad.cds.unistra.fr/simbad/sim-tap"
-        simbad_service = vo.dal.TAPService(SIMBAD_TAP_SERVER)
+        SIMBAD_TAP = "https://simbad.cds.unistra.fr/simbad/sim-tap"
+        simbad = vo.dal.TAPService(SIMBAD_TAP)
 
-        query_simbad = (
-            "SELECT basic.oid AS oid, ra AS ra, dec AS dec, main_id AS main_identifier "
-            "FROM basic JOIN ident ON oidref=oid "
-            f"WHERE id = '{object_name}'"
-        )
-        try:
-            simbad_result = simbad_service.search(query_simbad)
-        except Exception as e:
-            print(f"Simbad query failed: {e}")
-            simbad_result = []
+        def _try_alias(alias: str, top: int = 1):
+            sql = (
+                f"SELECT TOP {top} ra, dec, main_id "
+                "FROM ident i JOIN basic b ON b.oid = i.oidref "
+                f"WHERE i.id = '{_adql_escape(alias)}'"
+            )
+            try:
+                return simbad.search(sql)
+            except Exception:
+                return []
 
-        if len(simbad_result) > 0:
-            for row in simbad_result:
-                oid_val = row['oid']
-                ra_val  = float(row['ra'])
-                dec_val = float(row['dec'])
-                main_id = str(row['main_identifier'])
+        alias_raw = object_name.strip()
+        tab = _try_alias(alias_raw)
 
-                if math.isnan(ra_val) or math.isnan(dec_val):
-                    continue
+        if len(tab) == 0:
+            for alias in _catalog_variants(alias_raw):
+                tab = _try_alias(alias)
+                if len(tab):
+                    break
 
-                simbad_list.append({
-                    "service": "SIMBAD",
-                    "name": main_id,
-                    "ra": ra_val,
-                    "dec": dec_val
-                })
+        if len(tab) == 0:
+            tab = _try_alias(alias_raw.title())
+
+        if len(tab) == 0:
+            tab = _try_alias(alias_raw.upper())
+
+        if len(tab) == 0 and not alias_raw.upper().startswith("NAME "):
+            tab = _try_alias("NAME " + alias_raw.title())
+
+        # collect rows
+        for row in tab:
+            ra_val, dec_val = float(row["ra"]), float(row["dec"])
+            if math.isnan(ra_val) or math.isnan(dec_val):
+                continue
+            simbad_list.append({
+                "service": "SIMBAD",
+                "name": str(row["main_id"]).strip(),
+                "ra": ra_val,
+                "dec": dec_val,
+            })
 
         results.extend(simbad_list)
 
