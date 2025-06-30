@@ -2,7 +2,8 @@ from fastapi.responses import RedirectResponse
 from fastapi import APIRouter, Request, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from authlib.integrations.starlette_client import OAuth
+# from authlib.integrations.starlette_client import OAuth
+from .oauth_client import oauth, CTAO_PROVIDER_NAME
 from starlette.config import Config as StarletteConfig
 import json
 import time
@@ -15,22 +16,12 @@ from .auth import (
     SESSION_KEY_PREFIX, SESSION_USER_ID_KEY, SESSION_IAM_SUB_KEY,
     SESSION_IAM_EMAIL_KEY, SESSION_ACCESS_TOKEN_KEY,
     SESSION_ACCESS_TOKEN_EXPIRY_KEY, SESSION_DURATION_SECONDS,
-    CTAO_PROVIDER_NAME, PRODUCTION,
-    SESSION_IAM_GIVEN_NAME_KEY, SESSION_IAM_FAMILY_NAME_KEY
+    PRODUCTION, SESSION_IAM_GIVEN_NAME_KEY, SESSION_IAM_FAMILY_NAME_KEY
 )
 import redis.asyncio as redis
 
 
-# OIDC config
 config_env = StarletteConfig('.env')
-oauth = OAuth(config_env)
-oauth.register(
-    name=CTAO_PROVIDER_NAME,
-    server_metadata_url=f'https://iam-ctao.cloud.cnaf.infn.it/.well-known/openid-configuration',
-    client_id=config_env("CTAO_CLIENT_ID"),
-    client_secret=config_env("CTAO_CLIENT_SECRET"),
-    client_kwargs={'scope': 'openid profile email offline_access'} # Ensure offline_access
-)
 
 oidc_router = APIRouter(prefix="/oidc", tags=["oidc"])
 
@@ -84,6 +75,9 @@ async def auth_callback(
     iam_access_token = token_response['access_token']
     iam_refresh_token = token_response.get('refresh_token')
     expires_in = token_response.get('expires_in', 3600) # Default to 1 hour
+    fake_exp = StarletteConfig('.env')('OIDC_FAKE_EXPIRES_IN', cast=int, default=None)
+    if fake_exp:
+        expires_in = fake_exp
     iam_access_token_expiry = time.time() + expires_in
 
     # find or create minimal user in app db

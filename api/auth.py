@@ -12,7 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from .db import get_async_session, get_redis_client, encrypt_token, decrypt_token
 from .models import UserTable, UserRefreshToken
-from authlib.integrations.starlette_client import OAuth
+# from authlib.integrations.starlette_client import OAuth
+from .oauth_client import oauth, CTAO_PROVIDER_NAME
 from starlette.config import Config as StarletteConfig
 import json
 import time
@@ -24,10 +25,7 @@ import redis.asyncio as redis
 import traceback
 
 
-# OIDC Configuration
 config_env = StarletteConfig(".env")
-oauth = OAuth(config_env)
-CTAO_PROVIDER_NAME = 'ctao'
 
 PRODUCTION = config_env("BASE_URL", default="") is not None
 
@@ -72,6 +70,9 @@ async def get_current_session_user_data(
     session_data_json = await redis.get(f"{SESSION_KEY_PREFIX}{session_id}")
     if not session_data_json:
         return None
+
+    # keep the Redis entry alive as long as the user is active
+    await redis.expire(f"{SESSION_KEY_PREFIX}{session_id}", SESSION_DURATION_SECONDS)
 
     try:
         session_data = json.loads(session_data_json)
@@ -123,7 +124,12 @@ async def get_current_session_user_data(
             print(f"DEBUG: Refresh token response: {token_response}")
 
             new_iam_access_token = token_response['access_token']
-            new_iam_access_token_expiry = time.time() + token_response['expires_in']
+            # new_iam_access_token_expiry = time.time() + token_response['expires_in']
+            new_exp = token_response.get('expires_in', 3600)
+            fake_exp = StarletteConfig('.env')('OIDC_FAKE_EXPIRES_IN', cast=int, default=None)
+            if fake_exp:
+                new_exp = fake_exp
+            new_iam_access_token_expiry = time.time() + new_exp
             # Update stored refresh token if a new one is issued
             if 'refresh_token' in token_response:
                 new_decrypted_rt = token_response['refresh_token']

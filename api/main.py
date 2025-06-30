@@ -33,7 +33,7 @@ from io import BytesIO
 import requests
 from astropy.io.votable import parse_single_table
 from .db import get_redis_pool
-from .auth import router as auth_api_router
+from .auth import router as auth_api_router, SESSION_DURATION_SECONDS
 from .oidc import oidc_router
 from starlette.config import Config as StarletteConfig
 from contextlib import asynccontextmanager
@@ -103,6 +103,24 @@ app.add_middleware(
     allow_methods=["*"],  # Allow all HTTP methods
     allow_headers=["*"],  # Allow all headers
 )
+
+@app.middleware("http")
+async def rolling_session_cookie(request: Request, call_next):
+    response = await call_next(request)
+
+    session_id = request.cookies.get("ctao_session_main")
+    if session_id:
+        response.set_cookie(
+            key="ctao_session_main",
+            value=session_id,
+            max_age=SESSION_DURATION_SECONDS,
+            path="/",
+            domain=config_env("COOKIE_DOMAIN", default=None) if PRODUCTION else None,
+            secure=config_env("COOKIE_SECURE", cast=bool, default=False) if PRODUCTION else False,
+            httponly=True,
+            samesite="lax",
+        )
+    return response
 
 def _catalog_variants(name: str):
     """
