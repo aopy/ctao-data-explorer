@@ -39,7 +39,27 @@ from starlette.config import Config as StarletteConfig
 from contextlib import asynccontextmanager
 
 config_env = StarletteConfig('.env')
-PRODUCTION = config_env("BASE_URL", default="") is not None
+
+BASE_URL = config_env("BASE_URL", default=None)
+COOKIE_SAMESITE = config_env("COOKIE_SAMESITE", default="Lax")
+COOKIE_SECURE = config_env("COOKIE_SECURE",  cast=bool, default=False)
+RAW_COOKIE_DOMAIN = config_env("COOKIE_DOMAIN", default=None)
+COOKIE_DOMAIN = RAW_COOKIE_DOMAIN or None
+PRODUCTION = bool(BASE_URL)
+
+if COOKIE_SAMESITE.lower() == "none" and not COOKIE_SECURE:
+    COOKIE_SAMESITE = "Lax"
+else:
+    COOKIE_SAMESITE = COOKIE_SAMESITE.capitalize()
+
+cookie_params = {
+    "secure": COOKIE_SECURE,
+    "httponly": True,
+    "samesite": COOKIE_SAMESITE,
+    "path": "/",
+}
+if COOKIE_DOMAIN:
+  cookie_params["domain"] = COOKIE_DOMAIN
 
 # coordinate cystem constants
 COORD_SYS_EQ_DEG = 'equatorial_deg'
@@ -108,17 +128,17 @@ app.add_middleware(
 async def rolling_session_cookie(request: Request, call_next):
     response = await call_next(request)
 
+    existing = response.headers.getlist("set-cookie")
+    if any("ctao_session_main=" in hdr for hdr in existing):
+        return response
+
     session_id = request.cookies.get("ctao_session_main")
     if session_id:
         response.set_cookie(
-            key="ctao_session_main",
-            value=session_id,
+            "ctao_session_main",
+            session_id,
             max_age=SESSION_DURATION_SECONDS,
-            path="/",
-            domain=config_env("COOKIE_DOMAIN", default=None) if PRODUCTION else None,
-            secure=config_env("COOKIE_SECURE", cast=bool, default=False) if PRODUCTION else False,
-            httponly=True,
-            samesite="lax",
+            **cookie_params,
         )
     return response
 

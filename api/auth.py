@@ -27,7 +27,28 @@ import traceback
 
 config_env = StarletteConfig(".env")
 
-PRODUCTION = config_env("BASE_URL", default="") is not None
+REFRESH_BUFFER_SECONDS = config_env("REFRESH_BUFFER_SECONDS", cast=int, default=300)
+
+BASE_URL = config_env("BASE_URL", default=None)
+COOKIE_SAMESITE = config_env("COOKIE_SAMESITE", default="Lax")
+COOKIE_SECURE = config_env("COOKIE_SECURE",  cast=bool, default=False)
+RAW_COOKIE_DOMAIN = config_env("COOKIE_DOMAIN", default=None)
+COOKIE_DOMAIN = RAW_COOKIE_DOMAIN or None
+PRODUCTION = bool(BASE_URL)
+
+if COOKIE_SAMESITE.lower() == "none" and not COOKIE_SECURE:
+    COOKIE_SAMESITE = "Lax"
+else:
+    COOKIE_SAMESITE = COOKIE_SAMESITE.capitalize()
+
+cookie_params = {
+    "secure": COOKIE_SECURE,
+    "httponly": True,
+    "samesite": COOKIE_SAMESITE,
+    "path": "/",
+}
+if COOKIE_DOMAIN:
+  cookie_params["domain"] = COOKIE_DOMAIN
 
 # User Schemas
 class UserRead(schemas.BaseUser[int]):
@@ -89,9 +110,17 @@ async def get_current_session_user_data(
         print(f"Incomplete session data for app_user_id: {app_user_id}")
         return None  # Essential data missing
 
-    # Check Access Token Expiry (give a small buffer, e.g., 60 seconds)
-    if time.time() >= (iam_access_token_expiry - 60):
-        print(f"IAM Access Token expired for user {app_user_id}. Attempting refresh.")
+    # Check Access Token Expiry
+    now = time.time()
+    remaining = iam_access_token_expiry - now
+
+    if remaining <= 0:
+        print(f"IAM Access Token has fully expired for user {app_user_id}. Clearing session.")
+        await redis.delete(f"{SESSION_KEY_PREFIX}{session_id}")
+        return None
+
+    if remaining < REFRESH_BUFFER_SECONDS:
+        print(f"IAM Access Token for user {app_user_id} is about to expire in {remaining:.0f}s. Refreshing…")
         # Refresh Logic
         stmt = select(UserRefreshToken).where(
             UserRefreshToken.user_id == app_user_id,
@@ -121,7 +150,7 @@ async def get_current_session_user_data(
                 grant_type='refresh_token',
                 refresh_token=decrypted_rt,
             )
-            print(f"DEBUG: Refresh token response: {token_response}")
+            # print(f"DEBUG: Refresh token response: {token_response}")
 
             new_iam_access_token = token_response['access_token']
             # new_iam_access_token_expiry = time.time() + token_response['expires_in']
@@ -247,11 +276,14 @@ async def logout_session(
     cookie_name = "ctao_session_main"
     response.delete_cookie(
         key=cookie_name,
-        path="/",
-        domain=config_env("COOKIE_DOMAIN", default=None) if PRODUCTION else None,
-        secure=config_env("COOKIE_SECURE", cast=bool, default=False) if PRODUCTION else False,
-        httponly=True,
-        samesite="lax"
+        # path="/",
+        # domain=config_env("COOKIE_DOMAIN", default=None) if PRODUCTION else None,
+        # secure=config_env("COOKIE_SECURE", cast=bool, default=False) if PRODUCTION else False,
+        # httponly=True,
+        # samesite="lax"
+        # samesite = "none"
+        # max_age=0,
+        **cookie_params
     )
     return {"status": "logout successful"}
 

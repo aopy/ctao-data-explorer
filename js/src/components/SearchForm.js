@@ -75,6 +75,13 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
   const [justSelected, setJustSelected] = useState(false);
 
+  useEffect(() => {
+    if (objectName.trim()) {
+      lastAccepted.current = objectName.trim();
+      setJustSelected(true);
+    }
+  }, []);
+
   const latestSeq = useRef(0);
   const lastAccepted = useRef('');
 

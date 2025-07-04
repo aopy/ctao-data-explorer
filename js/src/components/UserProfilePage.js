@@ -1,6 +1,12 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import axios from 'axios';
+import { API_PREFIX } from '../index';
 
 function UserProfilePage({ user }) {
+   useEffect(() => {
+    axios.get(`${API_PREFIX}/users/me_from_session`);
+   }, []);
+
     if (!user) {
         return <div className="alert alert-info">Loading user profile or not logged in...</div>;
     }

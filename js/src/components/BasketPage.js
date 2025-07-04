@@ -18,6 +18,10 @@ onBasketGroupsChange, allBasketGroups = [], activeBasketGroupId }) {
   const [error, setError] = useState(null);
   const [editingGroupName, setEditingGroupName] = useState('');
 
+  useEffect(() => {
+    if (isLoggedIn) axios.get(`${API_PREFIX}/users/me_from_session`);
+  }, [isLoggedIn, activeBasketGroupId]);
+
   const activeGroup = useMemo(() => {
       if (!activeBasketGroupId) return null;
       return allBasketGroups.find(group => group.id === activeBasketGroupId);

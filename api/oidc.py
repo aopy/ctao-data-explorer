@@ -23,6 +23,27 @@ import redis.asyncio as redis
 
 config_env = StarletteConfig('.env')
 
+BASE_URL = config_env("BASE_URL", default=None)
+COOKIE_SAMESITE = config_env("COOKIE_SAMESITE", default="Lax")
+COOKIE_SECURE = config_env("COOKIE_SECURE",  cast=bool, default=False)
+RAW_COOKIE_DOMAIN = config_env("COOKIE_DOMAIN", default=None)
+COOKIE_DOMAIN = RAW_COOKIE_DOMAIN or None
+PRODUCTION = bool(BASE_URL)
+
+if COOKIE_SAMESITE.lower() == "none" and not COOKIE_SECURE:
+    COOKIE_SAMESITE = "Lax"
+else:
+    COOKIE_SAMESITE = COOKIE_SAMESITE.capitalize()
+
+cookie_params = {
+    "secure": COOKIE_SECURE,
+    "httponly": True,
+    "samesite": COOKIE_SAMESITE,
+    "path": "/",
+}
+if COOKIE_DOMAIN:
+  cookie_params["domain"] = COOKIE_DOMAIN
+
 oidc_router = APIRouter(prefix="/oidc", tags=["oidc"])
 
 @oidc_router.get("/login")
@@ -166,10 +187,12 @@ async def auth_callback(
         key="ctao_session_main",
         value=session_id,
         max_age=SESSION_DURATION_SECONDS, # Match Redis TTL
-        path="/",
-        domain=config_env("COOKIE_DOMAIN", default=None) if PRODUCTION else None,
-        secure=config_env("COOKIE_SECURE", cast=bool, default=False) if PRODUCTION else False,
-        httponly=True,
-        samesite="lax"
+        # path="/",
+        # domain=config_env("COOKIE_DOMAIN", default=None) if PRODUCTION else None,
+        # secure=config_env("COOKIE_SECURE", cast=bool, default=False) if PRODUCTION else False,
+        # httponly=True,
+        # samesite="lax"
+        # samesite = "none"
+        **cookie_params
     )
     return response

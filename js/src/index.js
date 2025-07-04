@@ -4,6 +4,9 @@ import 'bootstrap/dist/css/bootstrap.min.css'; // Import Bootstrap CSS
 import 'bootstrap/dist/js/bootstrap.bundle.min.js'; // Bootstrap's JS components
 import './index.css';
 import App from './App';
+import './components/axiosSetup';
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import reportWebVitals from './reportWebVitals';
 import axios from 'axios';
 
@@ -20,6 +23,7 @@ const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
     <App />
+    <ToastContainer position="top-center" newestOnTop draggable={false} />
   </React.StrictMode>
 );
 

@@ -9,6 +9,11 @@ import BasketPage from './components/BasketPage';
 import UserProfilePage from './components/UserProfilePage';
 import QueryStorePage from './components/QueryStorePage';
 import { API_PREFIX } from './index';
+import {
+  launchOidcLogin,
+} from "./components/oidcHelper";
+
+
 
 function formatTmin(mjd) {
   if (!mjd || isNaN(mjd)) return '';
@@ -132,6 +137,28 @@ function App() {
 
   const searchFormRef = useRef(null);
 
+
+  useEffect(() => {
+    try {
+      const cached = sessionStorage.getItem("SavedResults");
+      if (cached) {
+        handleSearchResults(JSON.parse(cached));
+        sessionStorage.removeItem("SavedResults");
+        setActiveTab("results");
+      }
+      const coords = sessionStorage.getItem("SavedCoords");
+      if (coords) {
+        setAllCoordinates(JSON.parse(coords));
+        sessionStorage.removeItem("SavedCoords");
+      }
+      const ids = sessionStorage.getItem("SavedIds");
+      if (ids) {
+        setSelectedIds(JSON.parse(ids));
+        sessionStorage.removeItem("SavedIds");
+      }
+    } catch { /* ignore corrupt cache */ }
+  }, []);
+
   const handleIdsSelected = useCallback((ids) => {
     const newIds = (ids || []).map(String);
     setSelectedIds((prev) => {
@@ -174,14 +201,40 @@ function App() {
     // setBasketRefreshCounter(prev => prev + 1);
   };
 
+  useEffect(() => {
+    const h = () => setUser(null);
+    window.addEventListener("session-lost", h);
+    return () => window.removeEventListener("session-lost", h);
+  }, []);
+
+  useEffect(() => {
+    function handleLost() {
+      setUser(null);
+      setActiveTab("search");
+      //setResults(null);           // keep last results?
+      localStorage.removeItem("hadSession");
+    }
+    window.addEventListener("session-lost", handleLost);
+    return () => window.removeEventListener("session-lost", handleLost);
+  }, []);
+
   // useEffect to check login status via /users/me on mount
   useEffect(() => {
   setIsLoadingUser(true);
   const timer = setTimeout(() => {
-     axios.get(`${API_PREFIX}/users/me_from_session`)
-       .then(res => {
-         setUser(res.data);
-       })
+    axios
+      .get(`${API_PREFIX}/users/me_from_session`, {
+        skipAuthErrorHandling: true,
+        validateStatus: (s) => s === 200 || s === 401
+      })
+      .then((res) => {
+        if (res.status === 200) {
+          setUser(res.data);
+          localStorage.setItem("hadSession", "true");
+        } else {
+          setUser(null);
+        }
+      })
        .catch(err => {
          console.log('Not logged in or failed to fetch user:', err.response?.status);
          setUser(null);
@@ -196,26 +249,25 @@ function App() {
 
   // const handleLogin = () => { window.location.href = '/oidc/login'; };
 
-const handleLogin = () => {
-  // call the saveState method on the SearchForm instance via the ref
-    if (searchFormRef.current && typeof searchFormRef.current.saveState === 'function') {
-      searchFormRef.current.saveState();
-    } else {
-      console.warn("SearchForm ref not available or saveState not exposed.");
-    }
-  window.location.href = `${API_PREFIX}/oidc/login`;
-};
+  const handleLogin = () =>
+    launchOidcLogin({
+      API_PREFIX,
+      searchFormRef,
+      results,
+      coords: allCoordinates,
+      ids: selectedIds,
+    });
 
   const handleLogout = () => {
     axios.post(`${API_PREFIX}/auth/logout_session`)
       .then(() => {
         setUser(null); // Clear user state
+        localStorage.removeItem("hadSession");
         setResults(null);
         setAllCoordinates([]);
         setSelectedIds([]);
         setActiveTab('search');
         setAllBasketGroups([]);
-        // setAllBasketItems([]);
         // Trigger refresh if BasketPage is visible/active
         // setBasketRefreshCounter(prev => prev + 1);
       })
@@ -309,7 +361,13 @@ const handleLogin = () => {
               </button>
               <button className="btn btn-outline-danger" onClick={handleLogout}>Logout</button>
             </>
-          ) : ( <button className="btn btn-outline-primary" onClick={handleLogin}>Login</button> )}
+          ) : ( <button
+                  className="btn btn-outline-primary"
+                  type="button"
+                  onClick={handleLogin}
+                >
+                Login
+                </button> )}
         </div>
       </div>
 
