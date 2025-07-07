@@ -324,10 +324,11 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     return () => clearTimeout(debounceRef.current);
   }, [objectName, useSimbad, useNed]);
 
-  function applySuggestion(name) {
+  function applySuggestion(name, service) {
     setObjectName(name);
     lastAccepted.current = name.trim();
-    handleResolve(name);
+
+    handleResolve(name, service);
     setSuggestions([]);
     setHighlight(-1);
   };
@@ -343,12 +344,13 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
       setHighlight(h => (h - 1 + suggestions.length) % suggestions.length);
     } else if (e.key === 'Enter' && highlight >= 0) {
       e.preventDefault();
-      applySuggestion(suggestions[highlight].name);
+      const { name, service } = suggestions[highlight];
+      applySuggestion(name, service);
     }
   };
 
   // Event Handlers
-  const handleResolve = (arg) => {
+  const handleResolve = (arg, overrideService = null) => {
     const target =
       typeof arg === 'string' ? arg.trim() : objectName.trim();
 
@@ -361,8 +363,12 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
     axios.post('/api/object_resolve', {
       object_name: target,
-      use_simbad: useSimbad,
-      use_ned: useNed
+      use_simbad: overrideService
+                    ? overrideService === 'SIMBAD'
+                    : useSimbad,
+      use_ned:    overrideService
+                    ? overrideService === 'NED'
+                    : useNed
     })
     .then(res => {
       if (mySeq !== latestSeq.current) return;
@@ -627,10 +633,11 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
                                     style={{maxHeight: '16rem', overflowY: 'auto', zIndex: 1030}}>
                                   {suggestions.map((s, idx) => (
                                     <li key={idx}
-                                        className={`list-group-item list-group-item-action
-                                                    ${idx === highlight ? 'active' : ''}`}
-                                        onClick={() => applySuggestion(s.name)}>
-                                      {s.name} <span className="badge bg-secondary ms-1">{s.service}</span>
+                                      className={`list-group-item list-group-item-action
+                                                ${idx === highlight ? 'active' : ''}`}
+                                      onClick={() => applySuggestion(s.name, s.service)}>
+                                      {s.name}
+                                      <span className="badge bg-secondary ms-1">{s.service}</span>
                                     </li>
                                   ))}
                                 </ul>

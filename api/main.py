@@ -27,7 +27,7 @@ import fastapi_users
 from .db import AsyncSessionLocal
 import traceback
 from .coords import coord_router
-from typing import Dict, Any
+from typing import Dict, Any, List
 import asyncio, re, json
 from io import BytesIO
 import requests
@@ -37,6 +37,11 @@ from .auth import router as auth_api_router, SESSION_DURATION_SECONDS
 from .oidc import oidc_router
 from starlette.config import Config as StarletteConfig
 from contextlib import asynccontextmanager
+import itertools
+
+
+SIMBAD_TAP_SYNC = "https://simbad.cds.unistra.fr/simbad/sim-tap/sync"
+OBJECT_LOOKUP_URL = "https://ned.ipac.caltech.edu/srs/ObjectLookup"
 
 config_env = StarletteConfig('.env')
 
@@ -142,6 +147,39 @@ async def rolling_session_cookie(request: Request, call_next):
         )
     return response
 
+
+async def _ned_resolve_via_objectlookup(name: str) -> Optional[Dict[str, Any]]:
+    """
+    Returns {'service','name','ra','dec'} or None if not found/error.
+    """
+    form = {"json": json.dumps({"name": {"v": name}})}
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    try:
+        resp = await asyncio.to_thread(
+            requests.post,
+            OBJECT_LOOKUP_URL,
+            data=form,
+            headers=headers,
+            timeout=5
+        )
+        resp.raise_for_status()
+    except Exception as e:
+        print("NED ObjectLookup failed:", e)
+        return None
+
+    obj = resp.json()
+    if obj.get("ResultCode") == 3:
+        interp = obj["Interpreted"]
+        pos    = obj["Preferred"]["Position"]
+        return {
+            "service": "NED",
+            "name":    interp["Name"],
+            "ra":      float(pos["RA"]),
+            "dec":     float(pos["Dec"])
+        }
+    return None
+
+
 def _catalog_variants(name: str):
     """
     Yield 'M  42', 'M   42', … or 'NGC  3242', etc., matching SIMBAD's
@@ -162,8 +200,6 @@ CATALOG_RE = re.compile(r"^(M\d{1,3}|NGC\d{1,4}|IC\d{1,4})$", re.I)
 def _is_short_catalog(q: str) -> bool:
     return bool(CATALOG_RE.match(q.strip()))
 
-SIMBAD_TAP_SYNC = "https://simbad.cds.unistra.fr/simbad/sim-tap/sync"
-NED_TAP_SYNC    = "https://ned.ipac.caltech.edu/tap/sync"
 
 def _adql_escape(s: str) -> str:
     return s.replace("'", "''")
@@ -231,29 +267,50 @@ async def _simbad_suggest(prefix: str, limit: int) -> list[dict]:
     return [{"service": "SIMBAD", "name": n} for n in ordered]
 
 
-async def _ned_suggest(prefix: str, limit: int) -> list[dict]:
-    if len(prefix) < 2:
+async def _ned_suggest(prefix: str, limit: int) -> List[Dict[str, str]]:
+    """
+    Returns up to `limit` suggestions via the ObjectLookup FuzzyMatches.
+    """
+    q = prefix.strip()
+    if len(q) < 2:
         return []
 
-    pat   = f"{_adql_escape(prefix.capitalize())}%"
-    adql  = (f"SELECT TOP {limit*4} prefname "
-             f"FROM NEDTAP.objdir "
-             f"WHERE prefname LIKE '{pat}'")
-
+    form = {"json": json.dumps({"name": {"v": q}})}
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
     try:
-        tab = await asyncio.to_thread(_run_tap_sync, NED_TAP_SYNC, adql, limit*4)
-        names = [str(r['prefname']).strip() for r in tab]
-    except Exception as exc:
-        print("NED suggest failed:", exc)
-        names = []
+        resp = await asyncio.to_thread(
+            requests.post,
+            OBJECT_LOOKUP_URL,
+            data=form,
+            headers=headers,
+            timeout=5
+        )
+        resp.raise_for_status()
+        doc = resp.json()
+    except Exception as e:
+        print("NED ObjectLookup failed:", e)
+        return []
 
-    seen, ordered = set(), []
-    for n in names:
+    suggestions = []
+    code = doc.get("ResultCode")
+    if code == 1:
+        for entry in doc.get("FuzzyMatches", []):
+            name = entry.get("Name")
+            if name:
+                suggestions.append(name)
+    elif code == 3:
+        nm = doc.get("Interpreted", {}).get("Name")
+        if nm:
+            suggestions.append(nm)
+
+    seen, out = set(), []
+    for n in suggestions:
         if n not in seen:
-            ordered.append(n); seen.add(n)
-            if len(ordered) == limit:
+            seen.add(n)
+            out.append({"service": "NED", "name": n})
+            if len(out) >= limit:
                 break
-    return [{"service": "NED", "name": n} for n in ordered]
+    return out
 
 
 @app.get("/api/object_suggest", tags=["object_resolve"])
@@ -262,19 +319,13 @@ async def object_suggest(
     use_simbad: bool = True,
     use_ned: bool = False,
     limit: int = 15,
-):
-    """
-    Return up to `limit` object names that start with `q`.
-    Response shape:
-      {"results":[{"service":"SIMBAD","name":"Crab Nebula"}, ... ]}
-    """
+)-> Dict[str, List[Dict[str, Any]]]:
     q = q.strip()
     if len(q) < 4 and not _is_short_catalog(q):
         return {"results": []}
-    if not q or not (use_simbad or use_ned):
+    if not (use_simbad or use_ned):
         return {"results": []}
 
-    # Redis-TTL cache
     cache_key = f"suggest:{q.lower()}:{use_simbad}:{use_ned}:{limit}"
     if hasattr(app.state, "redis"):
         cached = await app.state.redis.get(cache_key)
@@ -284,25 +335,34 @@ async def object_suggest(
     tasks = []
     if use_simbad:
         tasks.append(_simbad_suggest(q, limit))
+    else:
+        tasks.append(asyncio.sleep(0, result=[]))
     if use_ned:
         tasks.append(_ned_suggest(q, limit))
+    else:
+        tasks.append(asyncio.sleep(0, result=[]))
 
-    combined_lists = await asyncio.gather(*tasks)
-    merged = [item for sub in combined_lists for item in sub]
+    simbad_list, ned_list = await asyncio.gather(*tasks)
 
-    seen, uniq = set(), []
-    for it in merged:
-        if it["name"] not in seen:
-            uniq.append(it)
-            seen.add(it["name"])
-            if len(uniq) >= limit:
+    # round-robin merge up to `limit` entries
+    merged = []
+    for sim, ned in itertools.zip_longest(simbad_list, ned_list, fillvalue=None):
+        if sim:
+            merged.append(sim)
+            if len(merged) >= limit:
+                break
+        if ned:
+            merged.append(ned)
+            if len(merged) >= limit:
                 break
 
-    # cache for 24 h
-    if uniq and hasattr(app.state, "redis"):
-        await app.state.redis.set(cache_key, json.dumps({"results": uniq}), ex=86400)
+    results = merged[:limit]
 
-    return {"results": uniq}
+    # store in redis for 24 h
+    if hasattr(app.state, "redis"):
+        await app.state.redis.set(cache_key, json.dumps({"results": results}), ex=86400)
+
+    return {"results": results}
 
 
 @app.get("/api/search_coords", response_model=SearchResult, tags=["search"])
@@ -604,21 +664,9 @@ async def object_resolve(data: dict = Body(...)):
         results.extend(simbad_list)
 
     if use_ned:
-        direct_query = (
-            f"SELECT ra, dec, prefname "
-            "FROM NEDTAP.objdir "
-            f"WHERE prefname = '{object_name}'"
-        )
-        direct_results = _run_ned_sync_query(direct_query)
-        ned_list.extend(direct_results)
-
-        for nr in ned_list:
-            results.append({
-                "service": "NED",
-                "name": nr["prefname"],
-                "ra":  nr["ra"],
-                "dec": nr["dec"]
-            })
+        resolved = await _ned_resolve_via_objectlookup(object_name)
+        if resolved:
+            results.append(resolved)
 
     return {"results": results}
 
