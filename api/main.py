@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Query, HTTPException, Body, Response, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from .models import SearchResult, UserTable
+from .models import SearchResult
 from .tap import (
     perform_coords_query,
     perform_time_query,
@@ -13,7 +13,6 @@ import requests
 from astropy.io.votable import parse_single_table
 import astropy.units as u
 from astropy.coordinates import SkyCoord
-# from .auth import router as auth_router, current_optional_active_user
 from .auth import get_optional_session_user
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.staticfiles import StaticFiles
@@ -38,6 +37,7 @@ from .oidc import oidc_router
 from starlette.config import Config as StarletteConfig
 from contextlib import asynccontextmanager
 import itertools
+import hashlib
 
 
 SIMBAD_TAP_SYNC = "https://simbad.cds.unistra.fr/simbad/sim-tap/sync"
@@ -384,11 +384,13 @@ async def search_coords(
     tap_url: str = 'http://voparis-tap-he.obspm.fr/tap',
     obscore_table: str = 'hess_dr.obscore_sdc',
     # Auth
-    # user: Optional[UserTable] = Depends(current_optional_active_user),
     user_session_data: Optional[Dict[str, Any]] = Depends(get_optional_session_user),
 ):
+    redis = getattr(app.state, "redis", None)
+    CACHE_TTL = 3600
+
     base_api_url = f"{request.url.scheme}://{request.headers['host']}"
-    print(f"DEBUG search_coords: START. Params received: {request.query_params}")
+    # print(f"DEBUG search_coords: START. Params received: {request.query_params}")
 
     fields = {
         'tap_url': {'value': tap_url},
@@ -455,15 +457,53 @@ async def search_coords(
     print(f"DEBUG search_coords: Fields prepared: {fields}")
     print(f"DEBUG search_coords: Coords present: {coords_present}, Time present: {time_filter_present}")
 
-    adql_query_str = None
+    # adql_query_str = None
     res_table = None
     error = None
 
-    try:
-        if not coords_present and not time_filter_present:
-            print("ERROR search_coords: No valid search criteria provided.")
-            raise HTTPException(status_code=400, detail="Provide Coordinates or Time Interval.")
+    if not coords_present and not time_filter_present:
+        raise HTTPException(status_code=400, detail="Provide Coordinates or Time Interval.")
 
+    if coords_present and time_filter_present:
+        adql_query_str = (
+            "SELECT TOP 100 * FROM {tbl} WHERE "
+            "1=CONTAINS(POINT('ICRS', s_ra, s_dec), CIRCLE('ICRS', {ra}, {dec}, {rad})) "
+            "AND t_min < {tend} AND t_max > {tstart}"
+        ).format(
+            tbl = obscore_table,
+            ra = fields['target_raj2000']['value'],
+            dec = fields['target_dej2000']['value'],
+            rad = fields['search_radius']['value'],
+            tend = fields['search_mjd_end']['value'],
+            tstart = fields['search_mjd_start']['value'],
+        )
+    elif coords_present:
+        adql_query_str = (
+            "SELECT TOP 100 * FROM {tbl} WHERE "
+            "1=CONTAINS(POINT('ICRS', s_ra, s_dec), CIRCLE('ICRS', {ra}, {dec}, {rad}))"
+        ).format(
+            tbl = obscore_table,
+            ra = fields['target_raj2000']['value'],
+            dec = fields['target_dej2000']['value'],
+            rad = fields['search_radius']['value'],
+        )
+    else:
+        adql_query_str = (
+            "SELECT TOP 100 * FROM {tbl} WHERE t_min < {tend} AND t_max > {tstart}"
+        ).format(
+            tbl = obscore_table,
+            tend = fields['search_mjd_end']['value'],
+            tstart = fields['search_mjd_start']['value'],
+        )
+
+    cache_key = "search:" + hashlib.sha256(adql_query_str.encode()).hexdigest()
+
+    if redis:
+        cached = await redis.get(cache_key)
+        if cached:
+            return SearchResult.model_validate_json(cached)
+
+    try:
         if coords_present and time_filter_present:
             error, res_table, adql_query_str = perform_coords_time_query(fields)
         elif coords_present:
@@ -478,10 +518,10 @@ async def search_coords(
         raise HTTPException(status_code=500, detail="Failed during query execution.")
 
     if error is None:
-        print(f"DEBUG search_coords: No error from query function. Processing table.")
+        # print(f"DEBUG search_coords: No error from query function. Processing table.")
         try:
             columns, data = astropy_table_to_list(res_table)
-            print(f"DEBUG search_coords: astropy_table_to_list returned {len(columns)} cols, {len(data)} rows.")
+            # print(f"DEBUG search_coords: astropy_table_to_list returned {len(columns)} cols, {len(data)} rows.")
 
             if not columns and not data and res_table is not None and len(res_table) > 0:
                  print("ERROR search_coords: astropy_table_to_list returned empty lists despite input.")
@@ -489,7 +529,7 @@ async def search_coords(
 
             columns = list(columns) if columns else []
             data = [list(row) for row in data] if data else []
-            print(f"DEBUG search_coords: Constructing SearchResult object.")
+            # print(f"DEBUG search_coords: Constructing SearchResult object.")
 
             search_result_obj = SearchResult(columns=columns, data=data)
             print(f"DEBUG search_coords: SearchResult object created: {type(search_result_obj)}")
@@ -532,7 +572,16 @@ async def search_coords(
 
             # recreate SearchResult with datalink info
             search_result_obj = SearchResult(columns=columns_with_datalink, data=data_with_datalink)
-            print(f"DEBUG search_coords: SearchResult RECREATED with datalink.")
+            # print(f"DEBUG search_coords: SearchResult RECREATED with datalink.")
+
+            if redis:
+                await redis.set(
+                    cache_key,
+                    search_result_obj.model_dump_json(),
+                    ex=CACHE_TTL
+                )
+            else:
+                print("Redis client was None; skipping cache")
 
             if user_session_data:
                 app_user_id = user_session_data["app_user_id"]
@@ -585,10 +634,6 @@ async def search_coords(
     else:
         print(f"ERROR search_coords: Query function returned error: {error}")
         raise HTTPException(status_code=400, detail=error)
-
-    # Failsafe
-    print("ERROR search_coords: Reached end of function unexpectedly.")
-    raise HTTPException(status_code=500, detail="Unexpected end of search processing.")
 
 
 @app.post("/api/object_resolve", tags=["object_resolve"])
