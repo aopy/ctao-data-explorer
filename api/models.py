@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Any, Optional
+from typing import List, Any
 from .db import Base
 # from fastapi_users.db import SQLAlchemyBaseUserTable
 from sqlalchemy import Column, Integer, String, DateTime, Text, func, ForeignKey, Table, Boolean
@@ -41,7 +41,6 @@ class QueryHistory(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     query_date = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     query_params = Column(Text, nullable=True)
-    adql_query_hash = Column(String(64), nullable=True, index=True)
     results = Column(Text, nullable=True)
     user = relationship("UserTable", back_populates="query_history")
 

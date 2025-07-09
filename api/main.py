@@ -9,7 +9,6 @@ from .tap import (
 )
 import pyvo as vo
 import math
-import requests
 from astropy.io.votable import parse_single_table
 import astropy.units as u
 from astropy.coordinates import SkyCoord
@@ -609,7 +608,6 @@ async def search_coords(
 
                     history_payload = QueryHistoryCreate(
                         query_params=params_to_save,
-                        adql_query=adql_query_str,
                         results=search_result_obj.model_dump()
                     )
                     async with AsyncSessionLocal() as history_session:

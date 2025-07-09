@@ -2,10 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 import json
-import hashlib
-from .models import QueryHistory, UserTable
+from .models import QueryHistory
 from .db import get_async_session
-# from .auth import current_active_user
 from .auth import get_required_session_user
 from pydantic import BaseModel, Field
 from typing import Optional, Any, Dict, List
@@ -14,15 +12,12 @@ from fastapi import status
 
 class QueryHistoryCreate(BaseModel):
     query_params: Optional[Dict[str, Any]] = None
-    adql_query: Optional[str] = None
     results: Optional[Dict[str, Any]] = None
 
 class QueryHistoryRead(BaseModel):
     id: int
-    # user_id: int
     query_date: datetime
     query_params: Optional[Dict[str, Any]] = Field(default_factory=dict)
-    adql_query_hash: Optional[str] = None
     # include results summary or keep full?
     results: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
@@ -38,17 +33,12 @@ async def _internal_create_query_history(
         app_user_id: int,  # Expect app_user_id directly
         session: AsyncSession
 ):
-    """Creates a query history record, calculating the ADQL hash."""
-    query_hash = None
-    if history.adql_query:
-        # Calculate SHA-256 hash of the ADQL query string
-        query_hash = hashlib.sha256(history.adql_query.encode('utf-8')).hexdigest()
+    """Creates a query history record."""
 
     try:
         new_history = QueryHistory(
             user_id=app_user_id,
             query_params=json.dumps(history.query_params) if history.query_params else None,
-            adql_query_hash=query_hash,
             results=json.dumps(history.results) if history.results else None,
         )
         session.add(new_history)
@@ -60,7 +50,6 @@ async def _internal_create_query_history(
              id=new_history.id,
              query_date=new_history.query_date,
              query_params=json.loads(new_history.query_params) if new_history.query_params else None,
-             adql_query_hash=new_history.adql_query_hash,
              results=json.loads(new_history.results) if new_history.results else None,
         )
         return response_data
@@ -86,7 +75,6 @@ async def create_query_history(
 
 @query_history_router.get("", response_model=List[QueryHistoryRead])
 async def get_query_history(
-    # user: UserTable = Depends(current_active_user),
     user_session_data: Dict[str, Any] = Depends(get_required_session_user),
     session: AsyncSession = Depends(get_async_session)
 ):
@@ -112,7 +100,6 @@ async def get_query_history(
                     id=db_history.id,
                     query_date=db_history.query_date,
                     query_params=query_params_dict,
-                    adql_query_hash=db_history.adql_query_hash,
                     results=results_dict,
                 ))
             except json.JSONDecodeError as e:
@@ -128,7 +115,6 @@ async def get_query_history(
 @query_history_router.delete("/{history_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_query_history_item(
     history_id: int,
-    # user: UserTable = Depends(current_active_user),
     user_session_data: Dict[str, Any] = Depends(get_required_session_user),
     session: AsyncSession = Depends(get_async_session)
 ):
