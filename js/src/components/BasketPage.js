@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { API_PREFIX } from '../index';
+import { mjdToDate, formatDateTimeStrings } from './datetimeUtils';
 
 const formatTmin = (mjd) => {
-  if (!mjd || isNaN(mjd)) return '';
-  const MJD_UNIX_EPOCH = 40587;
-  const msPerDay = 86400000;
-  const unixTime = (mjd - MJD_UNIX_EPOCH) * msPerDay;
-  return new Date(unixTime).toLocaleString();
+  if (mjd == null || mjd === '') return '';
+  const mjdNum = Number(String(mjd).replace(',', '.'));
+  if (!Number.isFinite(mjdNum)) return '';
+  const date = mjdToDate(mjdNum);
+  if (!date) return '';
+  const { dateStr, timeStr } = formatDateTimeStrings(date); // both UTC
+  return `${dateStr} ${timeStr} UTC`;
 };
 
 function BasketPage({ isLoggedIn, onOpenItem, onActiveGroupChange, refreshTrigger,
