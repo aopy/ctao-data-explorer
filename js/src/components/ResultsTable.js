@@ -54,10 +54,10 @@ const ResultsTable = ({
     setAlertMessage('Please select an active basket group first!');
     return;
   }
-  if (!selectedTableRows.length) return;
+  if (!selectedRowsByIds.length) return;
 
   // Build items list
-  const items = selectedTableRows.map((row) => ({
+  const items = selectedRowsByIds.map((row) => ({
     obs_id: row.obs_id,
     dataset_dict: row,
   }));
@@ -216,9 +216,8 @@ const ResultsTable = ({
       <button
       className="btn btn-primary btn-sm ms-auto"
       onClick={addManyToBasket}
-      disabled={!selectedTableRows.length} >
-
-      Add {selectedTableRows.length || ''} selected
+      disabled={!selectedRowsByIds.length} >
+      Add {selectedRowsByIds.length || ''} selected
       </button>
     </div>
   );
@@ -337,6 +336,11 @@ const ResultsTable = ({
       return rowData;
     });
   }, [data, backendColumnNames]);
+
+  const selectedRowsByIds = useMemo(
+    () => tableData.filter((r) => selectedIds.includes(r.obs_id?.toString())),
+    [tableData, selectedIds]
+  );
 
   // Custom styles for DataTable
   const customStyles = {

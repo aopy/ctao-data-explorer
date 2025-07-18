@@ -175,10 +175,13 @@ const EmRangeChart = ({ results, selectedIds, onSelectIds = () => {} }) => {
 
   const handleClick = (e) => {
     if (!e?.points?.length) return;
-    const clickedId = e.points[0].customdata;
-    onSelectIds([clickedId]);
+    const id = e.points[0].customdata;
+    const next = selectedIds.includes(id)
+      ? selectedIds.filter((x) => x !== id)
+      : [...selectedIds, id];
+    onSelectIds(next);
   };
-
+  const clearAll = () => onSelectIds([]);
   return (
     <div style={{ width: '100%', height: '200px' }}>
       <Plot
@@ -189,6 +192,7 @@ const EmRangeChart = ({ results, selectedIds, onSelectIds = () => {} }) => {
         useResizeHandler={true}
         config={{ responsive: true }}
         onClick={handleClick}
+        onDoubleClick={clearAll}
       />
          <p style={{fontSize: '12px', marginTop: '5px'}}>
           * The Energy (TeV) values were converted from wavelength (m) measurements.

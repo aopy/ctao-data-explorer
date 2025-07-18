@@ -12,8 +12,9 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [], onSelectIds = () =>
   const aladinRef = useRef(null);
   const aladinInstance = useRef(null);
   const resultsCatalogRef = useRef(null);
-  const clickHandlerRef   = useRef(null);
-  const isRefreshingRef   = useRef(false);
+  const clickHandlerRef = useRef(null);
+  const isRefreshingRef = useRef(false);
+  const selectedIdsRef = useRef([]);
 
   const customDrawFunction = useCallback((source, canvasCtx, viewParams) => {
     const data = source.data || {};
@@ -104,10 +105,19 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [], onSelectIds = () =>
             clickHandlerRef.current = (obj) => {
               if (isRefreshingRef.current) return;
               const id = obj?.data?.id?.toString();
-              if (id) onSelectIds([id]);
+              if (!id) {
+                onSelectIds([]);
+                return;
+              }
+              // toggle logic
+              const cur = selectedIdsRef.current;
+              const next = cur.includes(id)
+                ? cur.filter((x) => x !== id)
+                : [...cur, id];
+              onSelectIds(next);
             }
             aladinInstance.current.on('objectClicked', clickHandlerRef.current);
-
+            aladinInstance.current.on('mapClicked', () => onSelectIds([]));
             updateMarkers(); // Update markers after init
 
       } catch (error) {
@@ -124,9 +134,12 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [], onSelectIds = () =>
       console.log("AladinLiteViewer unmounting...");
       if (aladinInstance.current && clickHandlerRef.current) {
         aladinInstance.current.off?.('objectClicked', clickHandlerRef.current);
+        aladinInstance.current.off?.('mapClicked', () => {});
       }
     };
   }, [customDrawFunction, onSelectIds]);
+
+  useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
 
   // effect to update markers when data changes
   useEffect(() => {
