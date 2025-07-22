@@ -1,94 +1,85 @@
 # Changelog
 
-All notable changes to **CTAO Data Explorer** will be documented in this file.
-
-The structure follows the recommendations of *Keep a Changelog* and is intended to be compatible with *Semantic Versioning* once formal release tags are introduced. Until tags exist, entries are grouped by the date of the latest commit in each batch (reverse chronological).
-
-For the complete, fine‑grained commit history, see the project repository’s commit list on GitLab.
+All notable changes to **CTAO Data Explorer** are documented in this file.
+This file follows *Keep a Changelog* and uses *Semantic Versioning* git tags.
 
 ## [Unreleased]
 
-## [2025-07-16 – Latest]
-
-### Added
-
-- Cache search results in Redis (1 hour) to speed up repeat queries. ([136fe8a]).
-- Add initial CHANGELOG. ([27e7f6f]).
-
 ### Changed
 
-- Object lookup: resolve objects in NED catalogue via ObjectLookup; improves object suggestions. ([f9848fc]).
+- Enable multi-selection in charts and sky map. ([61b837e]).
 
 ### Fixed
 
-- Basket: correct time shift / timezone display in basket tab. ([f1014ea]).
+- Basket: correct time‑zone shift in the basket tab. ([f1014ea]).
 - Auth/Session: fix logout; inform user when session expires. ([c07ab7d]).
 
 ### Removed
 
-- Remove old ADQL-hash feature. ([4e1fde4]).
+- Remove old ADQL‑hash feature. ([4e1fde4]).
 
-## [2025-06-30]
+---
+
+## [v0.6.0] – 2025‑07‑08
 
 ### Added
 
-- Auto-suggest objects via dropdown as you type the source name; temporary cache suggestions via Redis. ([7c8fe93]).
+- Cache search results in Redis (1 h) to speed up repeat queries. ([136fe8a]).
+- Add Simbad/NED dropdown auto-suggestions with Redis-backed caching. ([7c8fe93]).
 - Bidirectional selection sync between results table, sky map & charts. ([063d61b]).
 - Column descriptions in config; show as tooltips. ([ca149af]).
 - Basket UX: add items to multiple baskets; duplicate baskets; provide a default basket. ([5cfc83f]).
-- Temporarily store user info (name/email) in Redis; display in profile tab, stop storing user name, email in DB. ([877d952]).
-- New auth/BFF service architecture managing external tokens; store encrypted refresh token in DB, session ID in Redis. ([c1db462]).
+- Temporarily store user info (name/email) in Redis; display in profile tab, stop storing user name & email in DB. ([877d952]).
+- **Documentation:** initial CHANGELOG draft. ([27e7f6f]).
 
 ### Changed
 
-- UI: improve chart & sky map design; adopt Okabe & Ito colour-blind safe palette. ([e103af8]).
+- Object lookup: resolve objects in NED catalogue via `ObjectLookup`; improves object suggestions. ([f9848fc]).
+- UI: improve chart & sky map design; adopt Okabe‑Ito colour‑blind–safe palette. ([e103af8]).
 - Use standard names for columns in config. ([0bd8b89]).
-- Switch to date-fns-tz for timezone formatting. ([51cc2a7]).
-- Temporarily disable https_only in middleware (deployment workaround). ([b46fdfa]).
+- Temporarily disable `https_only` in middleware (deployment workaround). ([b46fdfa]).
 
 ### Fixed
 
-- Refresh token handling. ([f3df089]).
+- Refresh‑token handling. ([f3df089]).
 - Object suggestion edge cases. ([b010739]).
 - Production callback URL. ([7e6ccdd]).
 - Time search issue. ([dec5eca]).
 
-## [2025-05-28]
+---
+
+## [v0.5.0] – 2025‑06‑06
 
 ### Added
 
-- Results table: per‑column sort controls. ([8687016]).
-- Results table: hide/show all columns toggles. ([a9bf0fe]).
-- Search form field tooltips. ([8e92793]).
-- Search form: clear button. ([f18da72]).
-- Persist search form values in sessionStorage prior to login. ([ae0f83c]).
-- Safeguards & warnings for MJD→date conversions. ([71494da]).
-- Query Store summary: show equatorial HMS/DMS. ([683462a]).
+- Introduce FastAPI BFF service for auth: store encrypted refresh tokens in the DB and session IDs in Redis. ([c1db462]).
 
 ### Changed
 
-- Build DataLink URL from incoming request. ([c9df34a]).
+- Switch to `date-fns-tz` for timezone formatting. ([51cc2a7]).
 
 ### Fixed
 
 - Timeline chart time formatting (locale). ([095c695]).
-- EM chart min/max energy swap. ([336a054]).
+- Electromagnetic‑range chart min/max energy swap. ([336a054]).
 - Query Store summary coordinate/date bug. ([87f5eb1]).
 
-## [2025-04-25]
+---
+
+## [v0.4.0] – 2025‑04‑25
 
 ### Added
 
-- Query Store: persist user queries & results in DB; history tab; reload past queries; store ADQL query hash for (future) caching. ([2fa35db]).
-- Allow items to belong to multiple baskets. ([9898f15]).
-- Cookie‑based authentication. ([6ddcb87]).
+- Query Store: persist user queries & results in DB; history tab; store ADQL query hash for (future) caching. ([2fa35db]).
 
 ### Changed
 
 - Search form redesigned; add MJD & equatorial HMS/DMS inputs. ([29b7f05]).
+- Improve basket‑group structure; allow items in multiple baskets. ([9898f15]).
 - Use Astropy Table instead of TAPResults for TAP queries. ([01a6827]).
 - Simplify Aladin Lite component; single catalogue. ([9455c4a]).
 - Expose API endpoint to fetch basket groups by ID. ([f046f4d]).
+- Cookie‑based authentication. ([6ddcb87]).
 
 ### Removed
 
@@ -96,121 +87,84 @@ For the complete, fine‑grained commit history, see the project repository’s 
 
 ### Fixed
 
-- Temporary workaround for VOTable floating‑point issue. ([5921ddc]).
+- Build DataLink URL from incoming request. ([c9df34a]).
 
-## [2025-03-17]
+---
 
-### Added
-
-- Multiple basket groups per user. ([40c310a]).
-
-### Changed
-
-- Extend user schema/profile (email, first login). ([60cde7b]).
-- Record user search history (params/results) in DB; show JSON in profile modal. ([434ebd0]).
-
-## [2025-02-28]
+## [v0.3.0] – 2025‑03‑13
 
 ### Added
 
-- Observation time‑interval (UTC) search filter. ([ea13edc]).
-- Search by observation date. ([1017358]).
-- DataLink support (initial; local testing). ([c0abcc0]).
-- Basket item detail modal (sky map & charts) from basket. ([8a71379]).
-- Add selected results to basket. ([01e6001]).
-- Results table: hide/show columns toggles. ([feda401]).
+- Record user search history and show it in the user‑profile modal. ([434ebd0]).
+- Observation time‑interval search. ([ea13edc]).
+- DataLink support. ([605b2eb]).
+- Basket functionality. ([01e6001]).
+- Modal view of items in the basket tab. ([8a71379]).
+- User first name in header. ([3a753c0]).
+
 
 ### Changed
 
-- Present DataLink services as dropdown in result rows. ([605b2eb]).
-- Prevent duplicate adds to basket; improve item display & warnings. ([e9a5f24]).
-- Improve auto zoom‑out in sky map for large regions. ([bf80425]).
+- Multiple basket groups. ([40c310a]).
 
 ### Fixed
 
-- DataLink dropdown issues; support `service_def` in VOTable. ([8b162a2]).
+- Disappearing basket groups. ([d1b5fb7]).
 
-### Removed
+---
 
-- Remove duplicate `access_url` column; improve long column‑name display. ([b245762]).
-
-## [2025-01-29]
+## [v0.2.0] – 2025‑01‑27
 
 ### Added
 
-- Authentication via CTAO IAM / OpenID Connect (FastAPI Users + Authlib, Postgres backend); includes Alembic migrations; unified JWT secret; async DB user storage. ([1f6727a]).
-- Support galactic coordinates in search form. ([721fc3e]).
+- OpenID Connect authentication (FastAPI Users + Authlib). ([1f6727a]).
+- Support galactic coordinate system input. ([721fc3e]).
+- Object resolve via NED. ([0a23005]).
+- Object resolve via Simbad. ([6c349dc]).
+- Bootstrap UI. ([d157455]).
+- Download button in results table. ([4346006]).
 
 ### Changed
 
-- Display user's name in header; record first‑login timestamp for analytics. ([502754d]).
-- Integrate second NED TAP catalogue in object resolver. ([0a23005]).
-
-## [2024-12-20]
-
-### Added
-
-- Object resolution via Simbad TAP in search form. ([6c349dc]).
-- EM range chart (Plotly). ([3529438]).
-- Timeline chart (Plotly). ([a2f227c]).
-- Download button in `access_url` column. ([67b459f]).
-
-### Changed
-
-- Add TeV energy values; adjust EM chart transparency & colours. ([a7fc6b0]).
-- Indicate units in search form labels; set default search radius. ([67b459f]).
-- Upgrade to Aladin Lite v3. ([0aff94d]).
-- Adopt Bootstrap for UI. ([d157455]).
+- Use TeV in EM chart. ([a7fc6b0]).
+- Aladin Lite v3. ([0aff94d]).
 
 ### Fixed
 
-- Timeline chart zoom behaviour. ([52c705f]).
+- Zooming issue in timeline chart. ([52c705f]).
 
-## [2024-11-29]
+---
+
+## [v0.1.0] – 2024‑12‑06
 
 ### Added
 
-- DataTables integration in results table (sorting/filtering). ([1324e13]).
+- Electromagnetic‑range chart using Plotly. ([3529438]).
+- Timeline chart using Plotly. ([a2f227c]).
+- React front‑end. ([e053314]).
+- FastAPI back‑end foundation. ([05be991]).
+- Aladin Lite integration. ([f03fbb2]).
+- DataTables integration in results table. ([1324e13]).
+- Convert database/table location settings to UI form fields. ([6477659]).
 
-### Changed
-
-- Keep all sky map markers visible across zoom levels. ([0bcba33]).
-- Integrate Aladin Lite into search results. ([f03fbb2]).
-- Convert DB/table path settings to UI form fields. ([6477659]).
-- Split frontend into dedicated React client. ([e053314]).
-- Initial release with core search features. ([05be991]).
 
 ---
 
 ## References
 
-**Project history**
-- Project commit log (GitLab): see the full list of commits.  <!-- canonical -->
-- Commit permalink pattern: `https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/<SHA>`
-- Compare/diff pattern: `https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/<FROM>...<TO>`
-  - `<FROM>` / `<TO>` can be tags, branch names, or commit SHAs.
+- **Project commit log (GitLab)** – <https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commits/master>
+- **Commit permalink pattern** – `https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/<SHA>`
+- **Compare pattern** – `https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/<FROM>...<TO>`
+- **Keep a Changelog** – <https://keepachangelog.com/en/1.1.0/>
+- **Semantic Versioning 2.0.0** – <https://semver.org/spec/v2.0.0.html>
 
-**Changelog & versioning style guides**
-- Keep a Changelog — https://keepachangelog.com/en/1.1.0/
-- Semantic Versioning 2.0.0 — https://semver.org/spec/v2.0.0.html
-- Conventional Commits (optional prefix style) — https://www.conventionalcommits.org/en/v1.0.0/
-
----
-
-### Link reference definitions (to be updated after tagging)
-
-<!--
-Example tag cut points:
-- v0.3.0  (2025-07-16)  fix TZ shift; Redis caching; NED lookup; cleanup
-- v0.2.0  (2025-06-16)  basket enhancements; table/tooltips; UI polish; auth fixes
-- v0.1.0  (2024-11-21)  initial public release
-After creating tags, update the links below.
--->
-
-[Unreleased]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/v0.3.0...master
-[v0.3.0]:    https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/v0.2.0...v0.3.0
-[v0.2.0]:    https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/v0.1.0...v0.2.0
-[v0.1.0]:    https://gitlab.obspm.fr/oates/ctao-data-explorer/-/tree/05be991
+[Unreleased]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/v0.6.0...master
+[v0.6.0]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/v0.5.0...v0.6.0
+[v0.5.0]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/v0.4.0...v0.5.0
+[v0.4.0]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/v0.3.0...v0.4.0
+[v0.3.0]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/v0.2.0...v0.3.0
+[v0.2.0]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/v0.1.0...v0.2.0
+[v0.1.0]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/tags/v0.1.0
 
 [01a6827]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/01a6827
 [01e6001]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/01e6001
@@ -218,7 +172,6 @@ After creating tags, update the links below.
 [05be991]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/05be991
 [063d61b]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/063d61b
 [095c695]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/095c695
-[09cjtbd-placeholder]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/09cjtbd-placeholder
 [0bcba33]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/0bcba33
 [0bd8b89]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/0bd8b89
 [0dff733]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/0dff733
@@ -252,7 +205,6 @@ After creating tags, update the links below.
 [877d952]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/877d952
 [8a71379]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/8a71379
 [8f0e234]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/8f0e234
-[95cjdps-placeholder]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/95cjdps-placeholder
 [9a5df05]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/9a5df05
 [9f8cbb8]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/9f8cbb8
 [a28f737]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/a28f737
@@ -281,35 +233,27 @@ After creating tags, update the links below.
 [f3df089]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/f3df089
 [f9848fc]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/f9848fc
 [feda401]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/feda401
-[8687016]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/8687016
-[52c705f]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/52c705f
-[0aff94d]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/0aff94d
-[67b459f]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/67b459f
-[a7fc6b0]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/a7fc6b0
-[a2f227c]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/a2f227c
-[3529438]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/3529438
-[0a23005]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/0a23005
-[502754d]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/502754d
-[721fc3e]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/721fc3e
-[1f6727a]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/1f6727a
-[b245762]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/b245762
-[8b162a2]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/8b162a2
-[ea13edc]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/ea13edc
-[434ebd0]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/434ebd0
-[60cde7b]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/60cde7b
-[40c310a]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/40c310a
-[5921ddc]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/5921ddc
-[978e728]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/978e728
-[6ddcb87]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/6ddcb87
-[9898f15]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/9898f15
-[2fa35db]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/2fa35db
-[87f5eb1]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/87f5eb1
+[61b837e]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/61b837e
 [336a054]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/336a054
-[f046f4d]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/f046f4d
+[87f5eb1]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/87f5eb1
+[2fa35db]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/2fa35db
+[9898f15]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/9898f15
 [9455c4a]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/9455c4a
-[a9bf0fe]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/a9bf0fe
-[8e92793]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/8e92793
-[ae0f83c]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/ae0f83c
-[71494da]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/71494da
-[683462a]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/683462a
+[f046f4d]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/f046f4d
+[6ddcb87]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/6ddcb87
+[978e728]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/978e728
+[434ebd0]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/434ebd0
+[ea13edc]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/ea13edc
+[3a753c0]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/3a753c0
+[40c310a]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/40c310a
+[d1b5fb7]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/d1b5fb7
+[1f6727a]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/1f6727a
+[721fc3e]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/721fc3e
+[0a23005]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/0a23005
 [6c349dc]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/6c349dc
+[4346006]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/4346006
+[a7fc6b0]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/a7fc6b0
+[0aff94d]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/0aff94d
+[52c705f]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/52c705f
+[3529438]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/3529438
+[a2f227c]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/a2f227c
