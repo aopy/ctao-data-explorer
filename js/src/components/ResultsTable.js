@@ -5,7 +5,33 @@ import DataLinkDropdown from './DataLinkDropdown';
 import { API_PREFIX } from '../index';
 import { getColumnDisplayInfo } from './columnConfig';
 
-const ResultsTable = ({
+const DEFAULT_VISIBLE_COLUMNS = [
+  'obs_collection',
+  'obs_id',
+  'dataproduct_type',
+  'dataproduct_subtype',
+  'ra_obj',
+  'dec_obj',
+  'target_name',
+  'offset_obj',
+  't_min',
+  't_max',
+  't_exptime',
+  'safe_energy_lo',
+  'safe_energy_hi',
+  'facility_name',
+  'instrument_name',
+  'zen_pnt',
+  'alt_pnt',
+  'az_pnt',
+  // 'event_class',
+  // 'event_type',
+  // 'processing_date',
+  // 'convergence',
+  // 'obs_mode'
+];
+
+export default function ResultsTable({
   results,
   onRowSelected,
   selectedIds = [],
@@ -13,153 +39,136 @@ const ResultsTable = ({
   onAddedBasketItem,
   allBasketGroups = [],
   activeBasketGroupId,
-}) => {
-  const { columns: backendColumnNames, data } = results;
+}) {
+  const { columns: backendColumnNames, data } = results || {};
 
-  // State to track hidden columns
-  const [hiddenColumns, setHiddenColumns] = useState([]);
-  // Alert message state
+  // Which columns are toggleable
+  const toggleableBackendCols = useMemo(() => {
+    if (!backendColumnNames) return [];
+    return backendColumnNames.filter(c =>
+      c !== 'datalink_url' && c !== 'obs_publisher_did'
+    );
+  }, [backendColumnNames]);
+
+  const tableData = useMemo(() => {
+    if (!backendColumnNames || !data) return [];
+    return data.map((rowArray, rowIndex) => {
+      const rowObj = { id: `datatable-row-${rowIndex}` };
+      backendColumnNames.forEach((colName, colIndex) => {
+        rowObj[colName] = rowArray[colIndex];
+      });
+      return rowObj;
+    });
+  }, [backendColumnNames, data]);
+
+  const selectedRowsByIds = useMemo(() => {
+    return tableData.filter(r => selectedIds.includes(r.obs_id?.toString()));
+  }, [tableData, selectedIds]);
+
+  const [hiddenColumns, setHiddenColumns] = useState(() =>
+    toggleableBackendCols.filter(c => !DEFAULT_VISIBLE_COLUMNS.includes(c))
+  );
   const [alertMessage, setAlertMessage] = useState(null);
-  // State to track which row's dropdown is open (by row id).
   const [openDropdownId, setOpenDropdownId] = useState(null);
 
-   const [selectedTableRows, setSelectedTableRows] = useState([]);
-
-   const handleSelectedTableRowsChange = (state) => {
-    const ids = (state.selectedRows || []).map((r) => r.obs_id.toString());
+  // Row selection change
+  const handleSelectedTableRowsChange = (state) => {
+    const ids = (state.selectedRows || []).map(r => r.obs_id.toString());
     const same =
       ids.length === selectedIds.length &&
-      ids.every((id) => selectedIds.includes(id));
-    if (same) return;
-    setSelectedTableRows(state.selectedRows);
-    onRowSelected?.(state);
-  };
-
-  const selectableRowSelected = (row) =>
-    selectedIds.includes(row.obs_id?.toString());
-
-  const conditionalRowStyles = [
-    {
-      when: (row) => selectableRowSelected(row),
-      style: { backgroundColor: 'rgba(100, 149, 237, 0.15)' }
+      ids.every(id => selectedIds.includes(id));
+    if (!same) {
+      onRowSelected?.(state);
     }
-  ];
+  };
 
   const addManyToBasket = async () => {
-  if (!isLoggedIn) {
-    setAlertMessage('You must be logged in to add to basket!');
-    return;
-  }
-  if (!activeBasketGroupId) {
-    setAlertMessage('Please select an active basket group first!');
-    return;
-  }
-  if (!selectedRowsByIds.length) return;
-
-  // Build items list
-  const items = selectedRowsByIds.map((row) => ({
-    obs_id: row.obs_id,
-    dataset_dict: row,
-  }));
-
-  try {
-    const res = await axios.post(`${API_PREFIX}/basket/items/bulk`, {
-      basket_group_id: activeBasketGroupId,
-      items,
-    });
-    const added = res.data || [];
-    setAlertMessage(`Added ${added.length} item(s) to basket!`);
-    if (onAddedBasketItem) {
-    added.forEach(item =>
-      onAddedBasketItem(item, activeBasketGroupId)
-    );
-  }
-  } catch (err) {
-    console.error('Bulk add failed', err);
-    setAlertMessage('Error adding items. Some may already be present.');
-  }
-};
-
- // Find the currently active basket group object
-  const activeBasketGroup = useMemo(() => {
-    return allBasketGroups.find(group => group.id === activeBasketGroupId);
-  }, [allBasketGroups, activeBasketGroupId]);
-
-  // Check if an obs_id is already in the active basket group
-  const isInActiveBasket = (obsId) => {
-    if (!activeBasketGroup || !activeBasketGroup.saved_datasets) {
-      return false;
-    }
-    return activeBasketGroup.saved_datasets.some((item) => item.obs_id === obsId);
-  };
-
-  // Add item to the currently active basket
-  const addToBasket = async (rowData) => {
     if (!isLoggedIn) {
-      setAlertMessage("You must be logged in to add to basket!");
+      setAlertMessage('You must be logged in to add to basket!');
       return;
     }
     if (!activeBasketGroupId) {
-        setAlertMessage("Please select an active basket group first!");
-        // disable the button if no group is active?
-        return;
+      setAlertMessage('Please select an active basket group first!');
+      return;
     }
+    if (!selectedRowsByIds.length) return;
 
+    const items = selectedRowsByIds.map(row => ({
+      obs_id: row.obs_id,
+      dataset_dict: row,
+    }));
+
+    try {
+      const res = await axios.post(`${API_PREFIX}/basket/items/bulk`, {
+        basket_group_id: activeBasketGroupId,
+        items,
+      });
+      const added = res.data || [];
+      setAlertMessage(`Added ${added.length} item(s) to basket!`);
+      added.forEach(item => onAddedBasketItem?.(item, activeBasketGroupId));
+    } catch (err) {
+      console.error('Bulk add failed', err);
+      setAlertMessage('Error adding items. Some may already be present.');
+    }
+  };
+
+  // Single-row add to basket
+  const activeBasketGroup = useMemo(
+    () => allBasketGroups.find(g => g.id === activeBasketGroupId),
+    [allBasketGroups, activeBasketGroupId]
+  );
+  const isInActiveBasket = obsId =>
+    !!activeBasketGroup?.saved_datasets?.some(item => item.obs_id === obsId);
+
+  const addToBasket = async rowData => {
+    if (!isLoggedIn) {
+      setAlertMessage('You must be logged in to add to basket!');
+      return;
+    }
+    if (!activeBasketGroupId) {
+      setAlertMessage('Please select an active basket group first!');
+      return;
+    }
     if (isInActiveBasket(rowData.obs_id)) {
       setAlertMessage(`obs_id=${rowData.obs_id} is already in the active basket.`);
-      return; // Already present in the current basket
+      return;
     }
 
     try {
       const payload = {
         obs_id: rowData.obs_id,
         dataset_dict: rowData,
-        basket_group_id: activeBasketGroupId, // Send the active group ID
+        basket_group_id: activeBasketGroupId,
       };
-
       const response = await axios.post(`${API_PREFIX}/basket/items`, payload);
-      console.log("Added to basket:", response.data);
       setAlertMessage(`Added obs_id=${rowData.obs_id} to active basket successfully!`);
-      if (onAddedBasketItem) {
-        // Pass the new item and the group it was added to
-        onAddedBasketItem(response.data, activeBasketGroupId);
-      }
+      onAddedBasketItem?.(response.data, activeBasketGroupId);
     } catch (error) {
-       if (error.response && error.response.status === 401) {
-         setAlertMessage('Authentication error. Please log in again.');
-       } else if (error.response && error.response.status === 409) {
+      if (error.response?.status === 401) {
+        setAlertMessage('Authentication error. Please log in again.');
+      } else if (error.response?.status === 409) {
         setAlertMessage(`obs_id=${rowData.obs_id} is already in the active basket.`);
-      } else if (error.response && error.response.status === 404) {
-        setAlertMessage(`Error: Active basket group not found.`);
-      }
-      else {
+      } else {
         console.error('Failed to add to basket:', error);
         setAlertMessage('Error adding item to basket.');
       }
     }
   };
 
-  // Function to close alert messages
   const handleCloseAlert = () => setAlertMessage(null);
 
-  const toggleableBackendCols = useMemo(() => {
-    if (!backendColumnNames) return [];
-    return backendColumnNames.filter(colName =>
-        colName !== "datalink_url"
-        && colName !== "obs_publisher_did"
-    );
-  }, [backendColumnNames]);
+  const selectableRowSelected = row =>
+    selectedIds.includes(row.obs_id?.toString());
+  const conditionalRowStyles = [
+    {
+      when: selectableRowSelected,
+      style: { backgroundColor: 'rgba(100, 149, 237, 0.15)' },
+    },
+  ];
 
-  // Define which columns are toggleable
-  // const toggleableColumns = columns.filter(col => col !== "datalink_url");
-
-  // Fixed column width
-  const colWidth = "150px";
-
-  // Custom subheader for column visibility using Bootstrap dropdown
   const SubHeader = () => (
-    <div className="p-2 border-bottom bg-light w-100 d-flex align-items-center">
-      <div className="dropdown ms-2">
+    <div className="p-2 border-bottom bg-light d-flex align-items-center">
+      <div className="dropdown me-2">
         <button
           className="btn btn-secondary btn-sm dropdown-toggle"
           type="button"
@@ -170,17 +179,14 @@ const ResultsTable = ({
           Toggle Columns
         </button>
         <div className="dropdown-menu p-2" aria-labelledby="columnToggleButton">
-          {/* Bulk actions */}
           <div className="d-flex justify-content-between mb-2">
             <button
-              type="button"
               className="btn btn-link btn-sm"
               onClick={() => setHiddenColumns(toggleableBackendCols)}
             >
               Hide All
             </button>
             <button
-              type="button"
               className="btn btn-link btn-sm"
               onClick={() => setHiddenColumns([])}
             >
@@ -188,25 +194,25 @@ const ResultsTable = ({
             </button>
           </div>
           <div className="dropdown-divider"></div>
-          {toggleableBackendCols.map((backendColName) => {
-            const displayInfo = getColumnDisplayInfo(backendColName);
+          {toggleableBackendCols.map(col => {
+            const info = getColumnDisplayInfo(col);
             return (
-              <div key={backendColName} className="form-check">
+              <div key={col} className="form-check">
                 <input
-                  type="checkbox"
                   className="form-check-input"
-                  id={`column-${backendColName}`}
-                  checked={!hiddenColumns.includes(backendColName)}
-                  onChange={() => {
-                    setHiddenColumns((current) =>
-                      current.includes(backendColName)
-                        ? current.filter((c) => c !== backendColName)
-                        : [...current, backendColName]
-                    );
-                  }}
+                  type="checkbox"
+                  id={`col-${col}`}
+                  checked={!hiddenColumns.includes(col)}
+                  onChange={() =>
+                    setHiddenColumns(curr =>
+                      curr.includes(col)
+                        ? curr.filter(c => c !== col)
+                        : [...curr, col]
+                    )
+                  }
                 />
-                <label className="form-check-label" htmlFor={`column-${backendColName}`}>
-                  {displayInfo.displayName}
+                <label className="form-check-label" htmlFor={`col-${col}`}>
+                  {info.displayName}
                 </label>
               </div>
             );
@@ -214,39 +220,43 @@ const ResultsTable = ({
         </div>
       </div>
       <button
-      className="btn btn-primary btn-sm ms-auto"
-      onClick={addManyToBasket}
-      disabled={!selectedRowsByIds.length} >
-      Add {selectedRowsByIds.length || ''} selected
+        className="btn btn-primary btn-sm"
+        onClick={addManyToBasket}
+        disabled={selectedRowsByIds.length === 0}
+      >
+        Add {selectedRowsByIds.length} selected
       </button>
     </div>
   );
 
-  // Build table columns
   const tableColumns = useMemo(() => {
     if (!backendColumnNames) return [];
-    let cols = [];
 
-    // Basket "Action" column
+    const cols = [];
+
+    // Action column
     cols.push({
       id: 'basket-column',
       name: 'Action',
-      cell: (row) => {
-        const inActive = isInActiveBasket(row.obs_id);
-        const buttonDisabled = !isLoggedIn || !activeBasketGroupId || inActive;
-        let title = "Add to active basket";
-        if (!isLoggedIn) title = "Login to add";
-        else if (!activeBasketGroupId) title = "Select a basket first";
-        else if (inActive) title = "Already in active basket";
-
+      cell: row => {
+        const inBasket = isInActiveBasket(row.obs_id);
+        const disabled = !isLoggedIn || !activeBasketGroupId || inBasket;
         return (
           <button
-            className={`btn btn-sm ${inActive ? 'btn-secondary' : 'btn-primary'}`}
+            className={`btn btn-sm ${inBasket ? 'btn-secondary' : 'btn-primary'}`}
             onClick={() => addToBasket(row)}
-            disabled={buttonDisabled}
-            title={title}
+            disabled={disabled}
+            title={
+              !isLoggedIn
+                ? 'Login to add'
+                : !activeBasketGroupId
+                ? 'Select a basket first'
+                : inBasket
+                ? 'Already in active basket'
+                : 'Add to active basket'
+            }
           >
-            {inActive ? 'In Basket' : 'Add'}
+            {inBasket ? 'In Basket' : 'Add'}
           </button>
         );
       },
@@ -259,7 +269,7 @@ const ResultsTable = ({
     cols.push({
       id: 'datalink-column',
       name: 'DataLink',
-      cell: (row) =>
+      cell: row =>
         row.datalink_url ? (
           <DataLinkDropdown
             datalink_url={row.datalink_url}
@@ -269,113 +279,91 @@ const ResultsTable = ({
             }
           />
         ) : null,
-      sortable: false,
       ignoreRowClick: true,
       allowOverflow: true,
       button: true,
     });
 
-    toggleableBackendCols.forEach((backendColName) => {
-      // if (backendColName === "datalink_url") return;
+    const ordered = [
+      ...DEFAULT_VISIBLE_COLUMNS.filter(c => toggleableBackendCols.includes(c)),
+      ...toggleableBackendCols.filter(c => !DEFAULT_VISIBLE_COLUMNS.includes(c)),
+    ];
 
-      const displayInfo = getColumnDisplayInfo(backendColName);
-      let currentWidth = "150px";
-      if (displayInfo.unit) {
-          currentWidth = "180px"; // Wider if unit is present
-      } else if (displayInfo.displayName.length > 15) {
-          currentWidth = "200px"; // Wider for long names
-      }
-
-
+    ordered.forEach(col => {
+      const info = getColumnDisplayInfo(col);
       cols.push({
-        id: `column-${backendColName}`, // Unique ID for the column
+        id: `column-${col}`,
         name: (
-          <div title={displayInfo.description || displayInfo.displayName}>
-            {displayInfo.displayName}
-            {displayInfo.unit && <span className="text-muted small ms-1">[{displayInfo.unit}]</span>}
+          <div title={info.description || info.displayName}>
+            {info.displayName}
+            {info.unit && <span className="text-muted small ms-1">[{info.unit}]</span>}
           </div>
         ),
-        selector: row => row[backendColName],
-        cell: (row) => (
+        selector: row => row[col],
+        cell: row => (
           <div
             style={{
-              // width: currentWidth,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap'
+              whiteSpace: 'nowrap',
             }}
-            title={row[backendColName] === null || row[backendColName] === undefined ? '' : String(row[backendColName])}
+            title={String(row[col] ?? '')}
           >
-            {row[backendColName] === null || row[backendColName] === undefined ? '' : String(row[backendColName])}
+            {String(row[col] ?? '')}
           </div>
         ),
         sortable: true,
         sortFunction: (a, b) => {
-          const aVal = parseFloat(a[backendColName]);
-          const bVal = parseFloat(b[backendColName]);
-          if (!isNaN(aVal) && !isNaN(bVal)) {
-            return aVal - bVal;
-          }
-          return String(a[backendColName]).localeCompare(String(b[backendColName]));
+          const aVal = parseFloat(a[col]);
+          const bVal = parseFloat(b[col]);
+          if (!isNaN(aVal) && !isNaN(bVal)) return aVal - bVal;
+          return String(a[col]).localeCompare(String(b[col]));
         },
-        omit: hiddenColumns.includes(backendColName),
-        width: currentWidth,
+        omit: hiddenColumns.includes(col),
+        width: info.unit ? '180px' : info.displayName.length > 15 ? '200px' : '150px',
       });
     });
+
     return cols;
-  }, [backendColumnNames, hiddenColumns, isLoggedIn, activeBasketGroupId, allBasketGroups, openDropdownId, toggleableBackendCols]);
+  }, [
+    backendColumnNames,
+    hiddenColumns,
+    isLoggedIn,
+    activeBasketGroupId,
+    allBasketGroups,
+    openDropdownId,
+    toggleableBackendCols,
+  ]);
 
-  // Map raw data (array of arrays) to objects keyed by column names.
-  const tableData = useMemo(() => {
-    if (!backendColumnNames || !data) return [];
-    return data.map((rowArray, rowIndex) => {
-      const rowData = { id: `datatable-row-${rowIndex}` };
-      backendColumnNames.forEach((colName, index) => {
-        rowData[colName] = rowArray[index]; // Use backendColName as key
-      });
-      return rowData;
-    });
-  }, [data, backendColumnNames]);
-
-  const selectedRowsByIds = useMemo(
-    () => tableData.filter((r) => selectedIds.includes(r.obs_id?.toString())),
-    [tableData, selectedIds]
-  );
-
-  // Custom styles for DataTable
   const customStyles = {
     subHeader: { style: { padding: 0, margin: 0 } },
   };
 
   return (
     <div style={{ overflowX: 'auto' }}>
-      <div className="table-responsive">
-        {alertMessage && (
-          <div className="alert alert-info alert-dismissible fade show" role="alert">
-            {alertMessage}
-            <button type="button" className="btn-close" onClick={handleCloseAlert} />
-          </div>
-        )}
-        <DataTable
-          columns={tableColumns}
-          data={tableData}
-          keyField="id"
-          pagination
-          selectableRows
-          selectableRowsHighlight
-          selectableRowSelected={selectableRowSelected}
-          conditionalRowStyles={conditionalRowStyles}
-          onSelectedRowsChange={handleSelectedTableRowsChange}
-          //onSelectedRowsChange={onRowSelected}
-          pointerOnHover
-          highlightOnHover
-          subHeader
-          subHeaderComponent={<SubHeader />}
-          customStyles={customStyles}
-        />
-      </div>
+      {alertMessage && (
+        <div className="alert alert-info alert-dismissible fade show" role="alert">
+          {alertMessage}
+          <button type="button" className="btn-close" onClick={handleCloseAlert} />
+        </div>
+      )}
+      <DataTable
+        columns={tableColumns}
+        data={tableData}
+        keyField="id"
+        pagination
+        selectableRows
+        selectableRowsHighlight
+        selectableRowSelected={selectableRowSelected}
+        conditionalRowStyles={conditionalRowStyles}
+        onSelectedRowsChange={handleSelectedTableRowsChange}
+        pointerOnHover
+        highlightOnHover
+        subHeader
+        subHeaderComponent={<SubHeader />}
+        subHeaderAlign="left"
+        customStyles={customStyles}
+      />
     </div>
   );
-};
-
-export default ResultsTable;
+}

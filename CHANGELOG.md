@@ -25,7 +25,7 @@ This file follows *Keep a Changelog* and uses *Semantic Versioning* git tags.
 ### Added
 
 - Cache search results in Redis (1 h) to speed up repeat queries. ([136fe8a]).
-- Add Simbad/NED dropdown auto-suggestions with Redis-backed caching. ([7c8fe93]).
+- Simbad/NED dropdown auto-suggestions with Redis-backed caching. ([7c8fe93]).
 - Bidirectional selection sync between results table, sky map & charts. ([063d61b]).
 - Column descriptions in config; show as tooltips. ([ca149af]).
 - Basket UX: add items to multiple baskets; duplicate baskets; provide a default basket. ([5cfc83f]).
@@ -83,7 +83,7 @@ This file follows *Keep a Changelog* and uses *Semantic Versioning* git tags.
 
 ### Removed
 
-- Drop FastAPI Users extension (only CTAO IAM login used). ([978e728]).
+- Drop FastAPI Users login endpoint (only CTAO IAM login used). ([978e728]).
 
 ### Fixed
 
