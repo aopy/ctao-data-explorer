@@ -17,8 +17,12 @@ const DEFAULT_VISIBLE_COLUMNS = [
   't_min',
   't_max',
   't_exptime',
-  'safe_energy_lo',
-  'safe_energy_hi',
+  //'em_energy_min_tev',
+  //'em_energy_max_tev',
+  //'em_min_tev',
+  //'em_max_tev',
+  'em_min',  // temporary
+  'em_max',  // temporary
   'facility_name',
   'instrument_name',
   'zen_pnt',
