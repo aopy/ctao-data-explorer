@@ -25,9 +25,59 @@ const defaultFormValues = {
   tapUrl: 'http://voparis-tap-he.obspm.fr/tap',
   obscoreTable: 'hess_dr.obscore_sdc',
   showAdvanced: false,
+  timeScale: 'tt',
+  mjdScale: 'tt',
 };
 
 const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
+
+  // Build an ISO string from DatePicker day + HH:MM:SS
+  const makeIsoFromDateAndTime = (dateObj, timeStr) => {
+    const dayIso = format(dateObj, 'yyyy-MM-dd');
+    return `${dayIso}T${timeStr.trim()}`;
+  };
+
+  // Calendar to MJD using backend and current scales
+  const toMjdViaBackend = async (iso, timeScale, mjdScale) => {
+    const resp = await axios.post('/api/convert_time', {
+      value: iso,
+      input_format: 'isot',
+      input_scale: timeScale, // 'utc' | 'tt'
+    });
+    return (mjdScale === 'tt') ? resp.data.tt_mjd : resp.data.utc_mjd;
+  };
+
+  // MJD to ISO (UTC or TT) via backend and current scales
+  const toIsoViaBackend = async (mjdStr, mjdScale, timeScale) => {
+    const mjdNum = parseFloat(String(mjdStr).replace(',', '.'));
+    const resp = await axios.post('/api/convert_time', {
+      value: String(mjdNum),
+      input_format: 'mjd',
+      input_scale: mjdScale, // 'utc' | 'tt'
+    });
+    return (timeScale === 'tt') ? resp.data.tt_isot : resp.data.utc_isot;
+  };
+
+  // Parse "YYYY-MM-DDThh:mm:ss.sss" to DatePicker date + HH:MM:SS
+  const applyIsoToDateAndTime = (iso, setDateObj, setTimeStr) => {
+    const [d, t] = iso.split('T');
+    const [y, m, day] = d.split('-').map(Number);
+    setDateObj(new Date(Date.UTC(y, m - 1, day)));
+    setTimeStr(t.slice(0, 8));
+  };
+
+  const formatMJD = (x, places = 8) =>
+    Number.isFinite(+x) ? (+x).toFixed(places) : '';
+
+  const parseMjdInput = (v) => {
+  if (v == null) return NaN;
+  const s = String(v)
+    .trim()
+    .replace(/[ \u00A0_]/g, '')
+    .replace(',', '.');
+  const n = Number(s);
+  return Number.isFinite(n) ? n : NaN;
+  };
 
   // Helper to load state from sessionStorage
   const loadInitialState = () => {
@@ -65,6 +115,8 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   const [obsEndDateObj, setObsEndDateObj] = useState(initialFormState.obsEndDateObj);
   const [obsEndTime, setObsEndTime] = useState(initialFormState.obsEndTime);
   const [obsEndMJD, setObsEndMJD] = useState(initialFormState.obsEndMJD);
+  const [timeScale, setTimeScale] = useState(initialFormState.timeScale ?? defaultFormValues.timeScale);
+  const [mjdScale, setMjdScale]   = useState(initialFormState.mjdScale   ?? defaultFormValues.mjdScale);
   const [tapUrl, setTapUrl] = useState(initialFormState.tapUrl);
   const [obscoreTable, setObscoreTable] = useState(initialFormState.obscoreTable);
   const [showAdvanced, setShowAdvanced] = useState(initialFormState.showAdvanced);
@@ -100,12 +152,13 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
       obsStartTime, obsStartMJD,
       obsEndDateObj: obsEndDateObj ? obsEndDateObj.toISOString() : null,
       obsEndTime, obsEndMJD,
-      tapUrl, obscoreTable, showAdvanced
+      tapUrl, obscoreTable, showAdvanced,
+      timeScale, mjdScale,
     };
   }, [
     objectName, useSimbad, useNed, coordinateSystem, coord1, coord2, searchRadius,
     obsStartDateObj, obsStartTime, obsStartMJD, obsEndDateObj, obsEndTime, obsEndMJD,
-    tapUrl, obscoreTable, showAdvanced
+    tapUrl, obscoreTable, showAdvanced, timeScale, mjdScale
   ]);
 
     // Expose a saveState method to the parent App.js using useImperativeHandle
@@ -179,22 +232,56 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
   const [timeWarning, setTimeWarning] = useState(''); // state for time-related warnings
 
+  useEffect(() => {
+  let cancelled = false;
+  const run = async () => {
+    try {
+      // START side
+      if (lastChangedType === 'start_mjd' && obsStartMJD) {
+        const isoOut = await toIsoViaBackend(obsStartMJD, mjdScale, timeScale);
+        if (!cancelled) applyIsoToDateAndTime(isoOut, setObsStartDateObj, setObsStartTime);
+      } else if (obsStartDateObj && obsStartTime.trim()) {
+        const iso = makeIsoFromDateAndTime(obsStartDateObj, obsStartTime);
+        const mjdVal = await toMjdViaBackend(iso, timeScale, mjdScale);
+        if (!cancelled) setObsStartMJD(formatMJD(mjdVal)); // toFixed(8)
+      }
+
+      // END side
+      if (lastChangedType === 'end_mjd' && obsEndMJD) {
+        const isoOut = await toIsoViaBackend(obsEndMJD, mjdScale, timeScale);
+        if (!cancelled) applyIsoToDateAndTime(isoOut, setObsEndDateObj, setObsEndTime);
+      } else if (obsEndDateObj && obsEndTime.trim()) {
+        const iso = makeIsoFromDateAndTime(obsEndDateObj, obsEndTime);
+        const mjdVal = await toMjdViaBackend(iso, timeScale, mjdScale);
+        if (!cancelled) setObsEndMJD(formatMJD(mjdVal)); // toFixed(8)
+      }
+    } catch {
+      if (!cancelled) setTimeWarning('Conversion failed after scale change.');
+    }
+  };
+  run();
+  return () => { cancelled = true; };
+}, [timeScale, mjdScale]);
+
   // Effects for Synchronization
   useEffect(() => {
     if (lastChangedType === 'start_dt') {
       clearTimeout(timeInputDebounceTimer.current);
 
-      timeInputDebounceTimer.current = setTimeout(() => {
+      timeInputDebounceTimer.current = setTimeout(async () => {
         setTimeWarning('');
         if (obsStartDateObj && obsStartTime.trim()) {
-          const dateStrForParsing = format(obsStartDateObj, 'dd/MM/yyyy');
-          const dateTimeObj = parseDateTimeStrings(dateStrForParsing, obsStartTime.trim());
-          if (dateTimeObj) {
-            const mjd = dateToMjd(dateTimeObj);
-            setObsStartMJD(mjd !== null ? mjd.toString() : '');
-            if (mjd === null) setTimeWarning('Could not convert Start Date/Time to MJD.');
-          } else {
-            setTimeWarning('Invalid Start Date/Time format. Use dd/MM/yyyy and HH:MM:SS.');
+          // build an ISO-like string using the local calendar day + typed time
+          const dayIso = format(obsStartDateObj, 'yyyy-MM-dd');
+          const hhmmss = obsStartTime.trim();
+          const ok = /^\d{2}:\d{2}:\d{2}$/.test(hhmmss);
+          if (!ok) { setTimeWarning('Invalid Start time. Use HH:MM:SS.'); setObsStartMJD(''); return; }
+          const iso = makeIsoFromDateAndTime(obsStartDateObj, hhmmss);
+          try {
+            const mjdVal = await toMjdViaBackend(iso, timeScale, mjdScale);
+            setObsStartMJD(formatMJD(mjdVal)); // mjdVal.toFixed(8)
+          } catch (e) {
+            setTimeWarning('Could not convert Start Date/Time.');
             setObsStartMJD('');
           }
         } else if (!obsStartDateObj && !obsStartTime.trim()) {
@@ -205,13 +292,13 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
       }, 750);
     }
     return () => clearTimeout(timeInputDebounceTimer.current);
-  }, [obsStartDateObj, obsStartTime, lastChangedType, setObsStartMJD]);
+  }, [obsStartDateObj, obsStartTime, lastChangedType, setObsStartMJD, timeScale, mjdScale]);
 
   useEffect(() => {
     if (lastChangedType === 'start_mjd') {
       clearTimeout(MJDInputDebounceTimer.current);
 
-      MJDInputDebounceTimer.current = setTimeout(() => {
+      MJDInputDebounceTimer.current = setTimeout(async () => {
         setTimeWarning('');
         const mjdStr = obsStartMJD.trim();
         if (mjdStr === "") {
@@ -222,33 +309,34 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
           setTimeWarning('Start MJD must be a number.');
           setObsStartDateObj(null); setObsStartTime(''); return;
         }
-        const dateObjFromMjd = mjdToDate(mjdNum);
-        if (dateObjFromMjd) {
-          const { timeStr } = formatDateTimeStrings(dateObjFromMjd);
-          setObsStartDateObj(dateObjFromMjd); setObsStartTime(timeStr);
-        } else {
-          setTimeWarning('Start MJD resulted in an out-of-range or invalid date.');
+        try {
+          const isoOut = await toIsoViaBackend(mjdNum, mjdScale, timeScale);
+          applyIsoToDateAndTime(isoOut, setObsStartDateObj, setObsStartTime);
+        } catch (e) {
+          setTimeWarning('Start MJD conversion failed.');
           setObsStartDateObj(null); setObsStartTime('');
         }
       }, 750);
     }
     return () => clearTimeout(MJDInputDebounceTimer.current);
-  }, [obsStartMJD, lastChangedType, setObsStartDateObj, setObsStartTime]);
+  }, [obsStartMJD, lastChangedType, setObsStartDateObj, setObsStartTime, timeScale, mjdScale]);
 
   useEffect(() => {
     if (lastChangedType === 'end_dt') {
       clearTimeout(endTimeInputDebounceTimer.current);
-      endTimeInputDebounceTimer.current = setTimeout(() => {
+      endTimeInputDebounceTimer.current = setTimeout(async () => {
         setTimeWarning('');
         if (obsEndDateObj && obsEndTime.trim()) {
-          const dateStrForParsing = format(obsEndDateObj, 'dd/MM/yyyy');
-          const dateTimeObj = parseDateTimeStrings(dateStrForParsing, obsEndTime.trim());
-          if (dateTimeObj) {
-            const mjd = dateToMjd(dateTimeObj);
-            setObsEndMJD(mjd !== null ? mjd.toString() : '');
-            if (mjd === null) setTimeWarning('Could not convert End Date/Time to MJD.');
-          } else {
-            setTimeWarning('Invalid End Date/Time format. Use dd/MM/yyyy and HH:MM:SS.');
+          const dayIso = format(obsEndDateObj, 'yyyy-MM-dd');
+          const hhmmss = obsEndTime.trim();
+          const ok = /^\d{2}:\d{2}:\d{2}$/.test(hhmmss);
+          if (!ok) { setTimeWarning('Invalid End time. Use HH:MM:SS.'); setObsEndMJD(''); return; }
+          const iso = makeIsoFromDateAndTime(obsEndDateObj, hhmmss);
+          try {
+            const mjdVal = await toMjdViaBackend(iso, timeScale, mjdScale);
+            setObsEndMJD(formatMJD(mjdVal)); // mjdVal.toFixed(8)
+          } catch (e) {
+            setTimeWarning('Could not convert End Date/Time.');
             setObsEndMJD('');
           }
         } else if (!obsEndDateObj && !obsEndTime.trim()) {
@@ -259,12 +347,12 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
       }, 750);
     }
     return () => clearTimeout(endTimeInputDebounceTimer.current);
-  }, [obsEndDateObj, obsEndTime, lastChangedType, setObsEndMJD]);
+  }, [obsEndDateObj, obsEndTime, lastChangedType, setObsEndMJD, timeScale, mjdScale]);
 
   useEffect(() => {
     if (lastChangedType === 'end_mjd') {
       clearTimeout(endMJDInputDebounceTimer.current);
-      endMJDInputDebounceTimer.current = setTimeout(() => {
+      endMJDInputDebounceTimer.current = setTimeout(async () => {
         setTimeWarning('');
         const mjdStr = obsEndMJD.trim();
         if (mjdStr === "") {
@@ -279,20 +367,17 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
           setObsEndTime('');
           return;
         }
-        const dateObjFromMjd = mjdToDate(mjdNum);
-        if (dateObjFromMjd) {
-          const { timeStr } = formatDateTimeStrings(dateObjFromMjd);
-          setObsEndDateObj(dateObjFromMjd);
-          setObsEndTime(timeStr);
-        } else {
-          setTimeWarning('End MJD resulted in an out-of-range or invalid date.');
-          setObsEndDateObj(null);
-          setObsEndTime('');
+        try {
+          const isoOut = await toIsoViaBackend(mjdNum, mjdScale, timeScale);
+          applyIsoToDateAndTime(isoOut, setObsEndDateObj, setObsEndTime);
+        } catch {
+          setTimeWarning('End MJD conversion failed.');
+          setObsEndDateObj(null); setObsEndTime('');
         }
       }, 750);
     }
     return () => clearTimeout(endMJDInputDebounceTimer.current);
-  }, [obsEndMJD, lastChangedType, setObsEndDateObj, setObsEndTime]);
+  }, [obsEndMJD, lastChangedType, setObsEndDateObj, setObsEndTime, timeScale, mjdScale]);
 
   useEffect(() => {
     const plain = objectName.trim();
@@ -533,25 +618,27 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     }
 
     // Time Processing - Prioritize MJD if both are potentially valid
-    const startMjdNum = parseFloat(obsStartMJD);
-    const endMjdNum = parseFloat(obsEndMJD);
+    const startMjdNum = parseMjdInput(obsStartMJD);
+    const endMjdNum   = parseMjdInput(obsEndMJD);
     if (!isNaN(startMjdNum) && !isNaN(endMjdNum)) {
         if (endMjdNum <= startMjdNum) {
             setWarningMessage("End MJD must be after Start MJD."); setIsSubmitting(false); return;
         }
         finalReqParams.mjd_start = startMjdNum;
          finalReqParams.mjd_end = endMjdNum;
+         finalReqParams.mjd_scale = mjdScale || 'tt';
          timeIsValid = true;
     }
     // Fallback to Date/Time strings only if MJD wasn't provided/valid
     else if (obsStartDateObj && obsStartTime.trim() && obsEndDateObj && obsEndTime.trim()) {
+        // build strings in the user's local calendar day, backend will interpret with `obs_scale`
         const startDateTime = parseDateTimeStrings(
-        formatInTimeZone(obsStartDateObj, 'UTC', 'dd/MM/yyyy'),
-        obsStartTime.trim()
+        format(obsStartDateObj, 'dd/MM/yyyy'),
+          obsStartTime.trim()
         );
         const endDateTime = parseDateTimeStrings(
-        formatInTimeZone(obsEndDateObj, 'UTC', 'dd/MM/yyyy'),
-        obsEndTime.trim()
+          format(obsEndDateObj, 'dd/MM/yyyy'),
+          obsEndTime.trim()
         );
 
         if (!startDateTime || !endDateTime || endDateTime <= startDateTime) {
@@ -560,16 +647,11 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
         if (endDateTime <= startDateTime) {
             setWarningMessage("End Date/Time must be after Start Date/Time."); setIsSubmitting(false); return;
         }
-        // Convert valid Date/Time back to MJD for backend
-        const mjdStartDerived = dateToMjd(startDateTime);
-        const mjdEndDerived = dateToMjd(endDateTime);
-        if (mjdStartDerived !== null && mjdEndDerived !== null) {
-            finalReqParams.mjd_start = mjdStartDerived;
-             finalReqParams.mjd_end = mjdEndDerived;
-             timeIsValid = true;
-        } else {
-            setWarningMessage("Failed to convert valid Date/Time to MJD."); setIsSubmitting(false); return;
-        }
+        // Send as strings + the scale; backend converts to TT MJD
+        finalReqParams.obs_start = `${format(startDateTime, 'dd/MM/yyyy')} ${format(startDateTime, 'HH:mm:ss')}`;
+        finalReqParams.obs_end   = `${format(endDateTime, 'dd/MM/yyyy')} ${format(endDateTime, 'HH:mm:ss')}`;
+        finalReqParams.obs_scale = timeScale || 'utc';
+        timeIsValid = true;
     }
 
 
@@ -748,6 +830,37 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
                 <div className="card mb-3">
                      <div className="card-header">Time Search</div>
                      <div className="card-body">
+                         <div className="row g-2 align-items-end mb-2">
+                          <div className="col-md-4">
+                            <label className="form-label mb-1">Time system (date/time)</label>
+                            <select
+                              className="form-select form-select-sm w-100"
+                              value={timeScale}
+                              onChange={(e) => setTimeScale(e.target.value)}
+                              disabled={isSubmitting}
+                            >
+                              <option value="utc">UTC</option>
+                              <option value="tt">TT</option>
+                              {/* <option value="tai">TAI</option> */}
+                            </select>
+                          </div>
+
+                          <div className="col-md-3 d-none d-md-block" />
+
+                          <div className="col-md-5">
+                            <label className="form-label mb-1">MJD scale</label>
+                            <select
+                              className="form-select form-select-sm w-100"
+                              value={mjdScale}
+                              onChange={(e) => setMjdScale(e.target.value)}
+                              disabled={isSubmitting}
+                            >
+                              <option value="tt">TT</option>
+                              <option value="utc">UTC</option>
+                              {/* <option value="tai">TAI</option> */}
+                            </select>
+                          </div>
+                        </div>
                          {/* Start Time Inputs */}
                          <label className="form-label">Observation Start</label>
                          <div className="row g-2 mb-2">

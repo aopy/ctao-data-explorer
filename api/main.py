@@ -10,7 +10,6 @@ from .tap import (
 import pyvo as vo
 import math
 from astropy.io.votable import parse_single_table
-import astropy.units as u
 from astropy.coordinates import SkyCoord
 from .auth import get_optional_session_user
 from starlette.middleware.sessions import SessionMiddleware
@@ -20,7 +19,6 @@ import urllib.parse
 from astropy.time import Time
 from datetime import datetime
 from .query_history import query_history_router, QueryHistoryCreate, _internal_create_query_history
-from typing import Optional
 import fastapi_users
 from .db import AsyncSessionLocal
 import traceback
@@ -37,6 +35,10 @@ from starlette.config import Config as StarletteConfig
 from contextlib import asynccontextmanager
 import itertools
 import hashlib
+from pydantic import BaseModel
+from typing import Literal, Optional
+from astropy.time import Time
+import astropy.units as u
 
 
 SIMBAD_TAP_SYNC = "https://simbad.cds.unistra.fr/simbad/sim-tap/sync"
@@ -145,6 +147,49 @@ async def rolling_session_cookie(request: Request, call_next):
             **cookie_params,
         )
     return response
+
+
+class ConvertReq(BaseModel):
+    value: str
+    input_format: Literal["isot", "mjd", "met"] = "isot"
+    input_scale:  Literal["utc", "tt", "tai"] = "utc"
+    # MET only:
+    met_epoch_isot: Optional[str] = None
+    met_epoch_scale: Optional[Literal["utc","tt","tai"]] = "utc"
+
+class ConvertResp(BaseModel):
+    utc_isot: str
+    utc_mjd: float
+    tt_isot: str
+    tt_mjd: float
+
+@app.post("/api/convert_time", response_model=ConvertResp, tags=["time"])
+def convert_time(req: ConvertReq):
+    # Build Time object from the request
+    if req.input_format == "met":
+        if not req.met_epoch_isot:
+            raise HTTPException(status_code=400, detail="met_epoch_isot required for MET.")
+        epoch = Time(req.met_epoch_isot, format="isot", scale=req.met_epoch_scale or "utc")
+        try:
+            seconds = float(str(req.value).replace(",", "."))
+        except Exception:
+            raise HTTPException(status_code=400, detail="MET value must be numeric (seconds).")
+        t = epoch + seconds * u.s
+    elif req.input_format == "mjd":
+        try:
+            mjd = float(str(req.value).replace(",", "."))
+        except Exception:
+            raise HTTPException(status_code=400, detail="MJD value must be numeric.")
+        t = Time(mjd, format="mjd", scale=req.input_scale)
+    else:  # "isot"
+        t = Time(req.value, format="isot", scale=req.input_scale)
+
+    return ConvertResp(
+        utc_isot=t.utc.isot,
+        utc_mjd=float(t.utc.mjd),
+        tt_isot=t.tt.isot,
+        tt_mjd=float(t.tt.mjd),
+    )
 
 
 async def _ned_resolve_via_objectlookup(name: str) -> Optional[Dict[str, Any]]:
@@ -379,6 +424,8 @@ async def search_coords(
     obs_end: Optional[str] = None,
     mjd_start: Optional[float] = Query(None),
     mjd_end: Optional[float] = Query(None),
+    mjd_scale: Optional[str] = Query("tt", description="Scale of provided MJD: 'utc' or 'tt' (default tt)"),
+    obs_scale: Optional[str] = Query("utc", description="Scale of provided obs_* strings if used (default utc)"),
     # TAP Params
     tap_url: str = 'http://voparis-tap-he.obspm.fr/tap',
     obscore_table: str = 'hess_dr.obscore_sdc',
@@ -408,8 +455,20 @@ async def search_coords(
                                 detail=f"MJD values out of expected range ({MIN_VALID_MJD}-{MAX_VALID_MJD}).")
         if mjd_end <= mjd_start:
             raise HTTPException(status_code=400, detail="mjd_end must be greater than mjd_start.")
-        fields['search_mjd_start'] = {'value': mjd_start}
-        fields['search_mjd_end'] = {'value': mjd_end}
+        # Normalize to TT because table t_min/t_max are in TT
+        if mjd_scale and mjd_scale.lower() != "tt":
+            try:
+                t_start_tt = Time(mjd_start, format="mjd", scale=mjd_scale).tt
+                t_end_tt = Time(mjd_end, format="mjd", scale=mjd_scale).tt
+                mjd_start_tt = float(t_start_tt.mjd)
+                mjd_end_tt = float(t_end_tt.mjd)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Invalid mjd_scale '{mjd_scale}': {e}")
+        else:
+            mjd_start_tt = mjd_start
+            mjd_end_tt = mjd_end
+        fields['search_mjd_start'] = {'value': mjd_start_tt}
+        fields['search_mjd_end'] = {'value': mjd_end_tt}
         time_filter_present = True
         print(f"DEBUG search_coords: Using MJD filter: {mjd_start} - {mjd_end}")
     elif obs_start and obs_end:  # Fallback to date/time strings
@@ -422,12 +481,15 @@ async def search_coords(
             if not (datetime.MINYEAR <= dt_start.year <= datetime.MAXYEAR and
                     datetime.MINYEAR <= dt_end.year <= datetime.MAXYEAR):
                 raise ValueError("Date year is out of representable range.")
-            t_start = Time(dt_start, scale='utc')
-            t_end = Time(dt_end, scale='utc')
-            fields['search_mjd_start'] = {'value': t_start.mjd}
-            fields['search_mjd_end'] = {'value': t_end.mjd}
+            scale = (obs_scale or "utc").lower()
+            if scale not in ("utc", "tt", "tai"):
+                raise HTTPException(status_code=400, detail=f"Unsupported obs_scale '{obs_scale}'")
+            t_start_tt = Time(dt_start, scale=scale).tt
+            t_end_tt = Time(dt_end, scale=scale).tt
+            fields['search_mjd_start'] = {'value': float(t_start_tt.mjd)}
+            fields['search_mjd_end'] = {'value': float(t_end_tt.mjd)}
             time_filter_present = True
-            print(f"DEBUG search_coords: Using Date/Time filter (converted to MJD): {t_start.mjd} - {t_end.mjd}")
+            print(f"DEBUG search_coords: Date/Time -> TT MJD: {fields['search_mjd_start']['value']} - {fields['search_mjd_end']['value']} (obs_scale={obs_scale})")
         except ValueError as ve:  # Catch strptime errors or our custom ValueError
             raise HTTPException(status_code=400, detail=f"Invalid date/time format or value: {ve}")
         except Exception as e:
