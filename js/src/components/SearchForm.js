@@ -69,14 +69,12 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   const formatMJD = (x, places = 8) =>
     Number.isFinite(+x) ? (+x).toFixed(places) : '';
 
+  // normalize typed MJD (handles commas, spaces, underscores)
   const parseMjdInput = (v) => {
-  if (v == null) return NaN;
-  const s = String(v)
-    .trim()
-    .replace(/[ \u00A0_]/g, '')
-    .replace(',', '.');
-  const n = Number(s);
-  return Number.isFinite(n) ? n : NaN;
+    if (v == null) return NaN;
+    const s = String(v).trim().replace(/[ \u00A0_]/g, '').replace(',', '.');
+    const n = Number(s);
+    return Number.isFinite(n) ? n : NaN;
   };
 
   // Helper to load state from sessionStorage
@@ -126,6 +124,8 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [justSelected, setJustSelected] = useState(false);
+
+  const [timeTouched, setTimeTouched] = useState(false);
 
   useEffect(() => {
     if (objectName.trim()) {
@@ -485,12 +485,37 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   };
 
   // Handlers for Time/MJD inputs that set the 'lastChangedType'
-  const handleStartDateChange = (date) => { setObsStartDateObj(date); setLastChangedType('start_dt'); };
-  const handleStartTimeChange = (e) => { setObsStartTime(e.target.value); setLastChangedType('start_dt'); };
-  const handleStartMjdChange = (e) => { setObsStartMJD(e.target.value); setLastChangedType('start_mjd'); };
-  const handleEndDateChange = (date) => { setObsEndDateObj(date); setLastChangedType('end_dt'); };
-  const handleEndTimeChange = (e) => { setObsEndTime(e.target.value); setLastChangedType('end_dt'); };
-  const handleEndMjdChange = (e) => { setObsEndMJD(e.target.value); setLastChangedType('end_mjd'); };
+  const handleStartDateChange = (date) => {
+    setObsStartDateObj(date);
+    setLastChangedType('start_dt');
+    setTimeTouched(true);
+  };
+  const handleStartTimeChange = (e) => {
+    setObsStartTime(e.target.value);
+    setLastChangedType('start_dt');
+    setTimeTouched(true);
+  };
+  const handleStartMjdChange = (e) => {
+    setObsStartMJD(e.target.value);
+    setLastChangedType('start_mjd');
+    setTimeTouched(true);
+  };
+
+const handleEndDateChange = (date) => {
+  setObsEndDateObj(date);
+  setLastChangedType('end_dt');
+  setTimeTouched(true);
+};
+const handleEndTimeChange = (e) => {
+  setObsEndTime(e.target.value);
+  setLastChangedType('end_dt');
+  setTimeTouched(true);
+};
+const handleEndMjdChange = (e) => {
+  setObsEndMJD(e.target.value);
+  setLastChangedType('end_mjd');
+  setTimeTouched(true);
+};
 
   // handle clear form
   const handleClearForm = () => {
@@ -514,6 +539,7 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
     setWarningMessage('');
     setLastChangedType(null); // Reset change tracker
+    setTimeTouched(false);
     console.log("Search form cleared.");
   };
 
@@ -539,7 +565,7 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     const coord1Input = coord1.trim();
     const coord2Input = coord2.trim();
 
-    if (timeWarning) {
+    if (timeTouched && timeWarning) {
         setWarningMessage(timeWarning);
         setIsSubmitting(false);
         return;
@@ -617,42 +643,60 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
         }
     }
 
-    // Time Processing - Prioritize MJD if both are potentially valid
-    const startMjdNum = parseMjdInput(obsStartMJD);
-    const endMjdNum   = parseMjdInput(obsEndMJD);
-    if (!isNaN(startMjdNum) && !isNaN(endMjdNum)) {
+  // Time Processing - Prioritize MJD if both are potentially valid
+  //let timeIsValid = false;
+
+  const hasBothMJD  = obsStartMJD.trim() !== '' && obsEndMJD.trim() !== '';
+  const hasCalendar = !!(obsStartDateObj && obsStartTime.trim() && obsEndDateObj && obsEndTime.trim());
+
+  if (timeTouched) {
+    if (hasBothMJD) {
+      const startMjdNum = parseMjdInput(obsStartMJD);
+      const endMjdNum   = parseMjdInput(obsEndMJD);
+      if (Number.isFinite(startMjdNum) && Number.isFinite(endMjdNum)) {
         if (endMjdNum <= startMjdNum) {
-            setWarningMessage("End MJD must be after Start MJD."); setIsSubmitting(false); return;
+          setWarningMessage("End MJD must be after Start MJD.");
+          setIsSubmitting(false);
+          return;
         }
         finalReqParams.mjd_start = startMjdNum;
-         finalReqParams.mjd_end = endMjdNum;
-         finalReqParams.mjd_scale = mjdScale || 'tt';
-         timeIsValid = true;
-    }
-    // Fallback to Date/Time strings only if MJD wasn't provided/valid
-    else if (obsStartDateObj && obsStartTime.trim() && obsEndDateObj && obsEndTime.trim()) {
-        // build strings in the user's local calendar day, backend will interpret with `obs_scale`
-        const startDateTime = parseDateTimeStrings(
-        format(obsStartDateObj, 'dd/MM/yyyy'),
-          obsStartTime.trim()
-        );
-        const endDateTime = parseDateTimeStrings(
-          format(obsEndDateObj, 'dd/MM/yyyy'),
-          obsEndTime.trim()
-        );
-
-        if (!startDateTime || !endDateTime || endDateTime <= startDateTime) {
-            setWarningMessage("Invalid Date/Time format. Use dd/MM/yyyy and HH:mm:ss."); setIsSubmitting(false); return;
-        }
-        if (endDateTime <= startDateTime) {
-            setWarningMessage("End Date/Time must be after Start Date/Time."); setIsSubmitting(false); return;
-        }
-        // Send as strings + the scale; backend converts to TT MJD
-        finalReqParams.obs_start = `${format(startDateTime, 'dd/MM/yyyy')} ${format(startDateTime, 'HH:mm:ss')}`;
-        finalReqParams.obs_end   = `${format(endDateTime, 'dd/MM/yyyy')} ${format(endDateTime, 'HH:mm:ss')}`;
-        finalReqParams.obs_scale = timeScale || 'utc';
+        finalReqParams.mjd_end   = endMjdNum;
         timeIsValid = true;
+      }
+    } else if (hasCalendar) {
+      const startDateTime = parseDateTimeStrings(
+        format(obsStartDateObj, 'dd/MM/yyyy'),
+        obsStartTime.trim()
+      );
+      const endDateTime = parseDateTimeStrings(
+        format(obsEndDateObj, 'dd/MM/yyyy'),
+        obsEndTime.trim()
+      );
+
+      if (!startDateTime || !endDateTime) {
+        setWarningMessage("Invalid Date/Time format. Use dd/MM/yyyy and HH:mm:ss.");
+        setIsSubmitting(false);
+        return;
+      }
+      if (endDateTime <= startDateTime) {
+        setWarningMessage("End Date/Time must be after Start Date/Time.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      const mjdStartDerived = dateToMjd(startDateTime);
+      const mjdEndDerived   = dateToMjd(endDateTime);
+      if (mjdStartDerived != null && mjdEndDerived != null) {
+        finalReqParams.mjd_start = mjdStartDerived;
+        finalReqParams.mjd_end   = mjdEndDerived;
+        timeIsValid = true;
+      } else {
+        setWarningMessage("Failed to convert valid Date/Time to MJD.");
+        setIsSubmitting(false);
+        return;
+      }
     }
+  }
 
 
     if (!coordsAreValid && !timeIsValid) {

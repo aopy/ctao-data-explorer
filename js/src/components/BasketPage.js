@@ -21,14 +21,62 @@ onBasketGroupsChange, allBasketGroups = [], activeBasketGroupId }) {
   const [error, setError] = useState(null);
   const [editingGroupName, setEditingGroupName] = useState('');
 
-  useEffect(() => {
-    if (isLoggedIn) axios.get(`${API_PREFIX}/users/me_from_session`);
-  }, [isLoggedIn, activeBasketGroupId]);
+  const [tminTTLabels, setTminTTLabels] = useState({}); // { '53343.92': '04/12/2004 22:04:48 TT', ... }
+
+  // Format "YYYY-MM-DDThh:mm:ss.sss" → "dd/MM/yyyy hh:mm:ss TT"
+  const formatTtIso = (tt_isot) => {
+    if (!tt_isot) return '';
+    const [d, t] = tt_isot.split('T');
+    const [y, m, day] = d.split('-');
+    return `${day}/${m}/${y} ${t.slice(0, 8)} TT`;
+  };
 
   const activeGroup = useMemo(() => {
       if (!activeBasketGroupId) return null;
       return allBasketGroups.find(group => group.id === activeBasketGroupId);
-  }, [allBasketGroups, activeBasketGroupId]);
+    }, [allBasketGroups, activeBasketGroupId]);
+
+  // Refresh TT labels whenever the visible items change
+  useEffect(() => {
+    const items = (activeGroup ? activeGroup.saved_datasets || [] : []);
+    const uniqueMjds = Array.from(
+      new Set(
+        items
+          .map((it) => it?.dataset_json?.t_min)
+          .filter((v) => v != null)
+          .map((v) => Number(String(v).replace(',', '.')))
+          .filter((n) => Number.isFinite(n))
+      )
+    );
+    if (!uniqueMjds.length) { setTminTTLabels({}); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const pairs = await Promise.all(
+          uniqueMjds.map(async (m) => {
+            const resp = await axios.post('/api/convert_time', {
+              value: String(m),
+              input_format: 'mjd',
+              input_scale: 'tt'
+            });
+            return [String(m), formatTtIso(resp.data.tt_isot)];
+          })
+        );
+        if (!cancelled) {
+          const map = Object.fromEntries(pairs);
+          setTminTTLabels(map);
+        }
+      } catch {
+        if (!cancelled) setTminTTLabels({});
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeGroup]);
+
+  useEffect(() => {
+    if (isLoggedIn) axios.get(`${API_PREFIX}/users/me_from_session`);
+  }, [isLoggedIn, activeBasketGroupId]);
+
 
   useEffect(() => {
       setEditingGroupName(activeGroup?.name || '');
@@ -238,7 +286,8 @@ onBasketGroupsChange, allBasketGroups = [], activeBasketGroupId }) {
                     {itemsToShow.map((item) => {
                         const ds = item.dataset_json || {};
                         const targetName = ds.target_name || 'N/A';
-                        const tmin_str = formatTmin(ds.t_min) || 'N/A';
+                        const mjdKey = String(Number(String(ds.t_min).replace(',', '.')));
+                        const tmin_str = tminTTLabels[mjdKey] || '…';
                         return (
                             <li key={item.id} className="list-group-item d-flex justify-content-between align-items-center">
                                 <div>

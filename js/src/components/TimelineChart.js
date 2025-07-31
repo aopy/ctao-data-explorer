@@ -1,170 +1,153 @@
-import React, { useMemo, useEffect, useState } from 'react';
+import React, { useMemo, useEffect, useState, useRef } from 'react';
+import axios from 'axios';
 import { palette, rgba } from './chartColours';
 import Plot from 'react-plotly.js';
 
-const TimelineChart = ({ results, selectedIds, onSelectIds = () => {} }) => {
+const fixZ = (s) => (s && !/[zZ]$/.test(s) ? s + 'Z' : s);
+const formatTtLabel = (tt_isot) => {
+  if (!tt_isot) return '';
+  const [d, t] = tt_isot.split('T');  // "YYYY-MM-DD" , "hh:mm:ss.sss"
+  const [y, m, day] = d.split('-');
+  return `${day}/${m}/${y} ${t.slice(0, 8)} TT`;
+};
+
+// Small conversion cache to avoid repeated calls
+const convCache = new Map(); // key: `${mjd}` -> { utc_isot, tt_isot }
+
+async function convertMjdTT(mjdVal) {
+  const key = String(mjdVal);
+  if (convCache.has(key)) return convCache.get(key);
+  const resp = await axios.post('/api/convert_time', {
+    value: key,
+    input_format: 'mjd',
+    input_scale: 'tt', // t_min/t_max are TT in ObsCore
+  });
+  const out = { utc_isot: resp.data.utc_isot, tt_isot: resp.data.tt_isot };
+  convCache.set(key, out);
+  return out;
+}
+
+const TimelineChart = ({ results, selectedIds = [], onSelectIds = () => {} }) => {
   const { columns, data } = results || {};
-
-  // Convert the results data into a format suitable for plotting
-  const timelineData = useMemo(() => {
-    if (!columns || !data) {
-      console.log('No columns or data available.');
-      return [];
-    }
-
-    const t_min_index = columns.indexOf('t_min');
-    const t_max_index = columns.indexOf('t_max');
-    const id_index = columns.indexOf('obs_id');
-
-    if (t_min_index === -1 || t_max_index === -1 || id_index === -1) {
-      console.error('Required columns not found in results');
-      return [];
-    }
-
-    // Function to convert Modified Julian Date (MJD) to JavaScript Date
-    const mjdToDate = (mjd) => {
-      if (isNaN(mjd)) {
-        console.error('Invalid MJD:', mjd);
-        return new Date(NaN);
-      }
-      const MJD_UNIX_EPOCH = 40587; // MJD at Unix Epoch (1970-01-01)
-      const millisecondsPerDay = 86400000; // Number of milliseconds in a day
-      const unixTime = (mjd - MJD_UNIX_EPOCH) * millisecondsPerDay;
-      return new Date(unixTime); // Date in UTC
-    };
-
-    const result = data.map((row) => {
-      const t_min_mjd = parseFloat(row[t_min_index]);
-      const t_max_mjd = parseFloat(row[t_max_index]);
-      const t_min_date = mjdToDate(t_min_mjd);
-      const t_max_date = mjdToDate(t_max_mjd);
-      console.log(
-        `Observation ID: ${row[id_index]}, t_min: ${t_min_mjd} -> ${t_min_date}, t_max: ${t_max_mjd} -> ${t_max_date}`
-      );
-      return {
-        id: row[id_index].toString(),
-        t_min: t_min_date,
-        t_max: t_max_date,
-      };
-    });
-
-    console.log('timelineData:', result);
-    return result;
-  }, [columns, data]);
-
-  // Determine the earliest and latest times
-  const [earliest_t_min, latest_t_max] = useMemo(() => {
-    if (timelineData.length === 0) {
-      const now = new Date();
-      return [now, now];
-    }
-
-    let minDate = timelineData[0].t_min;
-    let maxDate = timelineData[0].t_max;
-
-    timelineData.forEach((item) => {
-      if (item.t_min < minDate) {
-        minDate = item.t_min;
-      }
-      if (item.t_max > maxDate) {
-        maxDate = item.t_max;
-      }
-    });
-
-    return [minDate, maxDate];
-  }, [timelineData]);
-
-    // Create shapes for each observation
-    const shapes = timelineData.map((item) => {
-      const isSelected = selectedIds && selectedIds.includes(item.id);
-
-      return {
-        type: 'rect',
-        xref: 'x',
-        yref: 'paper',
-        x0: item.t_min.toISOString(),
-        x1: item.t_max.toISOString(),
-        y0: 0,
-        y1: 1,
-        fillcolor: isSelected
-          ? rgba(palette.green, 0.75)        // selected: strong green
-          : rgba(palette.grey,  0.35),       // others: light grey
-        line: {
-          width: isSelected ? 2 : 0.5,
-          color: rgba(palette.green, 0.95),
-         },
-        layer: 'above'
-      };
-    });
-
-
-  // Layout configuration
-  const layout = useMemo(() => {
-    return {
-      title: 'Observation Timeline',
-      xaxis: {
-        type: 'date',
-        autorange: true,
-        title: { text: 'Time (UTC)', standoff: 8 },
-        tickformat: '%Y-%m-%d',
-        tickangle: -45,           // tilt for small widths
-        automargin: true,
-      },
-      yaxis: {
-        visible: false,
-        range: [0, 1],
-        fixedrange: true,
-      },
-      showlegend: false,
-      autosize: true,
-      height: 200,
-      margin: { l: 40, r: 10, t: 42, b: 75 },
-      hovermode: 'closest',
-      shapes: shapes,
-    };
-  }, [earliest_t_min, latest_t_max, shapes]);
-
-  // Create an invisible scatter trace for hover interactions
-  const plotData = useMemo(() => {
-    if (timelineData.length === 0) {
-      return [];
-    }
-
-    return [
-      {
-        type: 'scatter',
-        mode: 'markers',
-        x: timelineData.map((item) =>
-          new Date((item.t_min.getTime() + item.t_max.getTime()) / 2)
-            .toISOString()
-        ),
-        y: timelineData.map(() => 0.5),
-        marker: { size: 20, opacity: 0 },
-        customdata: timelineData.map((item) => item.id),
-        hoverinfo: 'text',
-        hovertext: timelineData.map((item) => {
-          const start = item.t_min.toISOString().replace('Z', ' UTC');
-          const end   = item.t_max.toISOString().replace('Z', ' UTC');
-          return `ID: ${item.id}<br>Start: ${start}<br>End: ${end}`;
-        }),
-      },
-    ];
-  }, [timelineData]);
-
-  console.log('Shapes:', shapes);
-  console.log('Layout:', layout);
-  console.log('xaxis.range:', layout.xaxis.range);
-  console.log('Plot Data:', plotData);
-
-  const [revision, setRevision] = useState(0);
+  const [rows, setRows] = useState([]); // [{id, x0UtcISO, x1UtcISO, ttStart, ttEnd}]
+  const cancelRef = useRef(false);
 
   useEffect(() => {
-    setRevision(rev => rev + 1);
-  }, [results]);
+    cancelRef.current = false;
+    (async () => {
+      if (!columns || !data) { setRows([]); return; }
 
-  if (timelineData.length === 0) {
-    return <div>No data available for the timeline.</div>;
-  }
+      const tminIdx = columns.indexOf('t_min');
+      const tmaxIdx = columns.indexOf('t_max');
+      const idIdx   = columns.indexOf('obs_id');
+      if (tminIdx === -1 || tmaxIdx === -1 || idIdx === -1) { setRows([]); return; }
+
+      try {
+        // Collect unique MJDs to reduce duplicate calls
+        const mjds = new Set();
+        for (const row of data) {
+          const a = Number(row[tminIdx]); if (Number.isFinite(a)) mjds.add(a);
+          const b = Number(row[tmaxIdx]); if (Number.isFinite(b)) mjds.add(b);
+        }
+        // Convert all unique MJDs (TT → {utc_isot, tt_isot})
+        const uniq = Array.from(mjds);
+        const all = await Promise.all(
+          uniq.map(async (m) => [m, await convertMjdTT(m)])
+        );
+        if (cancelRef.current) return;
+        const map = new Map(all); // mjd -> {utc_isot, tt_isot}
+
+        const out = data.map((row) => {
+          const id = String(row[idIdx]);
+          const mjd0 = Number(row[tminIdx]);
+          const mjd1 = Number(row[tmaxIdx]);
+          const c0 = map.get(mjd0);
+          const c1 = map.get(mjd1);
+          return {
+            id,
+            x0UtcISO: c0 ? c0.utc_isot : null,
+            x1UtcISO: c1 ? c1.utc_isot : null,
+            ttStart:  c0 ? c0.tt_isot  : null,
+            ttEnd:    c1 ? c1.tt_isot  : null,
+          };
+        });
+        if (!cancelRef.current) setRows(out);
+      } catch (e) {
+        if (!cancelRef.current) setRows([]);
+      }
+    })();
+    return () => { cancelRef.current = true; };
+  }, [columns, data]);
+
+  const shapes = useMemo(() => {
+    return rows
+      .filter(r => r.x0UtcISO && r.x1UtcISO)
+      .map((r) => {
+        const isSelected = selectedIds.includes(r.id);
+        return {
+          type: 'rect',
+          xref: 'x',
+          yref: 'paper',
+          x0: fixZ(r.x0UtcISO),
+          x1: fixZ(r.x1UtcISO),
+          y0: 0,
+          y1: 1,
+          fillcolor: isSelected
+            ? rgba(palette.green, 0.75)
+            : rgba(palette.grey,  0.35),
+          line: {
+            width: isSelected ? 2 : 0.5,
+            color: rgba(palette.green, 0.95),
+          },
+          layer: 'above'
+        };
+      });
+  }, [rows, selectedIds]);
+
+  const layout = useMemo(() => ({
+    title: 'Observation Timeline',
+    xaxis: {
+      type: 'date',
+      autorange: true,
+      title: { text: 'Time (TT)', standoff: 8 },
+      tickformat: '%Y-%m-%d',
+      tickangle: -45,
+      automargin: true,
+    },
+    yaxis: { visible: false, range: [0, 1], fixedrange: true },
+    showlegend: false,
+    autosize: true,
+    height: 200,
+    margin: { l: 40, r: 10, t: 42, b: 75 },
+    hovermode: 'closest',
+    shapes,
+  }), [shapes]);
+
+  const plotData = useMemo(() => {
+    if (!rows.length) return [];
+    return [{
+      type: 'scatter',
+      mode: 'markers',
+      x: rows.map(r => {
+        const mid = (new Date(fixZ(r.x0UtcISO)).getTime() + new Date(fixZ(r.x1UtcISO)).getTime()) / 2;
+        return new Date(mid).toISOString();
+      }),
+      y: rows.map(() => 0.5),
+      marker: { size: 20, opacity: 0 },
+      customdata: rows.map(r => r.id),
+      hoverinfo: 'text',
+      hovertext: rows.map((r) => {
+        const s = formatTtLabel(r.ttStart);
+        const e = formatTtLabel(r.ttEnd);
+        return `ID: ${r.id}<br>Start: ${s}<br>End: ${e}`;
+      }),
+    }];
+  }, [rows]);
+
+  const [revision, setRevision] = useState(0);
+  useEffect(() => { setRevision(v => v + 1); }, [results]);
+
+  if (!rows.length) return <div>No data available for the timeline.</div>;
 
   const handleClick = (e) => {
     if (!e?.points?.length) return;
