@@ -424,8 +424,7 @@ async def search_coords(
     obs_end: Optional[str] = None,
     mjd_start: Optional[float] = Query(None),
     mjd_end: Optional[float] = Query(None),
-    mjd_scale: Optional[str] = Query("tt", description="Scale of provided MJD: 'utc' or 'tt' (default tt)"),
-    obs_scale: Optional[str] = Query("utc", description="Scale of provided obs_* strings if used (default utc)"),
+    time_scale: Optional[str] = Query('tt'),
     # TAP Params
     tap_url: str = 'http://voparis-tap-he.obspm.fr/tap',
     obscore_table: str = 'hess_dr.obscore_sdc',
@@ -448,49 +447,58 @@ async def search_coords(
 
     # Process Time - prioritize MJD
     if mjd_start is not None and mjd_end is not None:
-        MIN_VALID_MJD = 0  # roughly Nov 17, 1858
-        MAX_VALID_MJD = 100000  # roughly Nov 22, 2132
+        MIN_VALID_MJD = 0  # ~1858-11-17
+        MAX_VALID_MJD = 100000  # ~2132-11-22
         if not (MIN_VALID_MJD <= mjd_start <= MAX_VALID_MJD and MIN_VALID_MJD <= mjd_end <= MAX_VALID_MJD):
             raise HTTPException(status_code=400,
                                 detail=f"MJD values out of expected range ({MIN_VALID_MJD}-{MAX_VALID_MJD}).")
         if mjd_end <= mjd_start:
             raise HTTPException(status_code=400, detail="mjd_end must be greater than mjd_start.")
-        # Normalize to TT because table t_min/t_max are in TT
-        if mjd_scale and mjd_scale.lower() != "tt":
-            try:
-                t_start_tt = Time(mjd_start, format="mjd", scale=mjd_scale).tt
-                t_end_tt = Time(mjd_end, format="mjd", scale=mjd_scale).tt
-                mjd_start_tt = float(t_start_tt.mjd)
-                mjd_end_tt = float(t_end_tt.mjd)
-            except Exception as e:
-                raise HTTPException(status_code=400, detail=f"Invalid mjd_scale '{mjd_scale}': {e}")
+
+        scale = (time_scale or 'tt').lower()
+        if scale not in ('tt', 'utc'):
+            scale = 'tt'
+
+        if scale == 'utc':
+            # Convert UTC MJD -> TT MJD for querying
+            mjd_start_tt = Time(mjd_start, format='mjd', scale='utc').tt.mjd
+            mjd_end_tt = Time(mjd_end, format='mjd', scale='utc').tt.mjd
         else:
             mjd_start_tt = mjd_start
             mjd_end_tt = mjd_end
-        fields['search_mjd_start'] = {'value': mjd_start_tt}
-        fields['search_mjd_end'] = {'value': mjd_end_tt}
+
+        fields['search_mjd_start'] = {'value': float(mjd_start_tt)}
+        fields['search_mjd_end'] = {'value': float(mjd_end_tt)}
         time_filter_present = True
-        print(f"DEBUG search_coords: Using MJD filter: {mjd_start} - {mjd_end}")
-    elif obs_start and obs_end:  # Fallback to date/time strings
+        print(
+            f"DEBUG search_coords: Using MJD filter (normalized to TT): {mjd_start_tt} - {mjd_end_tt} (time_scale={scale})")
+
+    elif obs_start and obs_end:
+        # Calendar fallback: interpret in given time_scale, normalize to TT
         try:
             dt_start = datetime.strptime(obs_start, "%d/%m/%Y %H:%M:%S")
             dt_end = datetime.strptime(obs_end, "%d/%m/%Y %H:%M:%S")
             if dt_end <= dt_start:
                 raise HTTPException(status_code=400, detail="obs_end must be after obs_start.")
 
-            if not (datetime.MINYEAR <= dt_start.year <= datetime.MAXYEAR and
-                    datetime.MINYEAR <= dt_end.year <= datetime.MAXYEAR):
-                raise ValueError("Date year is out of representable range.")
-            scale = (obs_scale or "utc").lower()
-            if scale not in ("utc", "tt", "tai"):
-                raise HTTPException(status_code=400, detail=f"Unsupported obs_scale '{obs_scale}'")
-            t_start_tt = Time(dt_start, scale=scale).tt
-            t_end_tt = Time(dt_end, scale=scale).tt
+            scale = (time_scale or 'tt').lower()
+            if scale not in ('tt', 'utc'):
+                raise HTTPException(status_code=400, detail=f"Unsupported time_scale '{time_scale}'")
+
+            # Interpret the naive datetimes in the declared scale then convert to TT
+            if scale == 'utc':
+                t_start_tt = Time(dt_start, format='datetime', scale='utc').tt
+                t_end_tt = Time(dt_end, format='datetime', scale='utc').tt
+            else:  # 'tt'
+                t_start_tt = Time(dt_start, format='datetime', scale='tt')
+                t_end_tt = Time(dt_end, format='datetime', scale='tt')
+
             fields['search_mjd_start'] = {'value': float(t_start_tt.mjd)}
             fields['search_mjd_end'] = {'value': float(t_end_tt.mjd)}
             time_filter_present = True
-            print(f"DEBUG search_coords: Date/Time -> TT MJD: {fields['search_mjd_start']['value']} - {fields['search_mjd_end']['value']} (obs_scale={obs_scale})")
-        except ValueError as ve:  # Catch strptime errors or our custom ValueError
+            print(f"DEBUG search_coords: Date/Time -> TT MJD: {t_start_tt.mjd} - {t_end_tt.mjd} (time_scale={scale})")
+
+        except ValueError as ve:
             raise HTTPException(status_code=400, detail=f"Invalid date/time format or value: {ve}")
         except Exception as e:
             print(f"ERROR: Unexpected error during time processing: {e}")
