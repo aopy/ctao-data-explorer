@@ -762,8 +762,8 @@ const handleEndMjdChange = (e) => {
                   <DatePicker
                     selected={obsStartDateObj}
                     onChange={handleStartDateChange}
-                    dateFormat="dd/MM/yyyy"
-                    placeholderText="dd/mm/yyyy"
+                    dateFormat="yyyy-MM-dd"
+                    placeholderText="YYYY-MM-DD"
                     className="form-control form-control-sm"
                     wrapperClassName="w-100"
                     disabled={isSubmitting}
@@ -797,10 +797,19 @@ const handleEndMjdChange = (e) => {
                 </div>
                 <div className="col-md-5">
                   <div className="input-group input-group-sm">
-                    <input type="text" inputMode="decimal" className="form-control"
-                           placeholder="Start MJD" aria-label="Start MJD"
-                           value={obsStartMJD} onChange={handleStartMjdChange} disabled={isSubmitting}/>
-                    <span className="input-group-text">MJD</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      className="form-control"
+                      placeholder={`Start MJD (${timeScale.toUpperCase()})`}
+                      aria-label={`Start MJD in ${timeScale.toUpperCase()}`}
+                      value={obsStartMJD}
+                      onChange={handleStartMjdChange}
+                      disabled={isSubmitting}
+                    />
+                    <span className="input-group-text">
+                      MJD ({timeScale.toUpperCase()})
+                    </span>
                   </div>
                 </div>
               </div>
@@ -812,8 +821,8 @@ const handleEndMjdChange = (e) => {
                   <DatePicker
                     selected={obsEndDateObj}
                     onChange={handleEndDateChange}
-                    dateFormat="dd/MM/yyyy"
-                    placeholderText="dd/mm/yyyy"
+                    dateFormat="yyyy-MM-dd"
+                    placeholderText="YYYY-MM-DD"
                     className="form-control form-control-sm"
                     wrapperClassName="w-100"
                     disabled={isSubmitting}
@@ -848,10 +857,19 @@ const handleEndMjdChange = (e) => {
                 </div>
                 <div className="col-md-5">
                   <div className="input-group input-group-sm">
-                    <input type="text" inputMode="decimal" className="form-control"
-                           placeholder="End MJD" aria-label="End MJD"
-                           value={obsEndMJD} onChange={handleEndMjdChange} disabled={isSubmitting}/>
-                    <span className="input-group-text">MJD</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      className="form-control"
+                      placeholder={`End MJD (${timeScale.toUpperCase()})`}
+                      aria-label={`End MJD in ${timeScale.toUpperCase()}`}
+                      value={obsEndMJD}
+                      onChange={handleEndMjdChange}
+                      disabled={isSubmitting}
+                    />
+                    <span className="input-group-text">
+                      MJD ({timeScale.toUpperCase()})
+                    </span>
                   </div>
                 </div>
               </div>
