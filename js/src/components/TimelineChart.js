@@ -88,8 +88,8 @@ const TimelineChart = ({ results, selectedIds = [], onSelectIds = () => {} }) =>
           type: 'rect',
           xref: 'x',
           yref: 'paper',
-          x0: fixZ(r.x0UtcISO),
-          x1: fixZ(r.x1UtcISO),
+          x0: fixZ(r.ttStart),
+          x1: fixZ(r.ttEnd),
           y0: 0,
           y1: 1,
           fillcolor: isSelected
@@ -110,7 +110,7 @@ const TimelineChart = ({ results, selectedIds = [], onSelectIds = () => {} }) =>
       type: 'date',
       autorange: true,
       title: { text: 'Time (TT)', standoff: 8 },
-      tickformat: '%Y-%m-%d',
+      tickformat: '%Y-%m-%d\n%H:%M:%S',
       tickangle: -45,
       automargin: true,
     },
@@ -129,8 +129,9 @@ const TimelineChart = ({ results, selectedIds = [], onSelectIds = () => {} }) =>
       type: 'scatter',
       mode: 'markers',
       x: rows.map(r => {
-        const mid = (new Date(fixZ(r.x0UtcISO)).getTime() + new Date(fixZ(r.x1UtcISO)).getTime()) / 2;
-        return new Date(mid).toISOString();
+        const t0 = new Date(fixZ(r.ttStart)).getTime();
+        const t1 = new Date(fixZ(r.ttEnd  )).getTime();
+        return new Date((t0 + t1)/2).toISOString();
       }),
       y: rows.map(() => 0.5),
       marker: { size: 20, opacity: 0 },
