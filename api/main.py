@@ -169,7 +169,12 @@ def convert_time(req: ConvertReq):
     if req.input_format == "met":
         if not req.met_epoch_isot:
             raise HTTPException(status_code=400, detail="met_epoch_isot required for MET.")
-        epoch = Time(req.met_epoch_isot, format="isot", scale=req.met_epoch_scale or "utc")
+        iso = req.met_epoch_isot or ""
+        scale = req.met_epoch_scale or "utc"
+        if iso.endswith("Z") and scale != "utc":
+            iso = iso[:-1]
+        epoch = Time(iso, format="isot", scale=scale)
+        # epoch = Time(req.met_epoch_isot, format="isot", scale=req.met_epoch_scale or "utc")
         try:
             seconds = float(str(req.value).replace(",", "."))
         except Exception:

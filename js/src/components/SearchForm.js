@@ -110,6 +110,10 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   const [isEditingStartTime, setIsEditingStartTime] = useState(false);
   const [isEditingEndTime, setIsEditingEndTime] = useState(false);
 
+  const [metEpochIso,     setMetEpochIso]     = useState('2018-01-01T00:00:00Z');
+  const [metStartSeconds, setMetStartSeconds] = useState('');
+  const [metEndSeconds,   setMetEndSeconds]   = useState('');
+
   const isFullTime = (s) => /^\d{2}:\d{2}:\d{2}$/.test(s || '');
 
   // Make a display date pinned to noon UTC for the given yyyy-mm-dd
@@ -256,7 +260,18 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     []
   );
 
-  // When user edits fields, interpret and output in the current scale
+  async function syncFromMet(rawSec, epochIso, targetScale='tt') {
+    const { data } = await axios.post('/api/convert_time', {
+      value: String(rawSec),
+      input_format: 'met',
+      input_scale: 'utc',
+      met_epoch_isot: epochIso,
+      met_epoch_scale: 'tt'
+    });
+    const out = pickOut(data, targetScale);
+    return { mjd: out.mjd, isot: out.isot };
+  }
+
   const onStartDateOrTime = () => {
     setTimeTouched(true);
     setLastChangedType('start_dt');
@@ -300,8 +315,6 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
       setLastChangedType(null);
     }, 500);
   };
-
-
 
   useEffect(() => {
     if (lastChangedType === 'start_dt') {
@@ -356,6 +369,65 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     const prev = timeScale;
     const next = e.target.value;
     setTimeScale(next);
+
+    if (next === 'met') {
+      async function mjdToMet(mjdValue) {
+        const { data: epochData } = await axios.post('/api/convert_time', {
+          value: metEpochIso.replace(/Z$/, ''),  // strip Z so Astropy parses it as TT
+          input_format: 'isot',
+          input_scale: 'tt',
+        });
+        const epochMjd = epochData.tt_mjd;
+      return Math.round((mjdValue - epochMjd) * 86400);
+    }
+
+    if (obsStartMJD) {
+      const startSec = await mjdToMet(Number(obsStartMJD));
+      setMetStartSeconds(String(startSec));
+    }
+    if (obsEndMJD) {
+      const endSec = await mjdToMet(Number(obsEndMJD));
+      setMetEndSeconds(String(endSec));
+    }
+    return;
+  }
+
+    if (prev === 'met') {
+      const doMetFields = async (metSec, setMjd, setDateObj, setTime) => {
+        const { data } = await axios.post('/api/convert_time', {
+          value: String(metSec),
+          input_format:   'met',
+          input_scale:    'utc', // ignored for MET itself
+          met_epoch_isot: metEpochIso.replace(/Z$/, ''),
+          met_epoch_scale:'tt',
+        });
+
+        const isot = next === 'tt' ? data.tt_isot : data.utc_isot;
+        const mjd  = next === 'tt' ? data.tt_mjd  : data.utc_mjd;
+
+        setMjd   (formatMJD(mjd));
+        setDateObj( dateFromIsoDatePart(isot) );
+        setTime  ( isot.slice(11,19) );
+      };
+
+      if (metStartSeconds) {
+        await doMetFields(
+          metStartSeconds,
+          setObsStartMJD,
+          setObsStartDateObj,
+          setObsStartTime
+        );
+      }
+      if (metEndSeconds) {
+        await doMetFields(
+          metEndSeconds,
+          setObsEndMJD,
+          setObsEndDateObj,
+          setObsEndTime
+        );
+      }
+      return;
+    }
 
     if (obsStartMJD) {
       await syncFromMjd('start', obsStartMJD, prev, next);
@@ -520,6 +592,9 @@ const handleEndMjdChange = (e) => {
       setObscoreTable(initialFormState.obscoreTable),
       setShowAdvanced(initialFormState.showAdvanced)
     );
+    setMetEpochIso('2018-01-01T00:00:00Z');
+    setMetStartSeconds('');
+    setMetEndSeconds('');
     setWarningMessage(''); setLastChangedType(null); setTimeTouched(false); setTimeWarning('');
   };
 
@@ -571,6 +646,38 @@ const handleEndMjdChange = (e) => {
         setIsSubmitting(false); return;
       }
     }
+
+   if (timeScale === 'met') {
+     if (!metEpochIso || !metStartSeconds || !metEndSeconds) {
+       setWarningMessage('Please fill MET epoch, start and end.');
+       setIsSubmitting(false);
+       return;
+     }
+     try {
+       const [{ data: s }, { data: e }] = await Promise.all([
+         axios.post('/api/convert_time', {
+           value: metStartSeconds,
+           input_format: 'met',
+           met_epoch_isot: metEpochIso,
+           met_epoch_scale:'tt',
+         }),
+         axios.post('/api/convert_time', {
+           value: metEndSeconds,
+           input_format: 'met',
+           met_epoch_isot: metEpochIso,
+           met_epoch_scale:'tt',
+         }),
+       ]);
+       finalReqParams.mjd_start = Number(s.tt_mjd);
+       finalReqParams.mjd_end = Number(e.tt_mjd);
+       finalReqParams.time_scale = 'tt';
+       timeIsValid = true;
+     } catch (err) {
+       setWarningMessage('Failed converting MET: ' + err.message);
+       setIsSubmitting(false);
+       return;
+     }
+   }
 
     // time
     const hasBothMJD  = obsStartMJD.trim() !== '' && obsEndMJD.trim() !== '';
@@ -751,7 +858,7 @@ const handleEndMjdChange = (e) => {
                 >
                   <option value="tt">TT</option>
                   <option value="utc">UTC</option>
-                  {/* <option value="met">MET</option> */}
+                  <option value="met">MET</option>
                 </select>
               </div>
 
@@ -873,6 +980,76 @@ const handleEndMjdChange = (e) => {
                   </div>
                 </div>
               </div>
+
+              {timeScale === 'met' && (
+              <div className="card mb-3">
+                <div className="card-header">MET Input</div>
+                <div className="card-body">
+                  {/* Shared Epoch */}
+                  <div className="mb-2">
+                    <label className="form-label">MET Epoch (ISO)</label>
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      placeholder="e.g. 2018-01-01T00:00:00Z"
+                      value={metEpochIso}
+                      onChange={e => setMetEpochIso(e.target.value)}
+                      disabled={isSubmitting}
+                    />
+                    <div className="form-text">Common epoch for both start and end.</div>
+                  </div>
+
+                  {/* MET Start */}
+                  <div className="mb-2">
+                    <label className="form-label">MET Start (s)</label>
+                    <input
+                      type="number"
+                      className="form-control form-control-sm"
+                      placeholder="MET seconds at observation start"
+                      value={metStartSeconds}
+                      onChange={e => {
+                        const v = e.target.value;
+                        setMetStartSeconds(v);
+                        setTimeTouched(true);
+                        if (timeScale === 'met' && v && metEpochIso) {
+                          syncFromMet(v, metEpochIso, 'tt').then(({ mjd, isot }) => {
+                          setObsStartMJD(formatMJD(mjd));
+                          setObsStartDateObj(dateFromIsoDatePart(isot));
+                          setObsStartTime(isot.slice(11,19));
+                          });
+                        }
+                      }}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+
+                  {/* MET End */}
+                  <div className="mb-2">
+                    <label className="form-label">MET End (s)</label>
+                    <input
+                      type="number"
+                      className="form-control form-control-sm"
+                      placeholder="MET seconds at observation end"
+                      value={metEndSeconds}
+                      onChange={e => {
+                        const v = e.target.value;
+                        setMetEndSeconds(v);
+                        setTimeTouched(true);
+
+                        if (timeScale === 'met' && v && metEpochIso) {
+                          syncFromMet(v, metEpochIso, 'tt').then(({ mjd, isot }) => {
+                          setObsEndMJD(formatMJD(mjd));
+                          setObsEndDateObj(dateFromIsoDatePart(isot));
+                          setObsEndTime(isot.slice(11,19));
+                          });
+                        }
+                      }}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             </div>
           </div>
