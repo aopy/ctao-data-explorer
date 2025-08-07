@@ -21,6 +21,10 @@ const defaultFormValues = {
   tapUrl: 'http://voparis-tap-he.obspm.fr/tap',
   obscoreTable: 'hess_dr.obscore_sdc',
   showAdvanced: false,
+  timeScale: 'tt',
+  metEpochIso: '2018-01-01T00:00:00Z',
+  metStartSeconds: '',
+  metEndSeconds: '',
 };
 
 const parseMjdInput = (v) => {
@@ -49,7 +53,7 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
         sessionStorage.removeItem(FORM_STATE_SESSION_KEY);
         const parsed = JSON.parse(saved);
         if (parsed.obsStartDateObj) parsed.obsStartDateObj = new Date(parsed.obsStartDateObj);
-        if (parsed.obsEndDateObj)   parsed.obsEndDateObj = new Date(parsed.obsEndDateObj);
+        if (parsed.obsEndDateObj) parsed.obsEndDateObj = new Date(parsed.obsEndDateObj);
         return { ...defaultFormValues, ...parsed };
       }
     } catch {
@@ -70,7 +74,7 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   const [searchRadius, setSearchRadius] = useState(initialFormState.searchRadius);
 
   // Time system
-  const [timeScale, setTimeScale] = useState('tt'); // 'tt' | 'utc'
+  const [timeScale, setTimeScale] = useState(initialFormState.timeScale);
 
   // Calendar + MJD
   const [obsStartDateObj, setObsStartDateObj] = useState(initialFormState.obsStartDateObj);
@@ -110,9 +114,9 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   const [isEditingStartTime, setIsEditingStartTime] = useState(false);
   const [isEditingEndTime, setIsEditingEndTime] = useState(false);
 
-  const [metEpochIso,     setMetEpochIso]     = useState('2018-01-01T00:00:00Z');
-  const [metStartSeconds, setMetStartSeconds] = useState('');
-  const [metEndSeconds,   setMetEndSeconds]   = useState('');
+  const [metEpochIso, setMetEpochIso] = useState(initialFormState.metEpochIso);
+  const [metStartSeconds, setMetStartSeconds] = useState(initialFormState.metStartSeconds);
+  const [metEndSeconds, setMetEndSeconds] = useState(initialFormState.metEndSeconds);
 
   const isFullTime = (s) => /^\d{2}:\d{2}:\d{2}$/.test(s || '');
 
@@ -141,7 +145,11 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
           obsStartTime, obsStartMJD,
           obsEndDateObj: obsEndDateObj ? obsEndDateObj.toISOString() : null,
           obsEndTime, obsEndMJD,
-          tapUrl, obscoreTable, showAdvanced
+          tapUrl, obscoreTable, showAdvanced,
+          timeScale,
+          metEpochIso,
+          metStartSeconds,
+          metEndSeconds,
         }));
       } catch { /* ignore */ }
     }
