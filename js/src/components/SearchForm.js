@@ -807,13 +807,30 @@ const handleEndMjdChange = (e) => {
 
               {/* Coords */}
               <div className="mb-3">
-                <label htmlFor="coordSysSelect" className="form-label">Coordinate System</label>
-                <select id="coordSysSelect" className="form-select"
-                        value={coordinateSystem} onChange={handleCoordSystemChange} disabled={isSubmitting}>
-                  <option value={COORD_SYS_EQ_DEG}>Equatorial (deg)</option>
-                  <option value={COORD_SYS_EQ_HMS}>Equatorial (hms/dms)</option>
-                  <option value={COORD_SYS_GAL}>Galactic (l/b deg)</option>
-                </select>
+                <label className="form-label me-2"><strong>Coordinate system:</strong></label>
+                <div className="btn-group" role="group" aria-label="Coordinate system">
+                  {[
+                    { value: COORD_SYS_EQ_DEG, label: <>Equatorial (deg) <span className="badge bg-secondary ms-1">J2000</span></> },
+                    { value: COORD_SYS_EQ_HMS, label: <>Equatorial (hms/dms) <span className="badge bg-secondary ms-1">J2000</span></> },
+                    { value: COORD_SYS_GAL,    label: 'Galactic (l/b deg)' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      className={`btn btn-sm ${
+                        coordinateSystem === opt.value ? 'btn-primary' : 'btn-outline-primary'
+                      }`}
+                      onClick={() => {
+                        setCoordinateSystem(opt.value);
+                        setCoord1('');
+                        setCoord2('');
+                      }}
+                      disabled={isSubmitting}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="row g-2 mb-3">
                 <div className="col-md">
@@ -854,20 +871,24 @@ const handleEndMjdChange = (e) => {
             <div className="card-header">Time Search</div>
             <div className="card-body">
 
-              {/* Single time system selector */}
-              <div className="d-flex align-items-center mb-2">
-                <label className="form-label me-2 mb-0">Time system:</label>
-                <select
-                  className="form-select form-select-sm"
-                  style={{ width: 140 }}
-                  value={timeScale}
-                  onChange={handleTimeScaleChange}
-                  disabled={isSubmitting}
-                >
-                  <option value="tt">TT</option>
-                  <option value="utc">UTC</option>
-                  <option value="met">MET</option>
-                </select>
+              {/* Time system selector */}
+              <div className="mb-3">
+                <label className="form-label me-2"><strong>Time System:</strong></label>
+                <div className="btn-group" role="group" aria-label="Time system">
+                  {['tt','utc','met'].map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      className={`btn btn-sm ${
+                        timeScale === opt ? 'btn-primary' : 'btn-outline-primary'
+                      }`}
+                      onClick={() => handleTimeScaleChange({ target: { value: opt } })}
+                      disabled={isSubmitting}
+                    >
+                      {opt.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Start */}
@@ -995,6 +1016,10 @@ const handleEndMjdChange = (e) => {
                 <div className="card-body">
                   {/* Shared Epoch */}
                   <div className="mb-2">
+                    <small className="text-muted">
+                      All MET values are interpreted on the TT scale.
+                    </small>
+                  </div>
                     <label className="form-label">MET Epoch (ISO)</label>
                     <input
                       type="text"
@@ -1005,7 +1030,7 @@ const handleEndMjdChange = (e) => {
                       disabled={isSubmitting}
                     />
                     <div className="form-text">Common epoch for both start and end.</div>
-                  </div>
+
 
                   {/* MET Start */}
                   <div className="mb-2">

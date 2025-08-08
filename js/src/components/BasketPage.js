@@ -291,7 +291,7 @@ onBasketGroupsChange, allBasketGroups = [], activeBasketGroupId }) {
                         return (
                             <li key={item.id} className="list-group-item d-flex justify-content-between align-items-center">
                                 <div>
-                                    <strong>{item.obs_id}</strong> <small>| {targetName} | {tmin_str}</small>
+                                    Obs. id: <strong>{item.obs_id}</strong> <small>| Target Name: {targetName} | T_min: {tmin_str}</small>
                                 </div>
                                 <div>
                                     <button
