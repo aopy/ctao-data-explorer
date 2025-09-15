@@ -6,6 +6,11 @@ from .tap import (
     perform_time_query,
     perform_coords_time_query,
     astropy_table_to_list,
+    build_spatial_icrs_condition,
+    build_time_overlap_condition,
+    build_where_clause,
+    build_select_query,
+    perform_query_with_conditions,
 )
 import pyvo as vo
 import math
@@ -538,37 +543,25 @@ async def search_coords(
     if not coords_present and not time_filter_present:
         raise HTTPException(status_code=400, detail="Provide Coordinates or Time Interval.")
 
-    if coords_present and time_filter_present:
-        adql_query_str = (
-            "SELECT TOP 100 * FROM {tbl} WHERE "
-            "1=CONTAINS(POINT('ICRS', s_ra, s_dec), CIRCLE('ICRS', {ra}, {dec}, {rad})) "
-            "AND t_min < {tend} AND t_max > {tstart}"
-        ).format(
-            tbl = obscore_table,
-            ra = fields['target_raj2000']['value'],
-            dec = fields['target_dej2000']['value'],
-            rad = fields['search_radius']['value'],
-            tend = fields['search_mjd_end']['value'],
-            tstart = fields['search_mjd_start']['value'],
+    where_conditions = []
+    if coords_present:
+        where_conditions.append(
+            build_spatial_icrs_condition(
+                fields['target_raj2000']['value'],
+                fields['target_dej2000']['value'],
+                fields['search_radius']['value'],
+            )
         )
-    elif coords_present:
-        adql_query_str = (
-            "SELECT TOP 100 * FROM {tbl} WHERE "
-            "1=CONTAINS(POINT('ICRS', s_ra, s_dec), CIRCLE('ICRS', {ra}, {dec}, {rad}))"
-        ).format(
-            tbl = obscore_table,
-            ra = fields['target_raj2000']['value'],
-            dec = fields['target_dej2000']['value'],
-            rad = fields['search_radius']['value'],
+    if time_filter_present:
+        where_conditions.append(
+            build_time_overlap_condition(
+                fields['search_mjd_start']['value'],
+                fields['search_mjd_end']['value'],
+            )
         )
-    else:
-        adql_query_str = (
-            "SELECT TOP 100 * FROM {tbl} WHERE t_min < {tend} AND t_max > {tstart}"
-        ).format(
-            tbl = obscore_table,
-            tend = fields['search_mjd_end']['value'],
-            tstart = fields['search_mjd_start']['value'],
-        )
+
+    where_sql = build_where_clause(where_conditions)
+    adql_query_str = build_select_query(fields['obscore_table']['value'], where_sql, limit=100)
 
     cache_key = "search:" + hashlib.sha256(adql_query_str.encode()).hexdigest()
 
@@ -578,13 +571,7 @@ async def search_coords(
             return SearchResult.model_validate_json(cached)
 
     try:
-        if coords_present and time_filter_present:
-            error, res_table, adql_query_str = perform_coords_time_query(fields)
-        elif coords_present:
-            error, res_table, adql_query_str = perform_coords_query(fields)
-        elif time_filter_present:
-            error, res_table, adql_query_str = perform_time_query(fields)
-
+        error, res_table, adql_query_str = perform_query_with_conditions(fields, where_conditions, limit=100)
         print(f"DEBUG search_coords: After query call: error={error}, type(res_table)={type(res_table)}")
 
     except Exception as query_exc:

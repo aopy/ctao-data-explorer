@@ -6,6 +6,74 @@ from astropy.table import Table
 import traceback
 
 
+def build_spatial_icrs_condition(ra: float, dec: float, radius_deg: float) -> str:
+    """
+    CONTAINS(CIRCLE) spatial filter in ICRS using s_ra/s_dec from ObsCore.
+    """
+    return (
+        "1=CONTAINS(POINT('ICRS', s_ra, s_dec), "
+        f"CIRCLE('ICRS', {float(ra)}, {float(dec)}, {float(radius_deg)}))"
+    )
+
+def build_time_overlap_condition(tstart_mjd_tt: float, tend_mjd_tt: float) -> str:
+    """
+    Half-open/overlap style constraint: any record overlapping [tstart, tend]
+    """
+    return f"t_min < {float(tend_mjd_tt)} AND t_max > {float(tstart_mjd_tt)}"
+
+def build_where_clause(conditions: list[str]) -> str:
+    """
+    Join a list of WHERE snippets with AND, falling back to TRUE (1=1).
+    """
+    parts = [c.strip() for c in conditions if c and c.strip()]
+    return " AND ".join(parts) if parts else "1=1"
+
+def build_select_query(table: str, where: str, limit: int = 100, columns: str = "*") -> str:
+    """
+    Compose the final SELECT with WHERE.
+    """
+    return f"SELECT TOP {int(limit)} {columns} FROM {table} WHERE {where}"
+
+def perform_query_with_conditions(fields, conditions: list[str], limit: int = 100):
+    """
+    Build a WHERE clause from `conditions`, compose the SELECT, execute, and return:
+    (error_message_or_None, astropy_table_or_None, adql_query_string)
+    """
+    url = fields['tap_url']['value']
+    obscore_table = fields['obscore_table']['value']
+    timeout = 5
+
+    error, astro_table = None, None
+    query = ""
+
+    try:
+        t = Tap(url)
+        t.connect(timeout)
+
+        where = build_where_clause(conditions)  # <<< " AND ".join(mylist) used here
+        query = build_select_query(obscore_table, where, limit=limit)
+
+        print(f"DEBUG: Running ADQL Query: {query}")
+        exception, tap_results = t.query(query)
+
+        if exception:
+            error = f'Got exception with TAP query: {exception}'
+        elif tap_results is None:
+            error = 'TAP query succeeded but returned no results object.'
+        else:
+            astro_table = _process_tap_results(tap_results)
+            if astro_table is None and error is None:
+                error = "Failed processing TAP results after query."
+    except Exception as outer_exception:
+        error = f"Failed TAP operation: {outer_exception}"
+        print(f"Error during TAP operation: {outer_exception}")
+        traceback.print_exc()
+        astro_table = None
+
+    print(f"DEBUG Returning from perform_query_with_conditions: error={error}, table type={type(astro_table)}")
+    return error, astro_table, query
+
+
 def _process_tap_results(tap_results: vo.dal.TAPResults) -> Table | None:
     """Converts TAPResults to Astropy Table."""
     if tap_results is None:
@@ -110,113 +178,35 @@ def astropy_table_to_list(table: Table | None):
         traceback.print_exc()
         return [],[]
 
-
 def perform_coords_query(fields):
-    """Perform coordinate query, return error, Astropy Table, query string."""
-    url, obscore_table, timeout = fields['tap_url']['value'], fields['obscore_table']['value'], 5
-    error, astro_table = None, None
-    query = ""
-
-    try:
-        t = Tap(url)
-        t.connect(timeout)
-        query = (
-            "SELECT TOP 100 * FROM {} WHERE 1=CONTAINS(POINT('ICRS', s_ra, s_dec), "
-            "CIRCLE('ICRS', {}, {}, {}))".format(
-                obscore_table, fields['target_raj2000']['value'],
-                fields['target_dej2000']['value'], fields['search_radius']['value']
-            )
+    conds = [
+        build_spatial_icrs_condition(
+            fields['target_raj2000']['value'],
+            fields['target_dej2000']['value'],
+            fields['search_radius']['value'],
         )
-        print(f"DEBUG: Running ADQL Query: {query}")
-        exception, tap_results = t.query(query)
-
-        if exception: error = f'Got exception with TAP query: {exception}'
-        elif tap_results is None: error = 'TAP query succeeded but returned no results object.'
-        else:
-            astro_table = _process_tap_results(tap_results)
-            if astro_table is None and error is None:
-                error = "Failed processing TAP results after query."
-
-    except Exception as outer_exception:
-        error = f"Failed TAP operation: {outer_exception}"
-        print(f"Error during TAP operation: {outer_exception}")
-        traceback.print_exc()
-        astro_table = None
-
-    print(f"DEBUG Returning from perform_coords_query: error={error}, table type={type(astro_table)}")
-
-    return error, astro_table, query
+    ]
+    return perform_query_with_conditions(fields, conds, limit=100)
 
 def perform_time_query(fields):
-    """Perform time query, return error, Astropy Table, query string."""
-    url, obscore_table, timeout = fields['tap_url']['value'], fields['obscore_table']['value'], 5
-    error, astro_table = None, None
-    query = ""
-
-    try:
-        t = Tap(url)
-        t.connect(timeout)
-        query = (
-            "SELECT TOP 100 * FROM {} WHERE t_min < {} AND t_max > {}"
-            .format(
-                obscore_table,
-                fields['search_mjd_end']['value'],
-                fields['search_mjd_start']['value']
-            )
+    conds = [
+        build_time_overlap_condition(
+            fields['search_mjd_start']['value'],
+            fields['search_mjd_end']['value'],
         )
-        print(f"DEBUG: Running ADQL Query: {query}")
-        exception, tap_results = t.query(query)
-
-        if exception: error = f'Got exception with TAP query: {exception}'
-        elif tap_results is None: error = 'TAP query succeeded but returned no results object.'
-        else:
-            astro_table = _process_tap_results(tap_results)
-            if astro_table is None and error is None:
-                error = "Failed processing TAP results after query."
-
-    except Exception as outer_exception:
-        error = f"Failed TAP operation: {outer_exception}"
-        print(f"Error during TAP operation: {outer_exception}")
-        traceback.print_exc()
-        astro_table = None
-
-    print(f"DEBUG Returning from perform_time_query: error={error}, table type={type(astro_table)}")
-    return error, astro_table, query
-
+    ]
+    return perform_query_with_conditions(fields, conds, limit=100)
 
 def perform_coords_time_query(fields):
-    """Perform coordinate and time query, return error, Astropy Table, query string."""
-    url, obscore_table, timeout = fields['tap_url']['value'], fields['obscore_table']['value'], 5
-    error, astro_table = None, None
-    query = ""
-
-    try:
-        t = Tap(url)
-        t.connect(timeout)
-        query = (
-           "SELECT TOP 100 * FROM {} WHERE 1=CONTAINS(POINT('ICRS', s_ra, s_dec), "
-           "CIRCLE('ICRS', {}, {}, {})) AND t_min < {} AND t_max > {}"
-           .format(
-               obscore_table, fields['target_raj2000']['value'],
-               fields['target_dej2000']['value'], fields['search_radius']['value'],
-               fields['search_mjd_end']['value'], fields['search_mjd_start']['value']
-           )
-        )
-        print(f"DEBUG: Running ADQL Query: {query}")
-        exception, tap_results = t.query(query)
-
-        if exception: error = f'Got exception with TAP query: {exception}'
-        elif tap_results is None: error = 'TAP query succeeded but returned no results object.'
-        else:
-            astro_table = _process_tap_results(tap_results)
-            if astro_table is None and error is None:
-                error = "Failed processing TAP results after query."
-
-    except Exception as outer_exception:
-        error = f"Failed TAP operation: {outer_exception}"
-        print(f"Error during TAP operation: {outer_exception}")
-        traceback.print_exc()
-        astro_table = None
-
-    print(f"DEBUG Returning from perform_coords_time_query: error={error}, table type={type(astro_table)}")
-    return error, astro_table, query
+    conds = [
+        build_spatial_icrs_condition(
+            fields['target_raj2000']['value'],
+            fields['target_dej2000']['value'],
+            fields['search_radius']['value'],
+        ),
+        build_time_overlap_condition(
+            fields['search_mjd_start']['value'],
+            fields['search_mjd_end']['value'],
+        ),
+    ]
+    return perform_query_with_conditions(fields, conds, limit=100)
