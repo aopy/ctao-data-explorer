@@ -2,9 +2,6 @@ from fastapi import FastAPI, Query, HTTPException, Body, Response, Request, Depe
 from fastapi.middleware.cors import CORSMiddleware
 from .models import SearchResult
 from .tap import (
-    perform_coords_query,
-    perform_time_query,
-    perform_coords_time_query,
     astropy_table_to_list,
     build_spatial_icrs_condition,
     build_time_overlap_condition,
@@ -34,9 +31,8 @@ from io import BytesIO
 import requests
 from astropy.io.votable import parse_single_table
 from .db import get_redis_pool
-from .auth import router as auth_api_router, SESSION_DURATION_SECONDS
+from .auth import router as auth_api_router
 from .oidc import oidc_router
-from starlette.config import Config as StarletteConfig
 from contextlib import asynccontextmanager
 import itertools
 import hashlib
@@ -44,38 +40,18 @@ from pydantic import BaseModel
 from typing import Literal, Optional
 from astropy.time import Time
 import astropy.units as u
+from .config import get_settings
+from .constants import (
+    COORD_SYS_EQ_DEG, COORD_SYS_EQ_HMS, COORD_SYS_GAL,
+    COOKIE_NAME_MAIN_SESSION,
+)
 
+settings = get_settings()
 
-SIMBAD_TAP_SYNC = "https://simbad.cds.unistra.fr/simbad/sim-tap/sync"
-OBJECT_LOOKUP_URL = "https://ned.ipac.caltech.edu/srs/ObjectLookup"
+SIMBAD_TAP_SYNC = settings.SIMBAD_TAP_SYNC
+OBJECT_LOOKUP_URL = settings.NED_OBJECT_LOOKUP_URL
+cookie_params = settings.cookie_params
 
-config_env = StarletteConfig('.env')
-
-BASE_URL = config_env("BASE_URL", default=None)
-COOKIE_SAMESITE = config_env("COOKIE_SAMESITE", default="Lax")
-COOKIE_SECURE = config_env("COOKIE_SECURE",  cast=bool, default=False)
-RAW_COOKIE_DOMAIN = config_env("COOKIE_DOMAIN", default=None)
-COOKIE_DOMAIN = RAW_COOKIE_DOMAIN or None
-PRODUCTION = bool(BASE_URL)
-
-if COOKIE_SAMESITE.lower() == "none" and not COOKIE_SECURE:
-    COOKIE_SAMESITE = "Lax"
-else:
-    COOKIE_SAMESITE = COOKIE_SAMESITE.capitalize()
-
-cookie_params = {
-    "secure": COOKIE_SECURE,
-    "httponly": True,
-    "samesite": COOKIE_SAMESITE,
-    "path": "/",
-}
-if COOKIE_DOMAIN:
-  cookie_params["domain"] = COOKIE_DOMAIN
-
-# coordinate cystem constants
-COORD_SYS_EQ_DEG = 'equatorial_deg'
-COORD_SYS_EQ_HMS = 'equatorial_hms'
-COORD_SYS_GAL = 'galactic'
 
 # App Event Handlers for Redis Pool
 @asynccontextmanager
@@ -102,7 +78,7 @@ app = FastAPI(
 # SessionMiddleware for OIDC state/nonce (temporary cookie)
 app.add_middleware(
     SessionMiddleware,
-    secret_key=config_env("SESSION_SECRET_KEY_OIDC", default="a_different_strong_secret_for_oidc_state"),
+    secret_key=settings.SESSION_SECRET_KEY_OIDC,
     session_cookie="ctao_oidc_state_session",
     https_only=False,
     # same_site="lax",
@@ -140,15 +116,15 @@ async def rolling_session_cookie(request: Request, call_next):
     response = await call_next(request)
 
     existing = response.headers.getlist("set-cookie")
-    if any("ctao_session_main=" in hdr for hdr in existing):
+    if any(f"{COOKIE_NAME_MAIN_SESSION}=" in hdr for hdr in existing):
         return response
 
-    session_id = request.cookies.get("ctao_session_main")
+    session_id = request.cookies.get(COOKIE_NAME_MAIN_SESSION)
     if session_id:
         response.set_cookie(
-            "ctao_session_main",
+            COOKIE_NAME_MAIN_SESSION,
             session_id,
-            max_age=SESSION_DURATION_SECONDS,
+            max_age=settings.SESSION_DURATION_SECONDS,
             **cookie_params,
         )
     return response
@@ -436,8 +412,8 @@ async def search_coords(
     mjd_end: Optional[float] = Query(None),
     time_scale: Optional[str] = Query('tt'),
     # TAP Params
-    tap_url: str = 'http://voparis-tap-he.obspm.fr/tap',
-    obscore_table: str = 'hess_dr.obscore_sdc',
+    tap_url: str = settings.DEFAULT_TAP_URL,
+    obscore_table: str = settings.DEFAULT_OBSCORE_TABLE,
     # Auth
     user_session_data: Optional[Dict[str, Any]] = Depends(get_optional_session_user),
 ):
@@ -722,7 +698,7 @@ async def object_resolve(data: dict = Body(...)):
     ned_list = []
 
     if use_simbad:
-        SIMBAD_TAP = "https://simbad.cds.unistra.fr/simbad/sim-tap"
+        SIMBAD_TAP = settings.SIMBAD_TAP_BASE
         simbad = vo.dal.TAPService(SIMBAD_TAP)
 
         def _try_alias(alias: str, top: int = 1):
@@ -780,7 +756,7 @@ def _run_ned_sync_query(adql_query):
     Helper function to run a synchronous NED TAP query (returns a list of dict).
     By default, NED returns a VOTable. Parse it with astropy.io.votable.
     """
-    url = "https://ned.ipac.caltech.edu/tap/sync"
+    url = settings.NED_TAP_SYNC_URL
     params = {
         "QUERY": adql_query,
         "LANG": "ADQL",

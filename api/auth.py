@@ -11,44 +11,27 @@ from fastapi_users import schemas
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from .db import get_async_session, get_redis_client, encrypt_token, decrypt_token
-from .models import UserTable, UserRefreshToken
-# from authlib.integrations.starlette_client import OAuth
+from .models import UserRefreshToken
 from .oauth_client import oauth, CTAO_PROVIDER_NAME
-from starlette.config import Config as StarletteConfig
 import json
 import time
 from typing import Optional, Dict, Any
 from fastapi_users.manager import BaseUserManager
-from datetime import datetime, timedelta
+from datetime import datetime
 from fastapi.responses import JSONResponse
 import redis.asyncio as redis
 import traceback
+from .config import get_settings
+from .constants import (
+    SESSION_KEY_PREFIX, SESSION_USER_ID_KEY, SESSION_IAM_SUB_KEY, SESSION_IAM_EMAIL_KEY,
+    SESSION_IAM_GIVEN_NAME_KEY, SESSION_IAM_FAMILY_NAME_KEY,
+    SESSION_ACCESS_TOKEN_KEY, SESSION_ACCESS_TOKEN_EXPIRY_KEY,
+)
 
+settings = get_settings()
+cookie_params = settings.cookie_params
 
-config_env = StarletteConfig(".env")
-
-REFRESH_BUFFER_SECONDS = config_env("REFRESH_BUFFER_SECONDS", cast=int, default=300)
-
-BASE_URL = config_env("BASE_URL", default=None)
-COOKIE_SAMESITE = config_env("COOKIE_SAMESITE", default="Lax")
-COOKIE_SECURE = config_env("COOKIE_SECURE",  cast=bool, default=False)
-RAW_COOKIE_DOMAIN = config_env("COOKIE_DOMAIN", default=None)
-COOKIE_DOMAIN = RAW_COOKIE_DOMAIN or None
-PRODUCTION = bool(BASE_URL)
-
-if COOKIE_SAMESITE.lower() == "none" and not COOKIE_SECURE:
-    COOKIE_SAMESITE = "Lax"
-else:
-    COOKIE_SAMESITE = COOKIE_SAMESITE.capitalize()
-
-cookie_params = {
-    "secure": COOKIE_SECURE,
-    "httponly": True,
-    "samesite": COOKIE_SAMESITE,
-    "path": "/",
-}
-if COOKIE_DOMAIN:
-  cookie_params["domain"] = COOKIE_DOMAIN
+REFRESH_BUFFER_SECONDS = settings.REFRESH_BUFFER_SECONDS
 
 # User Schemas
 class UserRead(schemas.BaseUser[int]):
@@ -66,17 +49,7 @@ class UserUpdate(schemas.BaseUserUpdate):
     email: Optional[str] = None
     # No name updates
 
-# Constants for session
-SESSION_KEY_PREFIX = "user_session:"
-SESSION_USER_ID_KEY = "app_user_id"
-SESSION_IAM_SUB_KEY = "iam_sub"
-SESSION_IAM_EMAIL_KEY = "iam_email"
-SESSION_IAM_GIVEN_NAME_KEY = "first_name"
-SESSION_IAM_FAMILY_NAME_KEY = "last_name"
-SESSION_ACCESS_TOKEN_KEY = "iam_at" # Key for storing IAM Access Token in session
-SESSION_ACCESS_TOKEN_EXPIRY_KEY = "iam_at_exp"
-SESSION_DURATION_SECONDS = config_env("SESSION_DURATION_SECONDS", cast=int, default=3600 * 8) # 8 hours
-
+SESSION_DURATION_SECONDS = settings.SESSION_DURATION_SECONDS # 8 hours
 
 # Session-Based Authentication Dependency
 async def get_current_session_user_data(
@@ -155,7 +128,7 @@ async def get_current_session_user_data(
             new_iam_access_token = token_response['access_token']
             # new_iam_access_token_expiry = time.time() + token_response['expires_in']
             new_exp = token_response.get('expires_in', 3600)
-            fake_exp = StarletteConfig('.env')('OIDC_FAKE_EXPIRES_IN', cast=int, default=None)
+            fake_exp = settings.OIDC_FAKE_EXPIRES_IN
             if fake_exp:
                 new_exp = fake_exp
             new_iam_access_token_expiry = time.time() + new_exp

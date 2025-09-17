@@ -1,16 +1,13 @@
-from starlette.config import Config
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 import redis.asyncio as redis
 from cryptography.fernet import Fernet
-# import os
 from typing import Optional
+from .config import get_settings
+settings = get_settings()
 
-
-config = Config(".env")
-
-DATABASE_URL = config("DATABASE_URL", default="postgresql+asyncpg://user:pass@127.0.0.1:5432/mydb")
+DATABASE_URL = settings.DATABASE_URL
 engine = create_async_engine(DATABASE_URL, echo=True) # echo=False for production
 
 AsyncSessionLocal = sessionmaker(
@@ -28,7 +25,7 @@ async def get_async_session() -> AsyncSession:
         yield session
 
 # Redis Setup
-REDIS_URL = config("REDIS_URL", default="redis://localhost:6379/0")
+REDIS_URL = settings.REDIS_URL
 redis_pool = None
 
 async def get_redis_pool():
@@ -43,7 +40,7 @@ async def get_redis_client() -> redis.Redis:
     return redis.Redis(connection_pool=pool)
 
 # Encryption Setup for Refresh Tokens
-ENCRYPTION_KEY_STR = config("REFRESH_TOKEN_ENCRYPTION_KEY", default="")
+ENCRYPTION_KEY_STR = settings.REFRESH_TOKEN_ENCRYPTION_KEY
 if not ENCRYPTION_KEY_STR:
     print("WARNING: REFRESH_TOKEN_ENCRYPTION_KEY is not set. Refresh token storage will be insecure.")
     fernet_cipher = None

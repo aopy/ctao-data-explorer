@@ -2,56 +2,34 @@ from fastapi.responses import RedirectResponse
 from fastapi import APIRouter, Request, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-# from authlib.integrations.starlette_client import OAuth
-from .oauth_client import oauth, CTAO_PROVIDER_NAME
-from starlette.config import Config as StarletteConfig
+from .oauth_client import oauth
 import json
 import time
 import uuid
 from datetime import datetime
-
 from .db import get_async_session, get_redis_client, encrypt_token
 from .models import UserTable, UserRefreshToken
-from .auth import (
-    SESSION_KEY_PREFIX, SESSION_USER_ID_KEY, SESSION_IAM_SUB_KEY,
-    SESSION_IAM_EMAIL_KEY, SESSION_ACCESS_TOKEN_KEY,
-    SESSION_ACCESS_TOKEN_EXPIRY_KEY, SESSION_DURATION_SECONDS,
-    PRODUCTION, SESSION_IAM_GIVEN_NAME_KEY, SESSION_IAM_FAMILY_NAME_KEY
-)
 import redis.asyncio as redis
+from .config import get_settings
+from .constants import (
+    COOKIE_NAME_MAIN_SESSION,
+    SESSION_KEY_PREFIX, SESSION_USER_ID_KEY, SESSION_IAM_SUB_KEY, SESSION_IAM_EMAIL_KEY,
+    SESSION_IAM_GIVEN_NAME_KEY, SESSION_IAM_FAMILY_NAME_KEY,
+    SESSION_ACCESS_TOKEN_KEY, SESSION_ACCESS_TOKEN_EXPIRY_KEY,
+    CTAO_PROVIDER_NAME,
+)
 
-
-config_env = StarletteConfig('.env')
-
-BASE_URL = config_env("BASE_URL", default=None)
-COOKIE_SAMESITE = config_env("COOKIE_SAMESITE", default="Lax")
-COOKIE_SECURE = config_env("COOKIE_SECURE",  cast=bool, default=False)
-RAW_COOKIE_DOMAIN = config_env("COOKIE_DOMAIN", default=None)
-COOKIE_DOMAIN = RAW_COOKIE_DOMAIN or None
-PRODUCTION = bool(BASE_URL)
-
-if COOKIE_SAMESITE.lower() == "none" and not COOKIE_SECURE:
-    COOKIE_SAMESITE = "Lax"
-else:
-    COOKIE_SAMESITE = COOKIE_SAMESITE.capitalize()
-
-cookie_params = {
-    "secure": COOKIE_SECURE,
-    "httponly": True,
-    "samesite": COOKIE_SAMESITE,
-    "path": "/",
-}
-if COOKIE_DOMAIN:
-  cookie_params["domain"] = COOKIE_DOMAIN
+settings = get_settings()
+cookie_params = settings.cookie_params
 
 oidc_router = APIRouter(prefix="/oidc", tags=["oidc"])
 
 @oidc_router.get("/login")
 async def login(request: Request):
-    redirect_uri = config_env("OIDC_REDIRECT_URI", default="http://localhost:8000/api/oidc/callback")
-    base_url_env = config_env("BASE_URL", default=None)
-    if PRODUCTION and base_url_env:
-        redirect_uri = f"{base_url_env}/api/oidc/callback"
+    redirect_uri = settings.OIDC_REDIRECT_URI if not settings.PRODUCTION else f"{settings.BASE_URL}/api/oidc/callback"
+    # base_url_env = config_env("BASE_URL", default=None)
+    # if PRODUCTION and base_url_env:
+    #    redirect_uri = f"{base_url_env}/api/oidc/callback"
 
     print(f"DEBUG OIDC Login: Using redirect_uri: {redirect_uri}")
     # Store state in Starlette's temporary session (ctao_session_temp)
@@ -92,13 +70,11 @@ async def auth_callback(
     # print(f"DEBUG OIDC Callback: UserInfo from IAM: {userinfo}")
     # print(f"DEBUG OIDC Callback: Parsed given_name: {given_name_to_store}, family_name: {family_name_to_store}")
 
-
     iam_access_token = token_response['access_token']
     iam_refresh_token = token_response.get('refresh_token')
     expires_in = token_response.get('expires_in', 3600) # Default to 1 hour
-    fake_exp = StarletteConfig('.env')('OIDC_FAKE_EXPIRES_IN', cast=int, default=None)
-    if fake_exp:
-        expires_in = fake_exp
+    if settings.OIDC_FAKE_EXPIRES_IN:
+        expires_in = settings.OIDC_FAKE_EXPIRES_IN
     iam_access_token_expiry = time.time() + expires_in
 
     # find or create minimal user in app db
@@ -167,7 +143,7 @@ async def auth_callback(
     }
     await redis.setex(
         f"{SESSION_KEY_PREFIX}{session_id}",
-        SESSION_DURATION_SECONDS, # Session TTL in Redis
+        settings.SESSION_DURATION_SECONDS, # Session TTL in Redis
         json.dumps(session_data_to_store)
     )
     print(f"Created Redis session {session_id} for user_id: {app_user_id}")
@@ -184,15 +160,9 @@ async def auth_callback(
     # Set Session ID Cookie and Redirect
     response = RedirectResponse(url="/")
     response.set_cookie(
-        key="ctao_session_main",
+        key=COOKIE_NAME_MAIN_SESSION,
         value=session_id,
-        max_age=SESSION_DURATION_SECONDS, # Match Redis TTL
-        # path="/",
-        # domain=config_env("COOKIE_DOMAIN", default=None) if PRODUCTION else None,
-        # secure=config_env("COOKIE_SECURE", cast=bool, default=False) if PRODUCTION else False,
-        # httponly=True,
-        # samesite="lax"
-        # samesite = "none"
+        max_age=settings.SESSION_DURATION_SECONDS,
         **cookie_params
     )
     return response
