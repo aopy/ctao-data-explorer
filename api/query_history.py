@@ -9,6 +9,9 @@ from pydantic import BaseModel, Field
 from typing import Optional, Any, Dict, List
 from datetime import datetime
 from fastapi import status
+import logging
+logger = logging.getLogger(__name__)
+
 
 class QueryHistoryCreate(BaseModel):
     query_params: Optional[Dict[str, Any]] = None
@@ -55,11 +58,11 @@ async def _internal_create_query_history(
         return response_data
 
     except json.JSONDecodeError as e:
-         print(f"Error decoding JSON during history response preparation: {e}")
+         logger.exception("Error decoding JSON during history response preparation: %s", e)
          raise HTTPException(status_code=500, detail="Failed to process history data for response.")
     except Exception as e:
          await session.rollback()
-         print(f"Error creating query history: {e}")
+         logger.exception("Error creating query history: %s", e)
          raise HTTPException(status_code=500, detail="Failed to save query history.")
 
 @query_history_router.post("", response_model=QueryHistoryRead)
@@ -103,12 +106,12 @@ async def get_query_history(
                     results=results_dict,
                 ))
             except json.JSONDecodeError as e:
-                 print(f"Error decoding JSON for history ID {db_history.id}: {e}")
+                 logger.exception("Error decoding JSON for history ID %s: %s", db_history.id, e)
                  continue # Skip records with bad JSON for now
 
         return response_list
     except Exception as e:
-        print(f"Error fetching query history: {e}")
+        logger.exception("Error fetching query history: %s", e)
         raise HTTPException(status_code=500, detail="Failed to retrieve query history.")
 
 
@@ -135,7 +138,7 @@ async def delete_query_history_item(
         await session.commit()
     except Exception as e:
         await session.rollback()
-        print(f"Error deleting history item {history_id}: {e}")
+        logger.exception("Error deleting history item %s: %s", history_id, e)
         raise HTTPException(status_code=500, detail="Failed to delete history item.")
 
     return None

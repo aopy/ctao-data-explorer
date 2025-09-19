@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     DB_URL: Optional[str] = None
     NODE_OPTIONS: Optional[str] = None
 
+    # Logs
+    LOG_LEVEL: str = "INFO"
+    LOG_INCLUDE_ACCESS: bool = True
+    LOG_JSON: bool = False
+
 
     @property
     def PRODUCTION(self) -> bool:

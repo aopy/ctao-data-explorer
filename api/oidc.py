@@ -18,6 +18,8 @@ from .constants import (
     SESSION_ACCESS_TOKEN_KEY, SESSION_ACCESS_TOKEN_EXPIRY_KEY,
     CTAO_PROVIDER_NAME,
 )
+import logging
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 cookie_params = settings.cookie_params
@@ -31,7 +33,7 @@ async def login(request: Request):
     # if PRODUCTION and base_url_env:
     #    redirect_uri = f"{base_url_env}/api/oidc/callback"
 
-    print(f"DEBUG OIDC Login: Using redirect_uri: {redirect_uri}")
+    logger.debug("OIDC login redirect_uri: %s", redirect_uri)
     # Store state in Starlette's temporary session (ctao_session_temp)
     return await oauth.ctao.authorize_redirect(request, redirect_uri)
 
@@ -45,8 +47,8 @@ async def auth_callback(
     try:
         # This uses the temporary OIDC state session cookie
         token_response = await oauth.ctao.authorize_access_token(request)
-    except Exception as e:
-        print(f"OIDC Error during authorize_access_token: {e}")
+    except Exception:
+        logger.exception("OIDC authorize_access_token failed")
         # import traceback; traceback.print_exc()
         raise HTTPException(status_code=400, detail="OIDC authentication failed or was cancelled.")
 
@@ -83,7 +85,7 @@ async def auth_callback(
     user_record = result.scalars().first()
 
     if not user_record:
-        print(f"Creating new minimal user for IAM sub: {iam_subject_id}")
+        logger.info("Creating new minimal user for IAM sub: %s", iam_subject_id)
         user_record = UserTable(
             iam_subject_id=iam_subject_id,
             # email=email,
@@ -123,11 +125,11 @@ async def auth_callback(
                     encrypted_refresh_token=encrypted_rt
                 )
                 db_session.add(new_rt_record)
-            print(f"Stored/Updated refresh token for user_id: {app_user_id}")
+            logger.info("Stored/Updated refresh token for user_id: %s", app_user_id)
         else:
-            print(f"WARNING: Failed to encrypt refresh token for user_id: {app_user_id}")
+            logger.warning("Failed to encrypt refresh token for user_id=%s", app_user_id)
     else:
-        print(f"WARNING: No refresh token received from IAM for user_id: {app_user_id}")
+        logger.warning("No refresh token received from IAM for user_id=%s", app_user_id)
 
 
     # Create Server-Side Session in Redis
@@ -146,14 +148,14 @@ async def auth_callback(
         settings.SESSION_DURATION_SECONDS, # Session TTL in Redis
         json.dumps(session_data_to_store)
     )
-    print(f"Created Redis session {session_id} for user_id: {app_user_id}")
+    logger.info("Created Redis session %s for user_id: %s", session_id, app_user_id)
 
     # Commit DB changes
     try:
         await db_session.commit()
     except Exception as db_exc:
         await db_session.rollback()
-        print(f"Error committing user/refresh token to DB: {db_exc}")
+        logger.exception("Error committing user/refresh token to DB: %s", db_exc)
         raise HTTPException(status_code=500, detail="Failed to finalize user session setup.")
 
 

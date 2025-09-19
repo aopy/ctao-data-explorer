@@ -40,13 +40,23 @@ from pydantic import BaseModel
 from typing import Literal, Optional
 from astropy.time import Time
 import astropy.units as u
+import logging
 from .config import get_settings
+from .logging_config import setup_logging
 from .constants import (
     COORD_SYS_EQ_DEG, COORD_SYS_EQ_HMS, COORD_SYS_GAL,
     COOKIE_NAME_MAIN_SESSION,
 )
 
 settings = get_settings()
+
+setup_logging(
+    level=settings.LOG_LEVEL,
+    include_access=settings.LOG_INCLUDE_ACCESS,
+    json=settings.LOG_JSON,
+)
+
+logger = logging.getLogger(__name__)
 
 SIMBAD_TAP_SYNC = settings.SIMBAD_TAP_SYNC
 OBJECT_LOOKUP_URL = settings.NED_OBJECT_LOOKUP_URL
@@ -59,13 +69,14 @@ async def lifespan(app: FastAPI):
     import redis.asyncio as redis
     pool = await get_redis_pool()
     app.state.redis = redis.Redis(connection_pool=pool)
-    print("Redis pool initialised.")
+    logger.info("Redis pool initialised.")
     try:
         yield
     finally:
         await app.state.redis.close()
         await pool.disconnect()
-        print("Redis pool closed.")
+        logger.info("Redis pool closed.")
+
 
 app = FastAPI(
     title="CTAO Data Explorer API",
@@ -73,6 +84,8 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+logger.info("API starting up")
 
 # Middleware
 # SessionMiddleware for OIDC state/nonce (temporary cookie)
@@ -194,7 +207,7 @@ async def _ned_resolve_via_objectlookup(name: str) -> Optional[Dict[str, Any]]:
         )
         resp.raise_for_status()
     except Exception as e:
-        print("NED ObjectLookup failed:", e)
+        logger.exception("NED ObjectLookup failed: %s", e)
         return None
 
     obj = resp.json()
@@ -261,7 +274,7 @@ async def _simbad_suggest(prefix: str, limit: int) -> list[dict]:
         tab = await asyncio.to_thread(_run_tap_sync, SIMBAD_TAP_SYNC, exact_sql, 1)
         rows.extend(str(r['main_id']).strip() for r in tab)
     except Exception as exc:
-        print("SIMBAD exact failed:", exc)
+        logger.exception("SIMBAD exact failed: %s", exc)
 
     pat_raw = _adql_escape(q)
     pat_title = _adql_escape(q.title())
@@ -278,7 +291,7 @@ async def _simbad_suggest(prefix: str, limit: int) -> list[dict]:
         tab = await asyncio.to_thread(_run_tap_sync, SIMBAD_TAP_SYNC, alias_sql, 200)
         rows.extend(str(r['main_id']).strip() for r in tab)
     except Exception as exc:
-        print("SIMBAD alias LIKE failed:", exc)
+        logger.exception("SIMBAD alias LIKE failed: %s", exc)
 
     q_cmp = q_uc.replace(" ", "")
     scored = []
@@ -318,7 +331,7 @@ async def _ned_suggest(prefix: str, limit: int) -> List[Dict[str, str]]:
         resp.raise_for_status()
         doc = resp.json()
     except Exception as e:
-        print("NED ObjectLookup failed:", e)
+        logger.exception("NED ObjectLookup failed: %s", e)
         return []
 
     suggestions = []
@@ -456,8 +469,9 @@ async def search_coords(
         fields['search_mjd_start'] = {'value': float(mjd_start_tt)}
         fields['search_mjd_end'] = {'value': float(mjd_end_tt)}
         time_filter_present = True
-        print(
-            f"DEBUG search_coords: Using MJD filter (normalized to TT): {mjd_start_tt} - {mjd_end_tt} (time_scale={scale})")
+
+        logger.debug("search_coords: Using MJD filter (normalized to TT): %s -  %s (time_scale=%s)",
+                     mjd_start_tt, mjd_end_tt, scale)
 
     elif obs_start and obs_end:
         # Calendar fallback: interpret in given time_scale, normalize to TT
@@ -482,12 +496,14 @@ async def search_coords(
             fields['search_mjd_start'] = {'value': float(t_start_tt.mjd)}
             fields['search_mjd_end'] = {'value': float(t_end_tt.mjd)}
             time_filter_present = True
-            print(f"DEBUG search_coords: Date/Time -> TT MJD: {t_start_tt.mjd} - {t_end_tt.mjd} (time_scale={scale})")
+
+            logger.debug("search_coords: Date/Time -> TT MJD: %s - %s (time_scale=%s)",
+                         t_start_tt.mjd, t_end_tt.mjd, scale)
 
         except ValueError as ve:
             raise HTTPException(status_code=400, detail=f"Invalid date/time format or value: {ve}")
         except Exception as e:
-            print(f"ERROR: Unexpected error during time processing: {e}")
+            logger.error("Unexpected error during time processing: %s", e)
             raise HTTPException(status_code=500, detail="Error processing time parameters.")
 
     # Process coordinates
@@ -496,7 +512,7 @@ async def search_coords(
             fields['target_raj2000'] = {'value': ra}
             fields['target_dej2000'] = {'value': dec}
             coords_present = True
-            print(f"DEBUG search_coords: Galactic coords processed and converted. L={l}, B={b}")
+            logger.debug("search_coords: Galactic coords processed and converted. L=%s, B=%s", l, b)
     elif coordinate_system == COORD_SYS_GAL:
         if l is not None and b is not None:
             try:
@@ -506,11 +522,11 @@ async def search_coords(
                 fields['target_dej2000'] = {'value': c_icrs.dec.deg}
                 coords_present = True
             except Exception as coord_exc:
-                 print(f"ERROR: Galactic conversion failed: {coord_exc}")
+                 logger.error("Galactic conversion failed: %s", coord_exc)
                  raise HTTPException(status_code=400, detail="Invalid galactic coordinates provided.")
 
-    print(f"DEBUG search_coords: Fields prepared: {fields}")
-    print(f"DEBUG search_coords: Coords present: {coords_present}, Time present: {time_filter_present}")
+    logger.debug("search_coords: Fields prepared: %s", fields)
+    logger.debug("search_coords: Coords present: %s, Time present: %s", coords_present, time_filter_present)
 
     # adql_query_str = None
     res_table = None
@@ -548,10 +564,10 @@ async def search_coords(
 
     try:
         error, res_table, adql_query_str = perform_query_with_conditions(fields, where_conditions, limit=100)
-        print(f"DEBUG search_coords: After query call: error={error}, type(res_table)={type(res_table)}")
+        logger.debug("search_coords: After query call: error=%s, type(res_table)=%s", error, type(res_table))
 
     except Exception as query_exc:
-        print(f"ERROR search_coords: Exception during perform_query call: {query_exc}")
+        logger.error("search_coords: Exception during perform_query call: %s", query_exc)
         raise HTTPException(status_code=500, detail="Failed during query execution.")
 
     if error is None:
@@ -561,7 +577,7 @@ async def search_coords(
             # print(f"DEBUG search_coords: astropy_table_to_list returned {len(columns)} cols, {len(data)} rows.")
 
             if not columns and not data and res_table is not None and len(res_table) > 0:
-                 print("ERROR search_coords: astropy_table_to_list returned empty lists despite input.")
+                 logger.error("search_coords: astropy_table_to_list returned empty lists despite input.")
                  raise HTTPException(status_code=500, detail="Internal error processing results.")
 
             columns = list(columns) if columns else []
@@ -569,7 +585,7 @@ async def search_coords(
             # print(f"DEBUG search_coords: Constructing SearchResult object.")
 
             search_result_obj = SearchResult(columns=columns, data=data)
-            print(f"DEBUG search_coords: SearchResult object created: {type(search_result_obj)}")
+            logger.debug("search_coords: SearchResult object created: %s", type(search_result_obj))
 
             data_with_datalink = data
             columns_with_datalink = columns[:]
@@ -596,12 +612,12 @@ async def search_coords(
                                # If column existed, overwrite
                                new_row[columns_with_datalink.index(datalink_col)] = datalink_url
                            else:
-                               print(f"WARN: Row {row_idx} length mismatch when adding datalink.")
+                               logger.warning("Row %s length mismatch when adding datalink.", row_idx)
                         else: # Handle empty DID
                              if len(new_row) == len(columns_with_datalink) -1: new_row.append(None)
 
                     else:
-                         print(f"WARN: Row {row_idx} too short for DID index {idx}.")
+                         logger.warning("Row %s too short for DID index %s.", row_idx, idx)
                          if len(new_row) == len(columns_with_datalink) -1: new_row.append(None)
 
                     data_with_datalink.append(new_row)
@@ -618,13 +634,13 @@ async def search_coords(
                     ex=CACHE_TTL
                 )
             else:
-                print("Redis client was None; skipping cache")
+                logger.info("Redis client was None; skipping cache")
 
             if user_session_data:
                 app_user_id = user_session_data["app_user_id"]
                 iam_sub = user_session_data.get("iam_subject_id")
-                print(f"DEBUG: User app_id={app_user_id} (IAM sub={iam_sub}) logged in, "
-                      f"attempting to save history. ADQL: {adql_query_str}")
+                logger.debug("User app_id=%s, IAM sub=%s logged in, attempting to save history. ADQL=%s",
+                             app_user_id, iam_sub, adql_query_str)
                 try:
                     params_to_save = {
                         "tap_url": tap_url,
@@ -654,21 +670,22 @@ async def search_coords(
                             app_user_id=app_user_id,
                             session=history_session
                         )
-                    print(f"DEBUG: Called create_query_history for user app_id={app_user_id}")
+                    logger.debug("Called create_query_history for user app_id=%s", app_user_id)
                 except Exception as history_error:
-                    print(f"ERROR saving query history for user app_id={app_user_id}: {history_error}")
+                    logger.error("saving query history for user app_id=%s: %s.",
+                                 app_user_id, history_error)
                     traceback.print_exc()
 
-            print(f"DEBUG search_coords: Returning SearchResult object.")
+            logger.debug("search_coords: Returning SearchResult object.")
             return search_result_obj
 
         except Exception as processing_exc:
-             print(f"ERROR search_coords: Exception during results processing: {processing_exc}")
+             logger.error("ERROR search_coords: Exception during results processing: %s", processing_exc)
              traceback.print_exc()
              raise HTTPException(status_code=500, detail="Internal error processing search results.")
 
     else:
-        print(f"ERROR search_coords: Query function returned error: {error}")
+        logger.error("search_coords: Query function returned error: %s", error)
         raise HTTPException(status_code=400, detail=error)
 
 
@@ -786,7 +803,7 @@ def _run_ned_sync_query(adql_query):
                 "prefname": pref_val
             })
     except Exception as e:
-        print(f"NED query error: {e}")
+        logger.error("NED query error: %s", e)
 
     return out
 

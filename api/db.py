@@ -5,6 +5,8 @@ import redis.asyncio as redis
 from cryptography.fernet import Fernet
 from typing import Optional
 from .config import get_settings
+import logging
+logger = logging.getLogger(__name__)
 settings = get_settings()
 
 DATABASE_URL = settings.DATABASE_URL
@@ -42,13 +44,13 @@ async def get_redis_client() -> redis.Redis:
 # Encryption Setup for Refresh Tokens
 ENCRYPTION_KEY_STR = settings.REFRESH_TOKEN_ENCRYPTION_KEY
 if not ENCRYPTION_KEY_STR:
-    print("WARNING: REFRESH_TOKEN_ENCRYPTION_KEY is not set. Refresh token storage will be insecure.")
+    logger.warning("REFRESH_TOKEN_ENCRYPTION_KEY is not set. Refresh token storage will be insecure.")
     fernet_cipher = None
 else:
     try:
         fernet_cipher = Fernet(ENCRYPTION_KEY_STR.encode())
     except Exception as e:
-        print(f"ERROR: Invalid REFRESH_TOKEN_ENCRYPTION_KEY: {e}. Refresh token storage will fail.")
+        logger.error("Invalid REFRESH_TOKEN_ENCRYPTION_KEY: %s. Refresh token storage will fail.", e)
         fernet_cipher = None
 
 def encrypt_token(token: str) -> Optional[str]:
@@ -61,6 +63,6 @@ def decrypt_token(encrypted_token: str) -> Optional[str]:
         try:
             return fernet_cipher.decrypt(encrypted_token.encode()).decode()
         except Exception as e:
-            print(f"ERROR: Failed to decrypt token: {e}")
+            logger.exception("Failed to decrypt refresh token: %s", e)
             return None
     return None

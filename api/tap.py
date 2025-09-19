@@ -4,6 +4,8 @@ import numpy as np
 import math
 from astropy.table import Table
 import traceback
+import logging
+logger = logging.getLogger(__name__)
 
 
 def build_spatial_icrs_condition(ra: float, dec: float, radius_deg: float) -> str:
@@ -53,7 +55,7 @@ def perform_query_with_conditions(fields, conditions: list[str], limit: int = 10
         where = build_where_clause(conditions)  # <<< " AND ".join(mylist) used here
         query = build_select_query(obscore_table, where, limit=limit)
 
-        print(f"DEBUG: Running ADQL Query: {query}")
+        logger.debug("Running ADQL Query: %s", query)
         exception, tap_results = t.query(query)
 
         if exception:
@@ -66,11 +68,12 @@ def perform_query_with_conditions(fields, conditions: list[str], limit: int = 10
                 error = "Failed processing TAP results after query."
     except Exception as outer_exception:
         error = f"Failed TAP operation: {outer_exception}"
-        print(f"Error during TAP operation: {outer_exception}")
+        logger.exception("Error during TAP operation: %s",outer_exception)
         traceback.print_exc()
         astro_table = None
 
-    print(f"DEBUG Returning from perform_query_with_conditions: error={error}, table type={type(astro_table)}")
+    logger.debug("Returning from perform_query_with_conditions: error=%s, table type=%s",
+                 error, type(astro_table))
     return error, astro_table, query
 
 
@@ -80,10 +83,10 @@ def _process_tap_results(tap_results: vo.dal.TAPResults) -> Table | None:
         return None
     try:
         astro_table = tap_results.to_table()
-        print(f"DEBUG: Converted TAPResults to Astropy Table with {len(astro_table)} rows.")
+        logger.debug("Converted TAPResults to Astropy Table with %s rows.", len(astro_table))
         return astro_table
     except Exception as convert_error:
-        print(f"Error: Failed converting TAPResults: {convert_error}")
+        logger.exception(f"Error: Failed converting TAPResults: %s", convert_error)
         traceback.print_exc()
         return None
 
@@ -138,7 +141,7 @@ def astropy_table_to_list(table: Table | None):
     along with the list of column names.
     """
     if table is None:
-        print("DEBUG astropy_table_to_list: Received None table.")
+        logger.debug("astropy_table_to_list: Received None table.")
         return [], []
 
     try:
@@ -161,7 +164,8 @@ def astropy_table_to_list(table: Table | None):
                             cell = float(cell.__str__()) # temporary fix for floating point issue
                             if math.isnan(cell) or math.isinf(cell): cell = None
                         except Exception as e:
-                            print(f"Warning: Failed float(str()) conversion for col '{col}', val '{row[col]}': {e}")
+                            logger.exception("Warning: Failed float(str()) conversion for col '%s', val '%s': %s",
+                                             col, row[col], e)
                             try:
                                 cell = float(row[col])
                                 if math.isnan(cell) or math.isinf(cell): cell = None
@@ -171,10 +175,10 @@ def astropy_table_to_list(table: Table | None):
                     else: cell = str(cell)
                 row_data.append(cell)
             rows.append(row_data)
-        print(f"DEBUG astropy_table_to_list: Processed {len(rows)} rows.")
+        logger.debug("astropy_table_to_list: Processed %s rows.", len(rows))
         return columns, rows
     except Exception as e:
-        print(f"ERROR in astropy_table_to_list: {e}")
+        logger.exception("ERROR in astropy_table_to_list: %s", e)
         traceback.print_exc()
         return [],[]
 

@@ -4,6 +4,8 @@ from pydantic import BaseModel, Field, validator
 from typing import Optional
 from astropy.coordinates import SkyCoord
 import astropy.units as u
+import logging
+logger = logging.getLogger(__name__)
 
 
 class CoordInput(BaseModel):
@@ -33,7 +35,8 @@ async def parse_coordinates_endpoint(coord_input: CoordInput):
     Parses coordinate strings (Decimal Degrees, HMS/DMS, Galactic)
     and returns decimal degree values (RA/Dec).
     """
-    print(f"DEBUG /api/parse_coords received: {coord_input}")
+
+    logger.debug("/api/parse_coords received: %s", coord_input )
     try:
         coord1_str = coord_input.coord1.strip()
         coord2_str = coord_input.coord2.strip()
@@ -74,12 +77,12 @@ async def parse_coordinates_endpoint(coord_input: CoordInput):
              raise ValueError("Unsupported coordinate system specified.")
 
     except ValueError as ve: # Catch specific parsing/validation errors
-        print(f"ERROR parsing coordinates: {ve}")
+        logger.exception("ERROR parsing coordinates: %s", ve)
         # Return error in the response model using status code
         # raise HTTPException(status_code=400, detail=f"Invalid input: {ve}")
         return CoordOutput(error=f"Invalid input: {ve}")
     except Exception as e: # Catch other unexpected errors (e.g., SkyCoord issues)
-        print(f"ERROR unexpected during coordinate parsing: {e}")
+        logger.exception("ERROR unexpected during coordinate parsing: %s", e)
         import traceback
         traceback.print_exc()
         # raise HTTPException(status_code=500, detail="Server error during coordinate parsing.")

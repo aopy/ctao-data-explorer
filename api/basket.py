@@ -10,6 +10,8 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload, selectinload, Session
 from sqlalchemy import func
+import logging
+logger = logging.getLogger(__name__)
 
 
 class BasketCreate(BaseModel):
@@ -252,10 +254,10 @@ async def add_item_to_basket(
         session.add(saved_dataset)
         await session.flush()
         await session.refresh(saved_dataset)
-        print(f"DEBUG: Created new SavedDataset ID: {saved_dataset.id} for obs_id: {saved_dataset.obs_id}")
+        logger.debug("Created new SavedDataset ID: %s for obs_id: %s", saved_dataset.id, saved_dataset.obs_id)
     else:
         # Update dataset_json if it already exists?
-        print(f"DEBUG: Found existing SavedDataset ID: {saved_dataset.id} for obs_id: {saved_dataset.obs_id}")
+        logger.debug("Found existing SavedDataset ID: %s for obs_id: %s", saved_dataset.id, saved_dataset.obs_id)
         pass
 
     stmt_group = select(BasketGroup).options(
@@ -340,7 +342,7 @@ async def remove_item_from_basket_group(
         await session.commit()
     except Exception as e:
         await session.rollback()
-        print(f"Error removing dataset from group: {e}")
+        logger.exception("Error removing dataset from group: %s", e)
         raise HTTPException(status_code=500, detail="Failed to remove dataset from group.")
 
     return None
@@ -527,7 +529,7 @@ async def get_basket_group_by_id(
             try:
                 parsed_json = json.loads(item.dataset_json)
             except json.JSONDecodeError:
-                print(f"Warning: Invalid JSON found in SavedDataset ID {item.id}")
+                logger.exception("Warning: Invalid JSON found in SavedDataset ID %s", item.id)
                 parsed_json = {"error": "invalid JSON in database"}
         elif item.dataset_json is None:
              parsed_json = {"error": "missing JSON in database"}

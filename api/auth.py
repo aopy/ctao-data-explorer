@@ -27,6 +27,8 @@ from .constants import (
     SESSION_IAM_GIVEN_NAME_KEY, SESSION_IAM_FAMILY_NAME_KEY,
     SESSION_ACCESS_TOKEN_KEY, SESSION_ACCESS_TOKEN_EXPIRY_KEY,
 )
+import logging
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 cookie_params = settings.cookie_params
@@ -70,9 +72,9 @@ async def get_current_session_user_data(
 
     try:
         session_data = json.loads(session_data_json)
-        # print("DEBUG: Raw session data from Redis:", session_data)
+        # logger.debug("Raw session data from Redis: %s", session_data)
     except json.JSONDecodeError:
-        print(f"Error decoding session data for session_id: {session_id}")
+        logger.warning("Invalid session data for session_id: %s", session_id)
         return None  # Invalid session data
 
     app_user_id = session_data.get(SESSION_USER_ID_KEY)
@@ -80,7 +82,7 @@ async def get_current_session_user_data(
     iam_access_token_expiry = session_data.get(SESSION_ACCESS_TOKEN_EXPIRY_KEY)
 
     if not app_user_id or not iam_access_token or not iam_access_token_expiry:
-        print(f"Incomplete session data for app_user_id: {app_user_id}")
+        logger.warning("Incomplete session data for app_user_id: %s", app_user_id)
         return None  # Essential data missing
 
     # Check Access Token Expiry
@@ -88,12 +90,12 @@ async def get_current_session_user_data(
     remaining = iam_access_token_expiry - now
 
     if remaining <= 0:
-        print(f"IAM Access Token has fully expired for user {app_user_id}. Clearing session.")
+        logger.info("IAM access token expired for user_id %s; clearing session", app_user_id)
         await redis.delete(f"{SESSION_KEY_PREFIX}{session_id}")
         return None
 
     if remaining < REFRESH_BUFFER_SECONDS:
-        print(f"IAM Access Token for user {app_user_id} is about to expire in {remaining:.0f}s. Refreshing…")
+        logger.info("Refreshing IAM access token for user_id=%s (remaining=%.0fs)", app_user_id, remaining)
         # Refresh Logic
         stmt = select(UserRefreshToken).where(
             UserRefreshToken.user_id == app_user_id,
@@ -103,13 +105,13 @@ async def get_current_session_user_data(
         user_rt_record = result.scalars().first()
 
         if not user_rt_record or not user_rt_record.encrypted_refresh_token:
-            print(f"No valid refresh token found for user {app_user_id}. Clearing session.")
+            logger.warning("No valid refresh token found for user %s", app_user_id)
             await redis.delete(f"{SESSION_KEY_PREFIX}{session_id}")  # Delete invalid session
             return None
 
         decrypted_rt = decrypt_token(user_rt_record.encrypted_refresh_token)
         if not decrypted_rt:
-            print(f"Failed to decrypt refresh token for user {app_user_id}. Clearing session.")
+            logger.warning("Failed to decrypt refresh token for user %s. Clearing session.", app_user_id)
             await redis.delete(f"{SESSION_KEY_PREFIX}{session_id}")
             return None
 
@@ -147,11 +149,12 @@ async def get_current_session_user_data(
                 SESSION_DURATION_SECONDS,
                 json.dumps(session_data)
             )
-            print(f"Successfully refreshed IAM Access Token for user {app_user_id}")
+
+            logger.info("Successfully refreshed IAM Access Token for user %s", app_user_id)
             iam_access_token = new_iam_access_token  # Use the new token for this request
 
-        except Exception as refresh_exc:
-            print(f"ERROR: Refresh token grant failed for user {app_user_id}: {refresh_exc}")
+        except Exception:
+            logger.exception("Refresh token grant failed for user_id %s", app_user_id)
             # import traceback; traceback.print_exc()
             await redis.delete(f"{SESSION_KEY_PREFIX}{session_id}")  # Delete invalid session
             # delete the refresh token from DB if it's definitively invalid
@@ -213,7 +216,7 @@ async def get_me(
         # print(f"DEBUG get_me: Returning validated UserRead: {validated_user.model_dump_json(indent=2)}")
         return validated_user
     except Exception as e:
-        print(f"ERROR in get_me constructing UserRead: {e}")
+        logger.exception("ERROR in get_me constructing UserRead: %s", e)
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="Error creating user response object.")
 
@@ -231,7 +234,7 @@ async def logout_session(
     session_id = request.cookies.get("ctao_session_main")
     if session_id:
         await redis.delete(f"{SESSION_KEY_PREFIX}{session_id}")
-        print(f"Session {session_id} deleted from Redis.")
+        logger.info("Session %s deleted from Redis", session_id)
 
         if user_session_data and user_session_data.get("app_user_id"):
             app_user_id = user_session_data["app_user_id"]
@@ -242,7 +245,7 @@ async def logout_session(
             for rt_rec in rt_to_delete:
                 await db_session.delete(rt_rec)
             await db_session.commit()
-            print(f"Refresh token(s) for user {app_user_id} deleted from DB.")
+            logger.info("Refresh token(s) for user %s deleted from DB", app_user_id)
             # TODO: Optionally call IAM token revocation endpoint with the RT if we had it
 
     # Clear the session cookie from the browser
