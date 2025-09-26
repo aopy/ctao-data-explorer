@@ -1,5 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { HashRouter as Router, Routes, Route } from "react-router-dom";
+import OpusJobDetailPage from "./components/OpusJobDetailPage";
 import 'bootstrap/dist/css/bootstrap.min.css'; // Import Bootstrap CSS
 import 'bootstrap/dist/js/bootstrap.bundle.min.js'; // Bootstrap's JS components
 import './index.css';
@@ -22,7 +24,12 @@ axios.defaults.withCredentials = true;
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
-    <App />
+    <Router>
+      <Routes>
+        <Route path="/opus/jobs/:jobId" element={<OpusJobDetailPage />} />
+        <Route path="/*" element={<App />} />
+      </Routes>
+    </Router>
     <ToastContainer position="top-center" newestOnTop draggable={false} />
   </React.StrictMode>
 );

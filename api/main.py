@@ -33,6 +33,7 @@ from astropy.io.votable import parse_single_table
 from .db import get_redis_pool
 from .auth import router as auth_api_router
 from .oidc import oidc_router
+from .opus import router as opus_router
 from contextlib import asynccontextmanager
 import itertools
 import hashlib
@@ -875,6 +876,7 @@ app.include_router(auth_api_router, prefix="/api") # For /users/me_from_session,
 # app.include_router(oidc_router)
 app.include_router(oidc_router, prefix="/api")
 app.include_router(basket_router)
+app.include_router(opus_router)
 app.include_router(query_history_router)
 app.include_router(coord_router)
 

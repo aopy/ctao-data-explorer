@@ -1,8 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Any
 from .db import Base
-# from fastapi_users.db import SQLAlchemyBaseUserTable
-from sqlalchemy import Column, Integer, String, DateTime, Text, func, ForeignKey, Table, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Text, func, ForeignKey, Table, Boolean, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -86,3 +85,13 @@ class UserRefreshToken(Base):
     last_used_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
 
     user = relationship("UserTable", back_populates="refresh_tokens")
+
+class ExternalToken(Base):
+    __tablename__ = "external_tokens"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    service = Column(String(50), index=True, nullable=False)  # "opus"
+    email = Column(String(255), nullable=False)
+    token_encrypted = Column(String, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    __table_args__ = (UniqueConstraint("user_id", "service"),)

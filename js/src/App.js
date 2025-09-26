@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Routes, Route } from 'react-router-dom';
+import OpusJobDetailPage from './components/OpusJobDetailPage';
 import axios from 'axios';
 import SearchForm from './components/SearchForm';
 import ResultsTable from './components/ResultsTable';
@@ -118,7 +120,7 @@ function BasketItemModal({ show, onClose, basketItem }) {
   );
 }
 
-function App() {
+function TabsApp() {
   const [results, setResults] = useState(null);
   const [allCoordinates, setAllCoordinates] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -341,6 +343,8 @@ function App() {
 
   const isLoggedIn = !!user; // boolean flag for logged-in status
 
+  const lastOpus = localStorage.getItem("lastOpusJobId");
+
   return (
     <div className="container-fluid p-3">
       {/* Top Navbar */}
@@ -349,25 +353,31 @@ function App() {
         <div>
           {/* isLoggedIn flag */}
           {isLoggedIn && user ? (
-            <>
-              <span className="me-3 text-success">
-                Logged in as {user.first_name ? `${user.first_name}` : (user.email || `User ID: ${user.id}`)}
-              </span>
-              <button
-                className="btn btn-outline-secondary me-2"
-                onClick={() => setActiveTab('profile')} // Switch to profile tab
-              >
-                Profile
-              </button>
-              <button className="btn btn-outline-danger" onClick={handleLogout}>Logout</button>
-            </>
-          ) : ( <button
-                  className="btn btn-outline-primary"
-                  type="button"
-                  onClick={handleLogin}
+              <>
+                <span className="me-3 text-success">
+                  Logged in as {user.first_name ? `${user.first_name}` : (user.email || `User ID: ${user.id}`)}
+                </span>
+
+                {lastOpus && (
+                  <a className="btn btn-outline-info me-2"
+                     href={`#/opus/jobs/${encodeURIComponent(lastOpus)}`}>
+                    Last OPUS job
+                  </a>
+                )}
+
+                <button
+                  className="btn btn-outline-secondary me-2"
+                  onClick={() => setActiveTab('profile')}
                 >
+                  Profile
+                </button>
+                <button className="btn btn-outline-danger" onClick={handleLogout}>Logout</button>
+              </>
+            ) : (
+              <button className="btn btn-outline-primary" type="button" onClick={handleLogin}>
                 Login
-                </button> )}
+              </button>
+            )}
         </div>
       </div>
 
@@ -511,6 +521,16 @@ function App() {
       <BasketItemModal show={showBasketModal} onClose={closeBasketModal} basketItem={basketModalItem} />
     </div>
   );
+}
+
+function App() {
+  return (
+    <Routes>
+    <Route path="/" element={<TabsApp />} />
+    {/* OPUS job deep-link route */}
+    <Route path="/opus/jobs/:jobId" element={<OpusJobDetailPage />} />
+    </Routes>
+    );
 }
 
 export default App;

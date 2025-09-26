@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     LOG_INCLUDE_ACCESS: bool = True
     LOG_JSON: bool = False
 
+    # OPUS / UWS
+    OPUS_ROOT: str = "https://voparis-uws-test.obspm.fr/rest"
+    OPUS_SERVICE: str = "gammapy_maps"
 
     @property
     def PRODUCTION(self) -> bool:

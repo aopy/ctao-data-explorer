@@ -1,0 +1,32 @@
+import axios from "axios";
+import { API_PREFIX } from "../index";
+
+export async function saveOpusSettings(email, token) {
+  const { data } = await axios.post(`${API_PREFIX}/opus/settings`, { email, token });
+  return data;
+}
+
+export async function submitQuickLook(p) {
+  const { data } = await axios.post(`${API_PREFIX}/opus/jobs`, p);
+  // => { job_id, location }
+  return data;
+}
+
+export async function listJobs() {
+  const { data } = await axios.get(`${API_PREFIX}/opus/jobs`);
+  return data;
+}
+
+export async function jobDetails(jobId) {
+  const { data } = await axios.get(`${API_PREFIX}/opus/jobs/${encodeURIComponent(jobId)}`);
+  return data;
+}
+
+export async function jobResults(jobId) {
+  const { data } = await axios.get(`${API_PREFIX}/opus/jobs/${encodeURIComponent(jobId)}/results`);
+  return data;
+}
+
+export function downloadResult(jobId, resId) {
+  window.location.href = `${API_PREFIX}/opus/jobs/${encodeURIComponent(jobId)}/results/${encodeURIComponent(resId)}/content`;
+}

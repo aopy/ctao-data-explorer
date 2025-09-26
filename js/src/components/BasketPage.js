@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { API_PREFIX } from '../index';
 import { mjdToDate, formatDateTimeStrings } from './datetimeUtils';
+import QuickLookModal from "./QuickLookModal";
+import OpusSettingsModal from "./OpusSettingsModal";
 
 const formatTmin = (mjd) => {
   if (mjd == null || mjd === '') return '';
@@ -12,6 +14,22 @@ const formatTmin = (mjd) => {
   const { dateStr, timeStr } = formatDateTimeStrings(date); // both UTC
   return `${dateStr} ${timeStr} UTC`;
 };
+
+export function BasketTab({ rows }) {
+  const [open, setOpen] = useState(false);
+  const obsIds = useMemo(
+    () => rows.filter(r => r.selected).map(r => String(r.obs_id)),
+    [rows]
+  );
+  return (
+    <>
+      <button onClick={() => setOpen(true)} disabled={!obsIds.length}>
+        Quick-Look Analysis (OPUS)
+      </button>
+      <QuickLookModal isOpen={open} onClose={()=>setOpen(false)} obsIds={obsIds}/>
+    </>
+  );
+}
 
 function BasketPage({ isLoggedIn, onOpenItem, onActiveGroupChange, refreshTrigger,
 onBasketGroupsChange, allBasketGroups = [], activeBasketGroupId }) {
@@ -246,6 +264,11 @@ onBasketGroupsChange, allBasketGroups = [], activeBasketGroupId }) {
       return <div className="alert alert-warning mt-3">Please log in to view your basket.</div>;
   }
 
+  const rowsForQuickLook = (itemsToShow || []).map((item) => ({
+    obs_id: item.obs_id,
+    selected: true, // treat all visible items as selected
+  }));
+
 
   return (
     <div className="mt-3">
@@ -259,14 +282,19 @@ onBasketGroupsChange, allBasketGroups = [], activeBasketGroupId }) {
                     className="form-control form-control-sm w-50"
                     value={editingGroupName}
                     onChange={(e) => setEditingGroupName(e.target.value)}
-                    onBlur={() => renameGroup(activeGroup.id, editingGroupName)}// Rename on blur
-                    onKeyPress={(e) => { if (e.key === 'Enter') renameGroup(activeGroup.id, editingGroupName); }}  // Rename on Enter
+                    onBlur={() => renameGroup(activeGroup.id, editingGroupName)}
+                    onKeyPress={(e) => { if (e.key === 'Enter') renameGroup(activeGroup.id, editingGroupName); }}
                     aria-label="Current basket name"
                     placeholder="Basket name..."
                 />
+
+                <div className="d-flex align-items-center">
+                  {/* OPUS settings and Quick Look */}
+                  <BasketTab rows={rowsForQuickLook} />
+                  <OpusSettingsModal buttonClassName="btn btn-sm btn-outline-secondary ms-2 me-2" />
                 {/* Duplicate basket */}
                 <button
-                  className="btn btn-sm btn-outline-secondary me-2"
+                  className="btn btn-sm btn-outline-secondary ms-2 me-2"
                   onClick={() => duplicateGroup(activeGroup.id)}
                   title="Duplicate this basket"
                 >
@@ -279,6 +307,7 @@ onBasketGroupsChange, allBasketGroups = [], activeBasketGroupId }) {
                 >
                     Delete Basket
                 </button>
+              </div>
             </div>
             <div className="card-body">
                 {itemsToShow.length > 0 ? (
