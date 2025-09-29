@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import OpusJobDetailPage from './components/OpusJobDetailPage';
+import OpusJobsPage from "./components/OpusJobsPage";
 import axios from 'axios';
 import SearchForm from './components/SearchForm';
 import ResultsTable from './components/ResultsTable';
@@ -395,6 +396,15 @@ function TabsApp() {
           <button className={`nav-link ${activeTab==='basket'?'active':''}`} onClick={() => setActiveTab('basket')} type="button">My Basket</button>
         </li>
         <li className="nav-item">
+          <button
+            className={`nav-link ${activeTab==='opusJobs'?'active':''}`}
+            onClick={() => setActiveTab('opusJobs')}
+            type="button"
+          >
+            OPUS Jobs
+          </button>
+        </li>
+        <li className="nav-item">
         <button className={`nav-link ${activeTab==='queryStore'?'active':''}`} onClick={() => setActiveTab('queryStore')} type="button">Query Store</button>
         </li>
         <li className="nav-item">
@@ -495,6 +505,14 @@ function TabsApp() {
               />
           ) : (
               <div className="alert alert-warning">Please log in to manage your basket.</div>
+          )}
+        </div>
+        {/* OPUS JOBS TAB */}
+        <div className={`tab-pane fade ${activeTab==='opusJobs'?'show active':''}`} role="tabpanel">
+          {isLoggedIn ? (
+            <OpusJobsPage isActive={activeTab === 'opusJobs'} />
+          ) : (
+            <div className="alert alert-warning">Please log in to view your OPUS jobs.</div>
           )}
         </div>
         {/* QUERY STORE TAB */}

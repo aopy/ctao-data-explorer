@@ -37,7 +37,23 @@ export default function QuickLookModal({ isOpen, onClose, obsIds = [], defaultCe
     };
 
     const { job_id } = await submitQuickLook(payload);
-    localStorage.setItem("lastOpusJobId", job_id);
+    try { localStorage.setItem("lastOpusJobId", job_id); } catch {}
+
+    try {
+      const entry = {
+        id: job_id,
+        phase: "PENDING",
+        creationTime: new Date().toISOString(),
+      };
+      const raw = localStorage.getItem("opusJobHistory");
+      const arr = raw ? JSON.parse(raw) : [];
+      const idx = arr.findIndex((j) => j.id === entry.id);
+      if (idx >= 0) arr[idx] = { ...arr[idx], ...entry };
+      else arr.push(entry);
+      localStorage.setItem("opusJobHistory", JSON.stringify(arr));
+    } catch {
+    }
+
     navigate(`/opus/jobs/${encodeURIComponent(job_id)}`);
   } catch (e) {
     const msg =
@@ -125,7 +141,7 @@ export default function QuickLookModal({ isOpen, onClose, obsIds = [], defaultCe
                   />
                 </div>
                 <div className="col-md-4">
-                  <label className="form-label">binsz (deg/pixel)</label>
+                  <label className="form-label">binsz</label>
                   <input
                     type="number"
                     step="0.001"

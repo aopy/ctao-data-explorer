@@ -26,7 +26,3 @@ export async function jobResults(jobId) {
   const { data } = await axios.get(`${API_PREFIX}/opus/jobs/${encodeURIComponent(jobId)}/results`);
   return data;
 }
-
-export function downloadResult(jobId, resId) {
-  window.location.href = `${API_PREFIX}/opus/jobs/${encodeURIComponent(jobId)}/results/${encodeURIComponent(resId)}/content`;
-}

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { jobDetails, jobResults, downloadResult } from "./opusApi";
+import { jobDetails, jobResults } from "./opusApi";
 import { toast } from "react-toastify";
 
 function textify(v) {
@@ -58,6 +58,32 @@ export default function OpusJobDetailPage() {
   const ended = textify(jobObj["uws:endTime"]);
   const execDur = textify(jobObj["uws:executionDuration"]);
   const destruction = textify(jobObj["uws:destruction"]);
+
+  useEffect(() => {
+      if (!jobJson) return;
+      try {
+        const job = jobJson["uws:job"] || jobJson.job || {};
+        const id =
+          job["uws:jobId"] || job.jobId || job["@id"] || jobId; // fallback to route param
+        const phaseText = (job["uws:phase"] || job.phase || "UNKNOWN").toString();
+        const creationTime = (job["uws:creationTime"] || job.creationTime || "").toString();
+        const startTime = (job["uws:startTime"] || job.startTime || "").toString();
+        const endTime = (job["uws:endTime"] || job.endTime || "").toString();
+
+        const raw = localStorage.getItem("opusJobHistory");
+        const arr = raw ? JSON.parse(raw) : [];
+        const idx = arr.findIndex((j) => j.id === id);
+        const entry = { id, phase: phaseText, creationTime, startTime, endTime };
+
+        if (idx >= 0) arr[idx] = { ...arr[idx], ...entry };
+        else arr.push(entry);
+
+        localStorage.setItem("opusJobHistory", JSON.stringify(arr));
+        localStorage.setItem("lastOpusJobId", id);
+      } catch {
+        // ignore localStorage errors
+      }
+    }, [jobJson, jobId]);
 
   const rawParams = jobObj?.["uws:parameters"]?.["uws:parameter"];
   const params = useMemo(() => {
@@ -195,45 +221,38 @@ export default function OpusJobDetailPage() {
         <div className="card-body p-0">
           {results.length ? (
             <div className="table-responsive">
-              <table className="table table-sm mb-0">
-                <thead>
-                  <tr>
-                    <th style={{width: 260}}>ID</th>
-                    <th>Name</th>
-                    <th style={{width: 220}}>MIME</th>
-                    <th style={{width: 200}}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {results.map((r, idx) => (
-                    <tr key={`${r.id}-${idx}`}>
-                      <td><code>{r.id}</code></td>
-                      <td>{r.name || "—"}</td>
-                      <td><small>{r.mime || "—"}</small></td>
-                      <td>
-                        {/* Direct link (opens store/rest) */}
-                        {r.href ? (
-                          <a
-                            className="btn btn-sm btn-outline-secondary me-2"
-                            href={r.href}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            Open
-                          </a>
-                        ) : null}
-                        {/* Proxied download via backend */}
-                        <button
-                          className="btn btn-sm btn-primary"
-                          onClick={() => downloadResult(jobId, r.id)}
-                        >
-                          Download
-                        </button>
-                      </td>
+              <table className="table table-sm">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Name</th>
+                      <th>MIME</th>
+                      <th className="text-end text-nowrap" style={{ width: '1%' }}>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+
+                  <tbody>
+                    {results.map((r, idx) => (
+                      <tr key={`${r.id}-${idx}`}>
+                        <td><code>{r.id}</code></td>
+                        <td>{r.name || "—"}</td>
+                        <td><small>{r.mime || "—"}</small></td>
+                        <td className="text-end text-nowrap" style={{ width: '1%' }}>
+                          {r.href ? (
+                            <a
+                              className="btn btn-sm btn-outline-secondary"
+                              href={r.href}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Open
+                            </a>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
             </div>
           ) : (
             <div className="p-3 text-muted">
