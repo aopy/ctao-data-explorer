@@ -1,56 +1,118 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { jobDetails, jobResults } from "./opusApi";
 import { toast } from "react-toastify";
 
-function textify(v) {
-  if (v == null) return "";
-  const t = typeof v;
-  if (t === "string" || t === "number" || t === "boolean") return String(v);
-  if (Array.isArray(v)) return v.map(textify).join(", ");
-  // xmltodict-style markers
-  if (v && typeof v === "object") {
-    if (Object.prototype.hasOwnProperty.call(v, "#text")) return textify(v["#text"]);
-    if (Object.prototype.hasOwnProperty.call(v, "@xsi:nil")) return "";
-    try { return JSON.stringify(v); } catch { return String(v); }
-  }
-  return String(v);
-}
+const asArray = (x) => (Array.isArray(x) ? x : x ? [x] : []);
+const textify = (v) => (v == null ? "" : String(v));
 
-function asArray(x) {
-  return Array.isArray(x) ? x : x ? [x] : [];
+const TERMINAL = new Set(["COMPLETED", "ABORTED", "ERROR"]);
+
+function errorSummaryToText(e) {
+  if (!e) return "";
+  if (typeof e === "string" || typeof e === "number") return String(e);
+  if (Array.isArray(e)) return e.map(errorSummaryToText).filter(Boolean).join(" ");
+
+  if (typeof e === "object") {
+    const type = e["@type"] || e.type;
+    const msg = e["uws:message"] || e.message || e["#text"];
+    const details = e["uws:details"] || e.details;
+
+    const parts = [];
+    if (type) parts.push(`[${type}]`);
+    if (msg) parts.push(errorSummaryToText(msg));
+    if (details) parts.push(errorSummaryToText(details));
+
+    const out = parts.join(" ").trim();
+    return out || "";
+  }
+  return "";
 }
 
 export default function OpusJobDetailPage() {
   const { jobId } = useParams();
   const [jobJson, setJobJson] = useState(null);
-  const [resJson, setResJson] = useState(null);
+  const [resultsJson, setResultsJson] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [polling, setPolling] = useState(false);
+  const [polling, setPolling] = useState(true);
 
-  // Keep a quick link to last job
-  useEffect(() => {
-    if (jobId) localStorage.setItem("lastOpusJobId", jobId);
+  // fetchers
+  const fetchDetails = useCallback(async () => {
+    const j = await jobDetails(jobId);
+    setJobJson(j);
+
+    try {
+      const job = j?.["uws:job"] || j || {};
+      const id = job["uws:jobId"] || job.jobId || jobId;
+      const phase = (job["uws:phase"] || job.phase || "UNKNOWN").toString();
+      const creationTime = job["uws:creationTime"] || job.creationTime || "";
+      const startTime = job["uws:startTime"] || job.startTime || "";
+      const endTime = job["uws:endTime"] || job.endTime || "";
+
+      const raw = localStorage.getItem("opusJobHistory");
+      const arr = raw ? JSON.parse(raw) : [];
+      const idx = arr.findIndex((row) => row.id === id);
+      const entry = { id, phase, creationTime, startTime, endTime };
+      if (idx >= 0) arr[idx] = { ...arr[idx], ...entry };
+      else arr.push(entry);
+      localStorage.setItem("opusJobHistory", JSON.stringify(arr));
+      localStorage.setItem("lastOpusJobId", id);
+    } catch {
+      /* ignore */
+    }
+
+    return j;
   }, [jobId]);
 
-  async function loadAll(silent = false) {
+  const fetchResults = useCallback(async () => {
     try {
-      if (!silent) setLoading(true);
-      const [j, r] = await Promise.all([jobDetails(jobId), jobResults(jobId)]);
-      setJobJson(j);
-      setResJson(r);
+      const r = await jobResults(jobId);
+      setResultsJson(r);
     } catch (e) {
-      const msg = e?.message || "Failed to load OPUS job.";
-      toast.error(msg);
-    } finally {
-      if (!silent) setLoading(false);
     }
-  }
+  }, [jobId]);
 
-  useEffect(() => { loadAll(); /* on mount / jobId change */ }, [jobId]);
+  // polling loop
+  useEffect(() => {
+    let stop = false;
 
-  // Extract commonly used parts
+    const tick = async () => {
+      try {
+        const j = await fetchDetails();
+        const job = j?.["uws:job"] || j || {};
+        const ph = (textify(job["uws:phase"]) || "UNKNOWN").toUpperCase();
+
+        // Update results frequently
+        await fetchResults();
+
+        if (!TERMINAL.has(ph) && !stop) {
+          setTimeout(tick, 2000);
+        } else {
+          setPolling(false);
+        }
+      } catch (e) {
+        const msg =
+          e?.response?.data?.detail ||
+          e?.response?.data?.message ||
+          e?.message ||
+          "Failed to load OPUS job.";
+        toast.error(msg);
+        setPolling(false);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    tick();
+    return () => {
+      stop = true;
+    };
+  }, [fetchDetails, fetchResults]);
+
+  // derived data
   const jobObj = jobJson?.["uws:job"] || jobJson || {};
+
+  const id = textify(jobObj["uws:jobId"]) || jobId;
   const phase = (textify(jobObj["uws:phase"]) || "UNKNOWN").toUpperCase();
   const owner = textify(jobObj["uws:ownerId"]);
   const created = textify(jobObj["uws:creationTime"]);
@@ -58,129 +120,112 @@ export default function OpusJobDetailPage() {
   const ended = textify(jobObj["uws:endTime"]);
   const execDur = textify(jobObj["uws:executionDuration"]);
   const destruction = textify(jobObj["uws:destruction"]);
-
-  useEffect(() => {
-      if (!jobJson) return;
-      try {
-        const job = jobJson["uws:job"] || jobJson.job || {};
-        const id =
-          job["uws:jobId"] || job.jobId || job["@id"] || jobId; // fallback to route param
-        const phaseText = (job["uws:phase"] || job.phase || "UNKNOWN").toString();
-        const creationTime = (job["uws:creationTime"] || job.creationTime || "").toString();
-        const startTime = (job["uws:startTime"] || job.startTime || "").toString();
-        const endTime = (job["uws:endTime"] || job.endTime || "").toString();
-
-        const raw = localStorage.getItem("opusJobHistory");
-        const arr = raw ? JSON.parse(raw) : [];
-        const idx = arr.findIndex((j) => j.id === id);
-        const entry = { id, phase: phaseText, creationTime, startTime, endTime };
-
-        if (idx >= 0) arr[idx] = { ...arr[idx], ...entry };
-        else arr.push(entry);
-
-        localStorage.setItem("opusJobHistory", JSON.stringify(arr));
-        localStorage.setItem("lastOpusJobId", id);
-      } catch {
-        // ignore localStorage errors
-      }
-    }, [jobJson, jobId]);
+  const errSummary = jobObj["uws:errorSummary"];
 
   const rawParams = jobObj?.["uws:parameters"]?.["uws:parameter"];
   const params = useMemo(() => {
     return asArray(rawParams).map((p) => ({
       id: p?.["@id"] ?? "",
-      byRef: p?.["@byReference"],
       value:
         p && typeof p === "object"
-          ? (Object.prototype.hasOwnProperty.call(p, "#text") ? textify(p["#text"]) : textify(p))
+          ? Object.prototype.hasOwnProperty.call(p, "#text")
+            ? textify(p["#text"])
+            : textify(p)
           : textify(p),
     }));
   }, [rawParams]);
 
-  // Results can be absent until job runs/completes
-  const rawResults = (jobObj?.["uws:results"] || resJson)?.["uws:result"];
+  const displayParams = useMemo(() => {
+  const filtered = params.filter((p) => String(p.id).toLowerCase() !== "obs_ids");
+
+  const priority = (id) => {
+    const idRaw = String(id);
+    const idLC = idRaw.toLowerCase();
+    if (idRaw === "JOBNAME") return 0;
+    if (idLC === "obsids") return 1;
+    if (idRaw === "RA") return 2;
+    if (idRaw === "Dec") return 3;
+    return 10;
+  };
+
+  return [...filtered].sort((a, b) => {
+    const pa = priority(a.id);
+    const pb = priority(b.id);
+    if (pa !== pb) return pa - pb;
+    return String(a.id).localeCompare(String(b.id), undefined, { sensitivity: "base" });
+  });
+}, [params]);
+
+  // prefer the dedicated /results payload, fall back to inline
+  const inlineResults = jobObj?.["uws:results"]?.["uws:result"];
   const results = useMemo(() => {
-    return asArray(rawResults).map((r) => ({
-      id: r?.["@id"] ?? "",
-      href: r?.["@xlink:href"] ?? "",
-      mime: r?.["@mime-type"] ?? "",
-      name: r?.["@name"] ?? "",
-      hash: r?.["@hash"] ?? "",
+    const nodes = resultsJson?.["uws:results"]?.["uws:result"] ?? inlineResults;
+    return asArray(nodes).map((x) => ({
+      id: x?.["@id"] || "",
+      name: x?.["@name"] || "",
+      mime: x?.["@mime-type"] || "",
+      href: x?.["@xlink:href"] || x?.["@href"] || "",
     }));
-  }, [rawResults]);
+  }, [resultsJson, inlineResults]);
 
-  useEffect(() => {
-    const terminal = new Set(["COMPLETED", "ERROR", "ABORTED"]);
-    if (!terminal.has(phase)) {
-      setPolling(true);
-      const t = setInterval(() => loadAll(true), 4000);
-      return () => {
-        clearInterval(t);
-        setPolling(false);
-      };
-    } else {
-      setPolling(false);
-    }
-  }, [phase]);
-
-  if (loading && !jobJson) {
-    return (
-      <div className="container py-4">
-        <h4>OPUS Job #{jobId}</h4>
-        <p>Loading…</p>
-      </div>
-    );
-  }
+  // UI helpers
+  const phaseBadgeClass =
+    phase === "COMPLETED"
+      ? "badge bg-success"
+      : phase === "ERROR" || phase === "ABORTED"
+      ? "badge bg-danger"
+      : "badge bg-warning text-dark";
 
   return (
-    <div className="container py-4">
-      <div className="d-flex align-items-center justify-content-between mb-3">
-        <h4 className="mb-0">OPUS Job #{jobId}</h4>
-        <div>
-          <Link to="/" className="btn btn-sm btn-outline-secondary me-2">Back to app</Link>
-          <button className="btn btn-sm btn-outline-primary" onClick={() => loadAll()}>
-            Refresh
-            {polling ? " (auto)" : ""}
-          </button>
-        </div>
+    <div className="container mt-3">
+      <div className="d-flex align-items-center mb-3">
+        <h4 className="mb-0 me-3">OPUS Job #{id}</h4>
+        <span className={phaseBadgeClass}>{phase}</span>
+        {polling && (
+          <span className="ms-2 text-muted small">(updating…)</span>
+        )}
+        <a className="btn btn-sm btn-outline-secondary ms-auto" href="#/">
+          Back to app
+        </a>
       </div>
 
       {/* Summary */}
       <div className="card mb-3">
         <div className="card-header">Summary</div>
         <div className="card-body">
-          <dl className="row mb-0">
-            <dt className="col-sm-3">Phase</dt>
-            <dd className="col-sm-9">
-              <span className={
-                "badge " +
-                (phase === "COMPLETED" ? "bg-success" :
-                 phase === "ERROR" ? "bg-danger" :
-                 phase === "ABORTED" ? "bg-warning text-dark" :
-                 "bg-secondary")
-              }>
-                {phase}
-              </span>
-            </dd>
+          <div className="row g-2">
+            <div className="col-md-4">
+              <div><strong>Owner</strong></div>
+              <div>{owner || "—"}</div>
+            </div>
+            <div className="col-md-4">
+              <div><strong>Created</strong></div>
+              <div>{created || "—"}</div>
+            </div>
+            <div className="col-md-4">
+              <div><strong>Execution (sec)</strong></div>
+              <div>{execDur || "—"}</div>
+            </div>
+            <div className="col-md-4">
+              <div className="mt-2"><strong>Started</strong></div>
+              <div>{started || "—"}</div>
+            </div>
+            <div className="col-md-4">
+              <div className="mt-2"><strong>Ended</strong></div>
+              <div>{ended || "—"}</div>
+            </div>
+            <div className="col-md-4">
+              <div className="mt-2"><strong>Destruction</strong></div>
+              <div>{destruction || "—"}</div>
+            </div>
+          </div>
 
-            <dt className="col-sm-3">Owner</dt>
-            <dd className="col-sm-9">{owner || "—"}</dd>
-
-            <dt className="col-sm-3">Created</dt>
-            <dd className="col-sm-9">{created || "—"}</dd>
-
-            <dt className="col-sm-3">Started</dt>
-            <dd className="col-sm-9">{started || "—"}</dd>
-
-            <dt className="col-sm-3">Ended</dt>
-            <dd className="col-sm-9">{ended || "—"}</dd>
-
-            <dt className="col-sm-3">Exec. Duration (s)</dt>
-            <dd className="col-sm-9">{execDur || "—"}</dd>
-
-            <dt className="col-sm-3">Destruction</dt>
-            <dd className="col-sm-9">{destruction || "—"}</dd>
-          </dl>
+          {errorSummaryToText(errSummary) && (
+            <div className="alert alert-danger mt-3 mb-0">
+              <strong>Error summary:</strong>{" "}
+              {errorSummaryToText(errSummary)}
+            </div>
+          )}
         </div>
       </div>
 
@@ -190,24 +235,22 @@ export default function OpusJobDetailPage() {
         <div className="card-body p-0">
           {params.length ? (
             <div className="table-responsive">
-              <table className="table table-sm mb-0">
-                <thead>
-                  <tr>
-                    <th style={{width: 240}}>Name</th>
-                    <th>Value</th>
-                    <th style={{width: 120}}>byReference</th>
+              <table className="table table-sm align-middle mb-0">
+              <thead>
+                <tr>
+                  <th style={{ width: "30%" }}>Parameter</th>
+                  <th>Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayParams.map((p, idx) => (
+                  <tr key={`${p.id}-${idx}`}>
+                    <td><code>{p.id}</code></td>
+                    <td>{p.value || "—"}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {params.map((p, idx) => (
-                    <tr key={`${p.id}-${idx}`}>
-                      <td><code>{p.id || "(unnamed)"}</code></td>
-                      <td style={{whiteSpace: "pre-wrap"}}>{p.value || "—"}</td>
-                      <td>{p.byRef ?? "0"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                ))}
+              </tbody>
+            </table>
             </div>
           ) : (
             <div className="p-3 text-muted">No structured parameters available.</div>
@@ -221,57 +264,70 @@ export default function OpusJobDetailPage() {
         <div className="card-body p-0">
           {results.length ? (
             <div className="table-responsive">
-              <table className="table table-sm">
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>Name</th>
-                      <th>MIME</th>
-                      <th className="text-end text-nowrap" style={{ width: '1%' }}>Actions</th>
+              <table className="table table-sm align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th style={{ width: "25%" }}>ID</th>
+                    <th>Name</th>
+                    <th style={{ width: "20%" }}>MIME</th>
+                    <th className="text-end text-nowrap" style={{ width: "1%" }}>
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {results.map((r, idx) => (
+                    <tr key={`${r.id}-${idx}`}>
+                      <td><code>{r.id}</code></td>
+                      <td className="text-break">{r.name || "—"}</td>
+                      <td><small>{r.mime || "—"}</small></td>
+                      <td className="text-end">
+                        {r.href ? (
+                          <a
+                            className="btn btn-sm btn-outline-secondary"
+                            href={r.href}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Open
+                          </a>
+                        ) : (
+                          <span className="text-muted">—</span>
+                        )}
+                      </td>
                     </tr>
-                  </thead>
-
-                  <tbody>
-                    {results.map((r, idx) => (
-                      <tr key={`${r.id}-${idx}`}>
-                        <td><code>{r.id}</code></td>
-                        <td>{r.name || "—"}</td>
-                        <td><small>{r.mime || "—"}</small></td>
-                        <td className="text-end text-nowrap" style={{ width: '1%' }}>
-                          {r.href ? (
-                            <a
-                              className="btn btn-sm btn-outline-secondary"
-                              href={r.href}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              Open
-                            </a>
-                          ) : null}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                  ))}
+                </tbody>
+              </table>
             </div>
           ) : (
             <div className="p-3 text-muted">
-              {phase === "COMPLETED"
-                ? "No results were published by OPUS."
+              {TERMINAL.has(phase)
+                ? "No results were produced."
                 : "No results yet — still waiting for the job to complete."}
             </div>
           )}
         </div>
       </div>
 
-      {/* Raw JSON (for debugging) */}
+      {/* collapsible raw JSON */}
       <div className="card">
         <div className="card-header">Raw job JSON</div>
         <div className="card-body">
-          <pre className="mb-0" style={{whiteSpace: "pre-wrap"}}>
-            {JSON.stringify(jobJson, null, 2)}
-          </pre>
+          <details>
+            <summary className="cursor-pointer">Click to expand</summary>
+            <pre className="small bg-light p-2 rounded border mt-2">
+              <code>{JSON.stringify(jobJson ?? {}, null, 2)}</code>
+            </pre>
+          </details>
         </div>
+      </div>
+
+      {/* footer back link */}
+      <div className="mt-3">
+        <Link className="btn btn-outline-secondary" to="/">
+          Back to app
+        </Link>
       </div>
     </div>
   );
