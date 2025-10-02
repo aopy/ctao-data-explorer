@@ -130,17 +130,17 @@ async def save_settings(
 @router.get("/jobs")
 async def list_jobs(
     db: AsyncSession = Depends(get_db),
-    user=Depends(get_current_user),
+    user = Depends(get_current_user)
 ):
-    uid = _user_id(user)
-    if not uid:
+    user_id = _user_id(user)
+    if not user_id:
         raise HTTPException(401, "Not authenticated")
-    creds = await _get_creds(db, uid)
+    creds = await _get_creds(db, user_id)
     headers = _auth_header(**creds)
 
-    url = _rest_url(OPUS_SERVICE)  # GET /rest/{service}
+    url = _rest_url(OPUS_SERVICE)  # e.g. /rest/gammapy_maps
     async with httpx.AsyncClient(timeout=30) as client:
-        r = await client.get(url, headers=headers)
+        r = await client.get(url, headers=headers, params={"LAST": "50"})
     if r.status_code >= 400:
         raise HTTPException(r.status_code, r.text)
     return _xml_to_json(r.text)

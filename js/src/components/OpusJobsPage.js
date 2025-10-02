@@ -1,90 +1,86 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { listJobs } from "./opusApi";
-import { toast } from "react-toastify";
 
-/**
- * parser for xmltodict-like UWS job listings
- * Supported shapes:
- * - { "uws:jobs": { "uws:job": [ { "uws:jobId": "...", "uws:phase": "...", ... }, ... ] } }
- * - { "uws:jobs": { "uws:job-ref": [ { "@id": "...", "@xlink:href": "...", "@phase": "..." }, ... ] } }
- * - { "jobs": [...] } (future-proofing)
- */
-function parseJobs(payload) {
-  if (!payload) return [];
-
-  // helper to normalize to array
-  const toArray = (v) => (Array.isArray(v) ? v : v ? [v] : []);
-
-  if (Array.isArray(payload.jobs)) {
-    return payload.jobs.map((j) => ({
-      id: j.id || j.jobId || j["uws:jobId"] || j["@id"] || "",
-      phase: j.phase || j["uws:phase"] || j["@phase"] || "",
-      creationTime:
-        j.creationTime || j["uws:creationTime"] || j["@creationTime"] || "",
-      startTime: j.startTime || j["uws:startTime"] || "",
-      endTime: j.endTime || j["uws:endTime"] || "",
-    }));
+// helpers
+function asArray(x) {
+  return Array.isArray(x) ? x : x ? [x] : [];
+}
+function val(x) {
+  if (!x) return "";
+  if (typeof x === "string") return x;
+  if (typeof x === "object" && Object.prototype.hasOwnProperty.call(x, "#text")) {
+    return String(x["#text"]);
   }
-
-  const jobsRoot = payload["uws:jobs"];
-  if (!jobsRoot) return [];
-
-  const jobNodes = toArray(jobsRoot["uws:job"]);
-  if (jobNodes.length) {
-    return jobNodes.map((node) => ({
-      id:
-        node["uws:jobId"] ||
-        node["@id"] ||
-        (node["@xlink:href"] ? node["@xlink:href"].split("/").pop() : ""),
-      phase: node["uws:phase"] || node["@phase"] || "",
-      creationTime: node["uws:creationTime"] || "",
-      startTime: node["uws:startTime"] || "",
-      endTime: node["uws:endTime"] || "",
-    }));
+  return String(x);
+}
+function badgeClassForPhase(phase) {
+  const p = String(phase || "").toUpperCase();
+  switch (p) {
+    case "COMPLETED": return "bg-success";
+    case "ERROR": return "bg-danger";
+    case "ABORTED": return "bg-dark";
+    case "EXECUTING": return "bg-primary";
+    case "QUEUED": return "bg-warning text-dark";
+    case "PENDING": return "bg-secondary";
+    default: return "bg-secondary";
   }
-
-  const jobRefs = toArray(jobsRoot["uws:job-ref"] || jobsRoot["uws:jobRef"]);
-  if (jobRefs.length) {
-    return jobRefs.map((ref) => ({
-      id:
-        ref["@id"] ||
-        (ref["@xlink:href"] ? ref["@xlink:href"].split("/").pop() : ""),
-      phase: ref["@phase"] || "",
-      creationTime: ref["@creationTime"] || "",
-      startTime: "",
-      endTime: "",
-    }));
-  }
-
-  return [];
 }
 
-function loadLocalHistory() {
-  try {
-    const raw = localStorage.getItem("opusJobHistory");
-    const arr = raw ? JSON.parse(raw) : [];
-    // Deduplicate, newest first
-    const seen = new Set();
-    const uniq = [];
-    for (const j of arr.reverse()) {
-      if (!seen.has(j.id)) {
-        uniq.push(j);
-        seen.add(j.id);
-      }
-    }
-    return uniq;
-  } catch {
-    return [];
-  }
+// parse server response into rows: { id, phase, creationTime }
+function parseJobs(data) {
+  const root = data?.["uws:jobs"] || data?.jobs || data || {};
+  let items =
+    root["uws:jobref"] ??
+    root.jobref ??
+    root["uws:job"] ??
+    root.job;
+
+  items = asArray(items);
+
+  const rows = items
+    .map((it) => {
+      const id =
+        it?.["@id"] ||
+        it?.id ||
+        it?.["uws:jobId"] ||
+        it?.jobId ||
+        "";
+      const phase = (val(it?.["uws:phase"] ?? it?.phase ?? "UNKNOWN")).toUpperCase();
+      const creationTime = val(it?.["uws:creationTime"] ?? it?.creationTime ?? "");
+      return id ? { id: String(id), phase, creationTime } : null;
+    })
+    .filter(Boolean);
+
+  rows.sort((a, b) => (Date.parse(b.creationTime || 0) || 0) - (Date.parse(a.creationTime || 0) || 0));
+  return rows;
 }
 
 export default function OpusJobsPage({ isActive }) {
   const [serverJobs, setServerJobs] = useState([]);
-  const [serverError, setServerError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [serverError, setServerError] = useState(null);
   const [fetched, setFetched] = useState(false);
 
-  const localJobs = useMemo(loadLocalHistory, [isActive]); // reload when user comes back
+  // Local fallback (read-only)
+  const localJobs = useMemo(() => {
+    try {
+      const raw = localStorage.getItem("opusJobHistory");
+      const arr = raw ? JSON.parse(raw) : [];
+      return arr
+        .map((j) => ({
+          id: j.id,
+          phase: (j.phase || "UNKNOWN").toUpperCase(),
+          creationTime: j.creationTime || "",
+        }))
+        .filter((x) => x && x.id);
+    } catch {
+      return [];
+    }
+  }, []);
+
+  // prefer server - fallback to local only if server list is empty
+  const usingLocal = serverJobs.length === 0 && localJobs.length > 0;
+  const rowsToShow = serverJobs.length > 0 ? serverJobs : localJobs;
 
   const fetchServer = async () => {
     setLoading(true);
@@ -101,10 +97,6 @@ export default function OpusJobsPage({ isActive }) {
         "Failed to list OPUS jobs.";
       setServerError(msg);
     } finally {
-      try {
-          const raw = localStorage.getItem("opusJobHistory");
-          const arr = raw ? JSON.parse(raw) : [];
-        } catch {}
       setLoading(false);
       setFetched(true);
     }
@@ -115,18 +107,15 @@ export default function OpusJobsPage({ isActive }) {
     fetchServer();
   }, [isActive]);
 
-  const rowsToShow =
-  serverJobs.length > 0 ? serverJobs :
-  localJobs.length  > 0 ? localJobs  : [];
-
-  const usingLocal = serverJobs.length === 0 && localJobs.length > 0;
-  const showEmpty  = fetched && !serverError && rowsToShow.length === 0;
-
   return (
     <div className="mt-3">
       <div className="d-flex align-items-center mb-2">
         <h5 className="me-auto mb-0">My OPUS Jobs</h5>
-        <button className="btn btn-sm btn-outline-primary" onClick={fetchServer} disabled={loading}>
+        <button
+          className="btn btn-sm btn-outline-primary"
+          onClick={fetchServer}
+          disabled={loading}
+        >
           {loading ? "Refreshing…" : "Refresh"}
         </button>
       </div>
@@ -141,64 +130,49 @@ export default function OpusJobsPage({ isActive }) {
 
       {usingLocal && (
         <div className="alert alert-secondary py-2">
-          Displaying local job history.
+          Displaying local job history (fallback).
         </div>
       )}
 
-      {showEmpty && (
-        <p className="text-muted">No jobs yet. Submit a Quick-Look job from your Basket.</p>
+      {!rowsToShow.length && fetched && (
+        <div className="alert alert-info">
+          No jobs to show yet. Submit a Quick-Look job from your Basket.
+        </div>
       )}
 
-      {rowsToShow.length > 0 && (
+      {!!rowsToShow.length && (
         <div className="table-responsive">
-          <table className="table table-sm table-hover align-middle">
+          <table className="table table-sm align-middle">
             <thead>
               <tr>
-                <th style={{ width: 160 }}>Job ID</th>
-                <th style={{ width: 120 }}>Phase</th>
+                <th>Job ID</th>
+                <th>Phase</th>
                 <th>Created</th>
-                <th>Started</th>
-                <th>Ended</th>
-                <th style={{ width: 120 }}></th>
+                <th className="text-end text-nowrap" style={{ width: "1%" }}>
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
-              {rowsToShow.map((j) => {
-                const id = j.id || "";
-                const phase = j.phase || "";
-                return (
-                  <tr key={id}>
-                    <td><code>{id}</code></td>
-                    <td>
-                      <span
-                        className={
-                          "badge " +
-                          (phase === "COMPLETED"
-                            ? "bg-success"
-                            : phase === "ERROR"
-                            ? "bg-danger"
-                            : phase === "EXECUTING"
-                            ? "bg-warning text-dark"
-                            : "bg-secondary")
-                        }
-                      >
-                        {phase || "UNKNOWN"}
-                      </span>
-                    </td>
-                    <td>{j.creationTime || ""}</td>
-                    <td>{j.startTime || ""}</td>
-                    <td>{j.endTime || ""}</td>
-                    <td className="text-end">
-                      <a
-                        className="btn btn-sm btn-outline-primary"
-                        href={`#/opus/jobs/${encodeURIComponent(id)}`}
-                      >
-                        Open
-                      </a>
-                    </td>
-                  </tr>
-                );
-              })}
+              {rowsToShow.map((row) => (
+                <tr key={row.id}>
+                  <td><code>{row.id}</code></td>
+                  <td>
+                    <span className={`badge rounded-pill ${badgeClassForPhase(row.phase)}`}>
+                      {row.phase}
+                    </span>
+                  </td>
+                  <td><small>{row.creationTime || "—"}</small></td>
+                  <td className="text-end">
+                    <a
+                      className="btn btn-sm btn-outline-secondary"
+                      href={`#/opus/jobs/${encodeURIComponent(row.id)}`}
+                    >
+                      Open
+                    </a>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
