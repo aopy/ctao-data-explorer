@@ -26,3 +26,9 @@ export async function jobResults(jobId) {
   const { data } = await axios.get(`${API_PREFIX}/opus/jobs/${encodeURIComponent(jobId)}/results`);
   return data;
 }
+
+export async function getOpusConfig() {
+  const { data } = await axios.get(`${API_PREFIX}/opus/_debug_base`);
+  // -> { OPUS_ROOT, OPUS_SERVICE }
+  return data;
+}

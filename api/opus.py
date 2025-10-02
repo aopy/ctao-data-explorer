@@ -67,11 +67,8 @@ class OpusCredentialsIn(BaseModel):
     token: str
 
 class QuickLookParams(BaseModel):
-    job_name: str = "gammapy_maps"
-
     # basket ids, OPUS ignores this
     obs_ids: List[str] = []
-
     # Fields expected by OPUS service gammapy_maps
     RA: float
     Dec: float
@@ -201,7 +198,7 @@ async def create_job(
 
     # Form fields for OPUS (gammapy_maps)
     form = {
-        "JOBNAME": params.job_name,
+        "JOBNAME": OPUS_SERVICE,
         "RA": str(params.RA),
         "Dec": str(params.Dec),
         "nxpix": str(params.nxpix),

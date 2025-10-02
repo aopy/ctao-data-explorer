@@ -1,17 +1,24 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { submitQuickLook } from "./opusApi";
+import { getOpusConfig } from "./opusApi";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
 
 export default function QuickLookModal({ isOpen, onClose, obsIds = [], defaultCenter }) {
   const navigate = useNavigate();
-  const [jobName, setJobName] = useState("gammapy_maps");
 
-  // OPUS gammapy_maps params
+  const [service, setService] = useState("");
+  useEffect(() => {
+    getOpusConfig()
+      .then(cfg => setService(cfg?.OPUS_SERVICE || ""))
+      .catch(() => setService(""));
+  }, []);
+
+  // OPUS params
   const [ra, setRa] = useState(defaultCenter?.lon ?? 83.633);
   const [dec, setDec] = useState(defaultCenter?.lat ?? 22.014);
-  const [nxpix, setNxpix] = useState(400);
-  const [nypix, setNypix] = useState(400);
+  const [nxpix, setNxpix] = useState(100);
+  const [nypix, setNypix] = useState(100);
   const [binsz, setBinsz] = useState(0.02);
 
   const [busy, setBusy] = useState(false);
@@ -25,7 +32,6 @@ export default function QuickLookModal({ isOpen, onClose, obsIds = [], defaultCe
    const obsidsStr = (obsIds || []).map(String).join(" ");
 
     const payload = {
-      job_name: jobName,
       RA: Number(ra),
       Dec: Number(dec),
       nxpix: Number(nxpix),
@@ -82,22 +88,19 @@ export default function QuickLookModal({ isOpen, onClose, obsIds = [], defaultCe
         <div className="modal-dialog modal-lg" role="document">
           <div className="modal-content">
             <div className="modal-header">
-              <h5 className="modal-title">Quick-Look Analysis (gammapy_maps)</h5>
+              <h5 className="modal-title">
+                Quick-Look Analysis
+                {service && (
+                  <span className="badge bg-info text-dark ms-2">
+                    Service: {service}
+                  </span>
+                )}
+                </h5>
               <button type="button" className="btn-close" onClick={onClose} aria-label="Close" />
             </div>
 
             <div className="modal-body">
               <p className="mb-3">{obsIds.length} observation(s) selected</p>
-
-              <div className="mb-3">
-                <label className="form-label">Job label</label>
-                <input
-                  className="form-control"
-                  value={jobName}
-                  onChange={e => setJobName(e.target.value)}
-                />
-              </div>
-
               <div className="row g-3">
                 <div className="col-md-6">
                   <label className="form-label">RA (deg)</label>
