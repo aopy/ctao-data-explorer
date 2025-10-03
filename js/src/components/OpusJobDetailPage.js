@@ -290,8 +290,8 @@ export default function OpusJobDetailPage() {
       </div>
 
       {/* Results */}
-      <div className="mt-4">
-      <h6 className="mb-2">Results</h6>
+      <div className="card mb-3">
+      <div className="card-header">Results</div>
       {results.length === 0 ? (
         <p className="text-muted">No results yet.</p>
       ) : (
