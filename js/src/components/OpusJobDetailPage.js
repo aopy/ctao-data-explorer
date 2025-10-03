@@ -8,6 +8,51 @@ const textify = (v) => (v == null ? "" : String(v));
 
 const TERMINAL = new Set(["COMPLETED", "ABORTED", "ERROR"]);
 
+function previewKind(res) {
+  const name = (res.name || "").toLowerCase();
+  const id   = (res.id || "").toLowerCase();
+  const href = (res.href || "").toLowerCase();
+  const mime = (res.mime || "").toLowerCase();
+
+  // images
+  if (
+    mime.startsWith("image/") ||
+    /\.(png|jpe?g|gif|svg)$/i.test(name || href) ||
+    id === "provsvg"
+  ) return "image";
+
+  // text-like
+  if (
+    id === "stdout" || id === "stderr" ||
+    mime.startsWith("text/") ||
+    /(json|xml|yaml|yml|csv|ecsv)/.test(mime) ||
+    /\.(txt|log|json|xml|ya?ml|cfg|csv|ecsv)$/i.test(name || href) ||
+    id === "provjson" || id === "provxml"
+  ) return "text";
+
+  // unknowns (e.g., FITS) - download only
+  return null;
+}
+
+function guessDownloadName(jobId, r) {
+  if (r.name) return r.name;
+  const id = (r.id || "").toLowerCase();
+  if (id === "provjson") return `${jobId}_provenance.json`;
+  if (id === "provxml")  return `${jobId}_provenance.xml`;
+  if (id === "provsvg")  return `${jobId}_provenance.svg`;
+  if (id === "stdout")   return `${jobId}_stdout.log`;
+  if (id === "stderr")   return `${jobId}_stderr.log`;
+  return id || "download.bin";
+}
+
+function opusProxy(jobId, href, { inline = false, filename, id } = {}) {
+  const q = new URLSearchParams({ href });
+  if (inline) q.set("inline", "1");
+  if (filename) q.set("filename", filename);
+  if (id) q.set("rid", id);
+  return `/api/opus/jobs/${encodeURIComponent(jobId)}/fetch?${q.toString()}`;
+}
+
 function errorSummaryToText(e) {
   if (!e) return "";
   if (typeof e === "string" || typeof e === "number") return String(e);
@@ -35,6 +80,7 @@ export default function OpusJobDetailPage() {
   const [resultsJson, setResultsJson] = useState(null);
   const [loading, setLoading] = useState(true);
   const [polling, setPolling] = useState(true);
+  const [openPreview, setOpenPreview] = useState(true);
 
   // fetchers
   const fetchDetails = useCallback(async () => {
@@ -244,56 +290,99 @@ export default function OpusJobDetailPage() {
       </div>
 
       {/* Results */}
-      <div className="card mb-3">
-        <div className="card-header">Results</div>
-        <div className="card-body p-0">
-          {results.length ? (
-            <div className="table-responsive">
-              <table className="table table-sm align-middle mb-0">
-                <thead>
-                  <tr>
-                    <th style={{ width: "25%" }}>ID</th>
-                    <th>Name</th>
-                    <th style={{ width: "20%" }}>MIME</th>
-                    <th className="text-end text-nowrap" style={{ width: "1%" }}>
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {results.map((r, idx) => (
-                    <tr key={`${r.id}-${idx}`}>
+      <div className="mt-4">
+      <h6 className="mb-2">Results</h6>
+      {results.length === 0 ? (
+        <p className="text-muted">No results yet.</p>
+      ) : (
+        <div className="table-responsive">
+          <table className="table table-sm align-middle">
+            <thead>
+              <tr>
+                <th>Result ID</th>
+                <th>Name</th>
+                <th>Mime</th>
+                <th className="text-end text-nowrap" style={{ width: "1%" }}>
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {results.map((r, idx) => {
+                const kind = previewKind(r);
+                const isOpen = !!openPreview[r.id];
+
+                const downloadName = guessDownloadName(jobId, r);
+                const downloadUrl  = r.href ? opusProxy(jobId, r.href, { inline: false, filename: downloadName, id: r.id }) : null;
+                const previewUrl   = r.href ? opusProxy(jobId, r.href, { inline: true,  filename: downloadName, id: r.id }) : null;
+
+                return (
+                  <React.Fragment key={`${r.id}-${idx}`}>
+                    <tr>
                       <td><code>{r.id}</code></td>
-                      <td className="text-break">{r.name || "—"}</td>
+                      <td>{r.name || "—"}</td>
                       <td><small>{r.mime || "—"}</small></td>
-                      <td className="text-end">
-                        {r.href ? (
-                          <a
-                            className="btn btn-sm btn-outline-secondary"
-                            href={r.href}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            Open
-                          </a>
-                        ) : (
-                          <span className="text-muted">—</span>
-                        )}
-                      </td>
+                      <td className="text-end text-nowrap py-1">
+                          <div className="btn-group btn-group-sm" role="group" aria-label={`${r.id} actions`}>
+                            {downloadUrl && (
+                              <a
+                                className="btn btn-outline-secondary"
+                                href={downloadUrl}
+                                download={downloadName}
+                              >
+                                Download
+                              </a>
+                            )}
+                            {kind && previewUrl && (
+                              <button
+                                type="button"
+                                className={`btn btn-outline-primary ${isOpen ? "active" : ""}`}
+                                onClick={() => setOpenPreview((s) => ({ ...s, [r.id]: !s[r.id] }))}
+                              >
+                                {isOpen ? "Hide preview" : "Show preview"}
+                              </button>
+                            )}
+                          </div>
+                        </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="p-3 text-muted">
-              {TERMINAL.has(phase)
-                ? "No results were produced."
-                : "No results yet — still waiting for the job to complete."}
-            </div>
-          )}
+
+                    {isOpen && kind && (
+                      <tr className="bg-light">
+                        <td colSpan={4}>
+                          {kind === "image" ? (
+                            <div className="p-2">
+                              <img
+                                src={previewUrl}
+                                alt={r.name || r.id}
+                                style={{ maxWidth: "100%", height: "auto" }}
+                              />
+                            </div>
+                          ) : (
+                            <div className="p-2">
+                              <iframe
+                                title={`preview-${r.id}`}
+                                src={previewUrl}
+                                style={{
+                                  width: "100%",
+                                  height: 420,
+                                  border: "1px solid #ddd",
+                                  borderRadius: 6,
+                                  background: "#fff",
+                                }}
+                              />
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-      </div>
+      )}
+    </div>
 
       {/* collapsible raw JSON */}
       <div className="card">

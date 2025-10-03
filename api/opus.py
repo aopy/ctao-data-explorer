@@ -2,14 +2,18 @@ from typing import Optional, List, Dict, Any, Union
 import base64
 import httpx
 import xmltodict
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
+from fastapi.responses import StreamingResponse
 from .config import get_settings
 from .db import encrypt_token as enc_str, decrypt_token as dec_str
 from .deps import get_db, get_current_user
 from .models import ExternalToken
+from pathlib import Path
+import mimetypes
+from urllib.parse import urlparse
 
 router = APIRouter(prefix="/api/opus", tags=["opus"])
 settings = get_settings()
@@ -241,3 +245,63 @@ async def create_job(
         raise HTTPException(r2.status_code, f"Created {job_id} but failed to RUN: {r2.text}")
 
     return OpusJobCreateResponse(job_id=job_id, location=job_url)
+
+@router.get("/jobs/{job_id}/fetch")
+async def fetch_by_href(
+    job_id: str,
+    href: str = Query(..., description="Absolute xlink:href returned by OPUS"),
+    inline: bool = Query(False, description="If true, serve inline (no attachment)"),
+    filename: Optional[str] = Query(None, description="Optional filename hint"),
+    rid: Optional[str] = Query(None, description="OPUS result id, e.g. provjson/stdout"),
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),
+):
+    # auth
+    user_id = (user.get("id") or user.get("app_user_id")) if isinstance(user, dict) else getattr(user, "id", None)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    creds = await _get_creds(db, user_id)
+    headers = _auth_header(**creds)
+
+    # filename/type hints
+    guessed_name = filename or Path(urlparse(href).path).name
+    ext = Path(guessed_name).suffix.lower()
+    rid_l = (rid or "").lower()
+
+    ctype, _ = mimetypes.guess_type(guessed_name)
+    # override/force types for inline preview
+    if not ctype:
+        if rid_l in ("stdout", "stderr") or ext in (".yaml", ".yml", ".cfg", ".txt", ".log"):
+            ctype = "text/plain; charset=utf-8"
+        elif rid_l == "provjson" or ext == ".json":
+            ctype = "application/json; charset=utf-8"
+        elif rid_l == "provxml" or ext == ".xml":
+            ctype = "text/xml; charset=utf-8"
+        elif rid_l == "provsvg" or ext == ".svg":
+            ctype = "image/svg+xml"
+        else:
+            ctype = "application/octet-stream"
+
+    async def upstream_iter():
+        async with httpx.AsyncClient(timeout=None, follow_redirects=True) as client:
+            async with client.stream("GET", href, headers=headers) as r:
+                if r.status_code >= 400:
+                    body = await r.aread()
+                    raise HTTPException(status_code=r.status_code, detail=body.decode("utf-8", "ignore"))
+                async for chunk in r.aiter_bytes():
+                    yield chunk
+
+    out_headers = {"Content-Type": ctype}
+    if not inline:
+        # smart default filenames if caller didn’t provide one
+        disp_name = guessed_name or (
+            "provenance.json" if rid_l == "provjson" else
+            "provenance.xml" if rid_l == "provxml" else
+            "provenance.svg" if rid_l == "provsvg" else
+            "stdout.log" if rid_l == "stdout" else
+            "stderr.log" if rid_l == "stderr" else
+            "download.bin"
+        )
+        out_headers["Content-Disposition"] = f'attachment; filename="{disp_name}"'
+
+    return StreamingResponse(upstream_iter(), headers=out_headers, media_type=ctype)
