@@ -42,24 +42,9 @@ export default function OpusJobDetailPage() {
     setJobJson(j);
 
     try {
-      const job = j?.["uws:job"] || j || {};
-      const id = job["uws:jobId"] || job.jobId || jobId;
-      const phase = (job["uws:phase"] || job.phase || "UNKNOWN").toString();
-      const creationTime = job["uws:creationTime"] || job.creationTime || "";
-      const startTime = job["uws:startTime"] || job.startTime || "";
-      const endTime = job["uws:endTime"] || job.endTime || "";
-
-      const raw = localStorage.getItem("opusJobHistory");
-      const arr = raw ? JSON.parse(raw) : [];
-      const idx = arr.findIndex((row) => row.id === id);
-      const entry = { id, phase, creationTime, startTime, endTime };
-      if (idx >= 0) arr[idx] = { ...arr[idx], ...entry };
-      else arr.push(entry);
-      localStorage.setItem("opusJobHistory", JSON.stringify(arr));
+      const id = textify(jobObj["uws:jobId"]) || jobId;
       localStorage.setItem("lastOpusJobId", id);
-    } catch {
-      /* ignore */
-    }
+    } catch {}
 
     return j;
   }, [jobId]);
