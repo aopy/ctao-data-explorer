@@ -210,7 +210,7 @@ export default function OpusJobDetailPage() {
   return (
     <div className="container mt-3">
       <div className="d-flex align-items-center mb-3">
-        <h4 className="mb-0 me-3">OPUS Job #{id}</h4>
+        <h4 className="mb-0 me-3">Job #{id}</h4>
         <span className={phaseBadgeClass}>{phase}</span>
         {polling && (
           <span className="ms-2 text-muted small">(updating…)</span>

@@ -23,7 +23,7 @@ export function BasketTab({ rows }) {
   return (
     <>
       <button onClick={() => setOpen(true)} disabled={!obsIds.length}>
-        Run Review job
+        Run Preview Job
       </button>
       <QuickLookModal isOpen={open} onClose={()=>setOpen(false)} obsIds={obsIds}/>
     </>

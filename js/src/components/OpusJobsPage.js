@@ -96,7 +96,6 @@ export default function OpusJobsPage({ isActive }) {
   return (
     <div className="mt-3">
       <div className="d-flex align-items-center mb-2">
-        <h5 className="me-auto mb-0">My OPUS Jobs</h5>
         <button className="btn btn-sm btn-outline-primary" onClick={fetchServer} disabled={loading}>
           {loading ? "Refreshing…" : "Refresh"}
         </button>
