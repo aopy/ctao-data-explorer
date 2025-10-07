@@ -362,7 +362,7 @@ function TabsApp() {
                 {lastOpus && (
                   <a className="btn btn-outline-info me-2"
                      href={`#/opus/jobs/${encodeURIComponent(lastOpus)}`}>
-                    Last OPUS job
+                    Last Review job
                   </a>
                 )}
 
@@ -401,7 +401,7 @@ function TabsApp() {
             onClick={() => setActiveTab('opusJobs')}
             type="button"
           >
-            OPUS Jobs
+            Review Jobs
           </button>
         </li>
         <li className="nav-item">

@@ -1,11 +1,6 @@
 import axios from "axios";
 import { API_PREFIX } from "../index";
 
-export async function saveOpusSettings(email, token) {
-  const { data } = await axios.post(`${API_PREFIX}/opus/settings`, { email, token });
-  return data;
-}
-
 export async function submitQuickLook(p) {
   const { data } = await axios.post(`${API_PREFIX}/opus/jobs`, p);
   // => { job_id, location }

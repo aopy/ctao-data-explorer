@@ -86,12 +86,3 @@ class UserRefreshToken(Base):
 
     user = relationship("UserTable", back_populates="refresh_tokens")
 
-class ExternalToken(Base):
-    __tablename__ = "external_tokens"
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, index=True, nullable=False)
-    service = Column(String(50), index=True, nullable=False)  # "opus"
-    email = Column(String(255), nullable=False)
-    token_encrypted = Column(String, nullable=False)
-    created_at = Column(DateTime, server_default=func.now())
-    __table_args__ = (UniqueConstraint("user_id", "service"),)

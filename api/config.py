@@ -51,8 +51,10 @@ class Settings(BaseSettings):
     LOG_JSON: bool = False
 
     # OPUS / UWS
-    OPUS_ROOT: str = "https://voparis-uws-test.obspm.fr/rest"
-    OPUS_SERVICE: str = "gammapy_maps"
+    OPUS_ROOT: str = "https://voparis-uws-test.obspm.fr"
+    OPUS_SERVICE: str
+    OPUS_APP_TOKEN: str
+    OPUS_APP_USER: str = "ctao"
 
     @property
     def PRODUCTION(self) -> bool:

@@ -3,7 +3,6 @@ import axios from 'axios';
 import { API_PREFIX } from '../index';
 import { mjdToDate, formatDateTimeStrings } from './datetimeUtils';
 import QuickLookModal from "./QuickLookModal";
-import OpusSettingsModal from "./OpusSettingsModal";
 
 const formatTmin = (mjd) => {
   if (mjd == null || mjd === '') return '';
@@ -24,7 +23,7 @@ export function BasketTab({ rows }) {
   return (
     <>
       <button onClick={() => setOpen(true)} disabled={!obsIds.length}>
-        Quick-Look Analysis (OPUS)
+        Run Review job
       </button>
       <QuickLookModal isOpen={open} onClose={()=>setOpen(false)} obsIds={obsIds}/>
     </>
@@ -291,7 +290,6 @@ onBasketGroupsChange, allBasketGroups = [], activeBasketGroupId }) {
                 <div className="d-flex align-items-center">
                   {/* OPUS settings and Quick Look */}
                   <BasketTab rows={rowsForQuickLook} />
-                  <OpusSettingsModal buttonClassName="btn btn-sm btn-outline-secondary ms-2 me-2" />
                 {/* Duplicate basket */}
                 <button
                   className="btn btn-sm btn-outline-secondary ms-2 me-2"
