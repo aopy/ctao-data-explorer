@@ -1006,7 +1006,7 @@ useEffect(() => {
 
         {/* epoch note under the section header */}
         <p className="text-muted small mb-2">
-          MET seconds use a fixed epoch: 2001-01-01 00:00:00 TT
+          Epoch for MET seconds: 2001-01-01 00:00:00 TT
         </p>
 
         {/* Start */}
