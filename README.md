@@ -89,9 +89,14 @@ This project is a web application to access, visualize, and analyze data from th
 
 2. **Build a query (Search page)**
    - **Sky position:** choose a system (Equatorial deg, Equatorial hms/dms, or Galactic l/b). Enter RA/Dec (or l/b) and **Radius** (default **5°**). Optionally type an object name, click **Simbad/NED**, then pick from the dropdown to autofill coordinates.
-   - **Observation time:** choose **TT** (default), **UTC**, or **MET**.
-     - **TT/UTC:** fill **Start** and **End** (YYYY-MM-DD HH:MM:SS). MJD and calendar fields stay in sync.
-     - **MET:** set **Epoch**, then **MET start/end** (seconds); Gregorian fields autofill.
+   - **Time system:** toggle **TT** (default) or **UTC**.
+     - **Inputs per row (Start / End):**
+       - **Date** (`YYYY-MM-DD`)
+       - **Time** (`HH:MM:SS`)
+       - **MJD** — *Modified Julian Date*
+       - **MET (s)** — *Mission Elapsed Time, seconds since the fixed CTAO reference epoch*
+       You may fill **any** of these; the others auto-fill and stay in sync.
+     - **MET epoch (fixed):** `2001-01-01 00:00:00 TT`
    - Click **Search** to run or **Clear Form** to reset.  
    _Tip: you can use either position, time, or both._
 

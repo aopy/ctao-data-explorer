@@ -41,3 +41,40 @@
 
 /* Stop parent cards from clipping the dropdown’s absolute positioning */
 .position-relative { position: relative; }
+
+/* Make the time fields row more compact */
+.form-row-tight .form-control,
+.form-row-tight .input-group-text {
+  padding: .3rem .5rem;
+  font-size: .85rem;
+}
+
+/* Shrink DatePicker input */
+.compact-date .react-datepicker__input-container input {
+  padding: .25rem .45rem !important;
+  font-size: .82rem !important;
+}
+
+/* Monospace for numeric/time for readability */
+.input-monospace {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* Ensure DatePicker wrapper fills the column properly */
+.react-datepicker-wrapper { width: 100%; }
+
+/* Tighten the input-group label paddings */
+.input-group-text {
+  padding: .25rem .5rem;
+}
+
+/* Make sure the popper sits above cards/modals */
+.react-datepicker-popper { z-index: 1080; }
+
+/* Compact calendar */
+.react-datepicker {
+  font-size: 0.82rem;
+}
+.react-datepicker__month-container {
+  width: 15rem;
+}

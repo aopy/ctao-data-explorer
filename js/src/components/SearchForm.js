@@ -10,22 +10,33 @@ import {
   COORD_SYS_GAL
 } from './datetimeUtils';
 import './styles.css';
+import { offset, flip, shift } from '@floating-ui/dom';
 
 const FORM_STATE_SESSION_KEY = 'searchFormStateBeforeLogin';
 
 const defaultFormValues = {
   objectName: '', useSimbad: true, useNed: false,
   coordinateSystem: COORD_SYS_EQ_DEG, coord1: '', coord2: '', searchRadius: '5',
+  timeScale: 'tt',
   obsStartDateObj: null, obsStartTime: '', obsStartMJD: '',
-  obsEndDateObj: null,   obsEndTime:   '', obsEndMJD:   '',
+  obsEndDateObj: null, obsEndTime: '', obsEndMJD: '',
+  metStartSeconds: '',
+  metEndSeconds: '',
   tapUrl: 'http://voparis-tap-he.obspm.fr/tap',
   obscoreTable: 'hess_dr.obscore_sdc',
   showAdvanced: false,
-  timeScale: 'tt',
-  metEpochIso: '2018-01-01T00:00:00Z',
-  metStartSeconds: '',
-  metEndSeconds: '',
 };
+
+const MJDREFI = 51910;
+const MJDREFF = 7.42870370370241e-4;
+const TT_MJDREF = MJDREFI + MJDREFF;
+const SECS_PER_DAY = 86400;
+
+const MET_EPOCH_ISO_UTC = "2001-01-01T00:00:00";
+const MET_EPOCH_SCALE = "utc";
+
+const formatMJD  = (x) => (Number.isFinite(x) ? Number(x).toFixed(8) : "");
+const formatSecs = (x) => (Number.isFinite(x) ? Number(x).toFixed(3) : "");
 
 const parseMjdInput = (v) => {
   if (v == null) return NaN;
@@ -33,8 +44,6 @@ const parseMjdInput = (v) => {
   const n = Number(s);
   return Number.isFinite(n) ? n : NaN;
 };
-const formatMJD = (x) =>
-  (Number.isFinite(x) ? Number(x).toFixed(8) : '');
 
 const ymdFromDate = (d) => {
   if (!d) return '';
@@ -74,7 +83,7 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   const [searchRadius, setSearchRadius] = useState(initialFormState.searchRadius);
 
   // Time system
-  const [timeScale, setTimeScale] = useState(initialFormState.timeScale);
+  const [timeScale, setTimeScale] = useState(initialFormState.timeScale || 'tt');
 
   // Calendar + MJD
   const [obsStartDateObj, setObsStartDateObj] = useState(initialFormState.obsStartDateObj);
@@ -83,6 +92,9 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   const [obsEndDateObj, setObsEndDateObj] = useState(initialFormState.obsEndDateObj);
   const [obsEndTime, setObsEndTime] = useState(initialFormState.obsEndTime);
   const [obsEndMJD, setObsEndMJD] = useState(initialFormState.obsEndMJD);
+
+  const [metStartSeconds, setMetStartSeconds] = useState(initialFormState.metStartSeconds || '');
+  const [metEndSeconds, setMetEndSeconds] = useState(initialFormState.metEndSeconds || '');
 
   // TAP + UI
   const [tapUrl, setTapUrl] = useState(initialFormState.tapUrl);
@@ -115,10 +127,71 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   const [isEditingEndTime, setIsEditingEndTime] = useState(false);
 
   const [metEpochIso, setMetEpochIso] = useState(initialFormState.metEpochIso);
-  const [metStartSeconds, setMetStartSeconds] = useState(initialFormState.metStartSeconds);
-  const [metEndSeconds, setMetEndSeconds] = useState(initialFormState.metEndSeconds);
+
+  const [isEditingStartMjd, setIsEditingStartMjd] = useState(false);
+  const [isEditingEndMjd,   setIsEditingEndMjd]   = useState(false);
 
   const isFullTime = (s) => /^\d{2}:\d{2}:\d{2}$/.test(s || '');
+
+  function ttMjdToMetSeconds(ttMjd) {
+    return (Number(ttMjd) - TT_MJDREF) * SECS_PER_DAY;
+  }
+  function metSecondsToTtMjd(sec) {
+    return TT_MJDREF + (Number(sec) || 0) / SECS_PER_DAY;
+  }
+
+
+  // helper: calendar -> MJD/MET in the current scale (tt/utc)
+  const applyCalendarChange = async (which, dateObj, currentTime) => {
+    if (!dateObj) return;
+
+    // Normalize time: default to 00:00:00
+    const t = /^\d{2}:\d{2}:\d{2}$/.test(currentTime || '') ? currentTime : '00:00:00';
+
+    if (which === 'start') {
+      setObsStartDateObj(dateObj);
+      setObsStartTime(t);
+    } else {
+      setObsEndDateObj(dateObj);
+      setObsEndTime(t);
+    }
+
+    setTimeTouched(true);
+    setTimeWarning('');
+
+    // immediately convert
+    try {
+      await syncFromCalendar(which, dateObj, t, timeScale, timeScale);
+    } catch {
+      setTimeWarning('Could not convert calendar date/time.');
+      }
+    };
+
+  const handleStartDateChange = (date) => {
+    applyCalendarChange('start', date, obsStartTime);
+  };
+
+  const handleEndDateChange = (date) => {
+    applyCalendarChange('end', date, obsEndTime);
+  };
+
+
+
+  async function convertMetTo(targetScale, seconds) {
+  const { data } = await axios.post('/api/convert_time', {
+    value: String(seconds),
+    input_format: 'met',
+    input_scale: 'utc',
+    met_epoch_isot: MET_EPOCH_ISO_UTC,
+    met_epoch_scale: MET_EPOCH_SCALE
+  });
+
+  return {
+    isot: targetScale === 'tt' ? data.tt_isot  : data.utc_isot,
+    mjd:  targetScale === 'tt' ? data.tt_mjd   : data.utc_mjd,
+    tt_mjd: data.tt_mjd,
+    };
+  }
 
   // Make a display date pinned to noon UTC for the given yyyy-mm-dd
   function dateFromIsoDatePart(iso) {
@@ -141,15 +214,13 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
         sessionStorage.setItem(FORM_STATE_SESSION_KEY, JSON.stringify({
           objectName, useSimbad, useNed,
           coordinateSystem, coord1, coord2, searchRadius,
+          timeScale,
           obsStartDateObj: obsStartDateObj ? obsStartDateObj.toISOString() : null,
           obsStartTime, obsStartMJD,
           obsEndDateObj: obsEndDateObj ? obsEndDateObj.toISOString() : null,
           obsEndTime, obsEndMJD,
+          metStartSeconds, metEndSeconds,
           tapUrl, obscoreTable, showAdvanced,
-          timeScale,
-          metEpochIso,
-          metStartSeconds,
-          metEndSeconds,
         }));
       } catch { /* ignore */ }
     }
@@ -196,33 +267,43 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     isot: scale === 'tt'  ? data.tt_isot : data.utc_isot,
   });
 
-  // Calendar -> MJD/ISO
   const syncFromCalendar = useCallback(
     async (which, srcDate, srcTime, inputScale, targetScale) => {
       try {
         if (!srcDate) return;
-        const dayIso = ymdFromLocal(srcDate);  // YYYY-MM-DD (local), no TZ shift
-        const iso    = `${dayIso}T${(srcTime || '00:00:00')}`;
+        const y = srcDate.getFullYear();
+        const m = String(srcDate.getMonth() + 1).padStart(2, '0');
+        const d = String(srcDate.getDate()).padStart(2, '0');
+        const iso = `${y}-${m}-${d}T${(srcTime || '00:00:00')}`;
 
         const { data } = await axios.post('/api/convert_time', {
           value: iso, input_format: 'isot', input_scale: inputScale
         });
 
+        const ttMjd = data.tt_mjd;
+
+        const outMjd  = targetScale === 'tt' ? data.tt_mjd  : data.utc_mjd;
+        const outIsot = targetScale === 'tt' ? data.tt_isot : data.utc_isot;
+
         const out = pickOut(data, targetScale);
-        console.log('timeConv', { which, inputScale, targetScale, outMjd: out.mjd, outIsot: out.isot });
         const newMjd = formatMJD(out.mjd);
-        const t = out.isot.slice(11, 19); // HH:MM:SS
-        const dateObj = dateFromIsoDatePart(out.isot);  // store as UTC date
+        const t = out.isot.slice(11, 19);
+        const dateObj = dateFromIsoDatePart(out.isot);
+
+        // compute MET seconds from TT MJD
+        const metSec = ttMjdToMetSeconds(data.tt_mjd);
 
         if (which === 'start') {
           setObsStartMJD(v => (v !== newMjd ? newMjd : v));
           setObsStartDateObj(d => (!d || d.getTime() !== dateObj.getTime() ? dateObj : d));
           setObsStartTime(s => (s !== t ? t : s));
+          setMetStartSeconds(formatSecs(ttMjdToMetSeconds(data.tt_mjd)));
         } else {
           setObsEndMJD(v => (v !== newMjd ? newMjd : v));
           setObsEndDateObj(d => (!d || d.getTime() !== dateObj.getTime() ? dateObj : d));
           setObsEndTime(s => (s !== t ? t : s));
-        }
+          setMetEndSeconds(formatSecs(ttMjdToMetSeconds(data.tt_mjd)));
+      }
         setTimeWarning('');
       } catch {
         setTimeWarning('Could not convert calendar date/time.');
@@ -231,7 +312,6 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     []
   );
 
-  // MJD -> MJD/ISO
   const syncFromMjd = useCallback(
     async (which, rawMjd, inputScale, targetScale) => {
       try {
@@ -245,20 +325,23 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
           value: String(mjdNum), input_format: 'mjd', input_scale: inputScale
         });
 
+        // pick the visible scale for calendar display
         const out = pickOut(data, targetScale);
-        console.log('timeConv', { which, inputScale, targetScale, outMjd: out.mjd, outIsot: out.isot });
-        const newMjd = formatMJD(out.mjd);
-        const t = out.isot.slice(11, 19);
-        const dateObj = dateFromIsoDatePart(out.isot);
+        const tIso = out.isot;
+        const dateObj = dateFromIsoDatePart(tIso);
+
+        // TT MJD for MET computation
+        const ttMjd = data.tt_mjd;
+        const met = formatSecs(ttMjdToMetSeconds(ttMjd));
 
         if (which === 'start') {
-          setObsStartMJD(v => (v !== newMjd ? newMjd : v));
           setObsStartDateObj(d => (!d || d.getTime() !== dateObj.getTime() ? dateObj : d));
-          setObsStartTime(s => (s !== t ? t : s));
+          setObsStartTime(s => (s !== tIso.slice(11, 19) ? tIso.slice(11, 19) : s));
+          setMetStartSeconds(met);
         } else {
-          setObsEndMJD(v => (v !== newMjd ? newMjd : v));
           setObsEndDateObj(d => (!d || d.getTime() !== dateObj.getTime() ? dateObj : d));
-          setObsEndTime(s => (s !== t ? t : s));
+          setObsEndTime(s => (s !== tIso.slice(11, 19) ? tIso.slice(11, 19) : s));
+          setMetEndSeconds(met);
         }
         setTimeWarning('');
       } catch {
@@ -267,6 +350,36 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     },
     []
   );
+
+  const handleMetStartChange = async (e) => {
+    const v = e.target.value;
+    setMetStartSeconds(v);
+    if (!v.trim()) return;
+    setTimeTouched(true);
+    try {
+      const conv = await convertMetTo(timeScale, Number(v));
+      setObsStartMJD(formatMJD(conv.mjd));
+      setObsStartDateObj(dateFromIsoDatePart(conv.isot));
+      setObsStartTime(conv.isot.slice(11,19));
+    } catch {
+      setTimeWarning('Could not convert MET start.');
+    }
+  };
+
+  const handleMetEndChange = async (e) => {
+    const v = e.target.value;
+    setMetEndSeconds(v);
+    if (!v.trim()) return;
+    setTimeTouched(true);
+    try {
+      const conv = await convertMetTo(timeScale, Number(v));
+      setObsEndMJD(formatMJD(conv.mjd));
+      setObsEndDateObj(dateFromIsoDatePart(conv.isot));
+      setObsEndTime(conv.isot.slice(11,19));
+    } catch {
+      setTimeWarning('Could not convert MET end.');
+    }
+  };
 
   async function syncFromMet(rawSec, epochIso, targetScale='tt') {
     const { data } = await axios.post('/api/convert_time', {
@@ -378,77 +491,61 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     const next = e.target.value;
     setTimeScale(next);
 
-    if (next === 'met') {
-      async function mjdToMet(mjdValue) {
-        const { data: epochData } = await axios.post('/api/convert_time', {
-          value: metEpochIso.replace(/Z$/, ''),  // strip Z so Astropy parses it as TT
-          input_format: 'isot',
-          input_scale: 'tt',
-        });
-        const epochMjd = epochData.tt_mjd;
-      return Math.round((mjdValue - epochMjd) * 86400);
-    }
-
+    // convert current start fields
     if (obsStartMJD) {
-      const startSec = await mjdToMet(Number(obsStartMJD));
-      setMetStartSeconds(String(startSec));
-    }
-    if (obsEndMJD) {
-      const endSec = await mjdToMet(Number(obsEndMJD));
-      setMetEndSeconds(String(endSec));
-    }
-    return;
-  }
+      const { data } = await axios.post('/api/convert_time', {
+        value: String(parseMjdInput(obsStartMJD)),
+        input_format: 'mjd',
+        input_scale: prev
+      });
+      const outMjd  = next === 'tt' ? data.tt_mjd  : data.utc_mjd;
+      const outIsot = next === 'tt' ? data.tt_isot : data.utc_isot;
 
-    if (prev === 'met') {
-      const doMetFields = async (metSec, setMjd, setDateObj, setTime) => {
-        const { data } = await axios.post('/api/convert_time', {
-          value: String(metSec),
-          input_format:   'met',
-          input_scale:    'utc', // ignored for MET itself
-          met_epoch_isot: metEpochIso.replace(/Z$/, ''),
-          met_epoch_scale:'tt',
-        });
+      setObsStartMJD(formatMJD(outMjd));
+      setObsStartDateObj(dateFromIsoDatePart(outIsot));
+      setObsStartTime(outIsot.slice(11,19));
 
-        const isot = next === 'tt' ? data.tt_isot : data.utc_isot;
-        const mjd  = next === 'tt' ? data.tt_mjd  : data.utc_mjd;
-
-        setMjd   (formatMJD(mjd));
-        setDateObj( dateFromIsoDatePart(isot) );
-        setTime  ( isot.slice(11,19) );
-      };
-
-      if (metStartSeconds) {
-        await doMetFields(
-          metStartSeconds,
-          setObsStartMJD,
-          setObsStartDateObj,
-          setObsStartTime
-        );
-      }
-      if (metEndSeconds) {
-        await doMetFields(
-          metEndSeconds,
-          setObsEndMJD,
-          setObsEndDateObj,
-          setObsEndTime
-        );
-      }
-      return;
-    }
-
-    if (obsStartMJD) {
-      await syncFromMjd('start', obsStartMJD, prev, next);
+      // keep MET synced from TT MJD
+      setMetStartSeconds(formatSecs(ttMjdToMetSeconds(data.tt_mjd)));
     } else if (obsStartDateObj && obsStartTime) {
       await syncFromCalendar('start', obsStartDateObj, obsStartTime, prev, next);
+      // syncFromCalendar writes MJD in the target scale
+      const { data } = await axios.post('/api/convert_time', {
+        value: `${ymdFromDate(obsStartDateObj)}T${obsStartTime}`,
+        input_format: 'isot',
+        input_scale: next
+      });
+      setMetStartSeconds(formatSecs(ttMjdToMetSeconds(data.tt_mjd)));
     }
 
+    // convert current END fields
     if (obsEndMJD) {
-      await syncFromMjd('end', obsEndMJD, prev, next);
+      const { data } = await axios.post('/api/convert_time', {
+        value: String(parseMjdInput(obsEndMJD)),
+        input_format: 'mjd',
+        input_scale: prev
+      });
+      const outMjd  = next === 'tt' ? data.tt_mjd  : data.utc_mjd;
+      const outIsot = next === 'tt' ? data.tt_isot : data.utc_isot;
+
+      setObsEndMJD(formatMJD(outMjd));
+      setObsEndDateObj(dateFromIsoDatePart(outIsot));
+      setObsEndTime(outIsot.slice(11,19));
+
+      // keep MET (seconds) synced from TT MJD
+      setMetEndSeconds(formatSecs(ttMjdToMetSeconds(data.tt_mjd)));
     } else if (obsEndDateObj && obsEndTime) {
       await syncFromCalendar('end', obsEndDateObj, obsEndTime, prev, next);
+      const { data } = await axios.post('/api/convert_time', {
+        value: `${ymdFromDate(obsEndDateObj)}T${obsEndTime}`,
+        input_format: 'isot',
+        input_scale: next
+      });
+      setMetEndSeconds(formatSecs(ttMjdToMetSeconds(data.tt_mjd)));
     }
   };
+
+
 
   useEffect(() => {
     if (objectName.trim()) {
@@ -520,12 +617,6 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     setCoord1(''); setCoord2('');
   };
 
-  const handleStartDateChange = (date) => {
-    setObsStartDateObj(date);
-    if (!obsStartTime) setObsStartTime('00:00:00');
-    setTimeTouched(true);
-  };
-
   const handleStartTimeChange = (e) => {
   const t = e.target.value;
   setObsStartTime(t);
@@ -537,24 +628,25 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   }
 };
 
-// Start: MJD edit
+// MJD edit
 const handleStartMjdChange = (e) => {
   const v = e.target.value;
   setObsStartMJD(v);
   setTimeTouched(true);
-  if (v.trim() !== '') {
-    setTimeout(() => {
-      syncFromMjd('start', v, timeScale, timeScale);
-    }, 0);
-  }
+  clearTimeout(startMjdDebounce.current);
+  startMjdDebounce.current = setTimeout(() => {
+    syncFromMjd('start', v, timeScale, timeScale); // update calendar+MET only
+  }, 500);
 };
 
-// End: Calendar edits
-const handleEndDateChange = (date) => {
-  setObsEndDateObj(date);
-  if (!obsEndTime) setObsEndTime('00:00:00');
-  setTimeTouched(true);
-
+const handleStartMjdBlur = async () => {
+  const mjdNum = parseMjdInput(obsStartMJD);
+  if (!Number.isFinite(mjdNum)) return;
+  const { data } = await axios.post('/api/convert_time', {
+    value: String(mjdNum), input_format: 'mjd', input_scale: timeScale
+  });
+  const out = pickOut(data, timeScale);
+  setObsStartMJD(formatMJD(out.mjd));
 };
 
 const handleEndTimeChange = (e) => {
@@ -568,17 +660,47 @@ const handleEndTimeChange = (e) => {
   }
 };
 
-// End: MJD edit
 const handleEndMjdChange = (e) => {
   const v = e.target.value;
   setObsEndMJD(v);
   setTimeTouched(true);
-  if (v.trim() !== '') {
-    setTimeout(() => {
-      syncFromMjd('end', v, timeScale, timeScale);
-    }, 0);
-  }
+  clearTimeout(endMjdDebounce.current);
+  endMjdDebounce.current = setTimeout(() => {
+    syncFromMjd('end', v, timeScale, timeScale);
+  }, 500);
 };
+
+const handleEndMjdBlur = async () => {
+  const mjdNum = parseMjdInput(obsEndMJD);
+  if (!Number.isFinite(mjdNum)) return;
+  const { data } = await axios.post('/api/convert_time', {
+    value: String(mjdNum), input_format: 'mjd', input_scale: timeScale
+  });
+  const out = pickOut(data, timeScale);
+  setObsEndMJD(formatMJD(out.mjd));
+};
+
+useEffect(() => {
+  if (lastChangedType === 'start_mjd') {
+    clearTimeout(startMjdDebounce.current);
+    startMjdDebounce.current = setTimeout(() => {
+      syncFromMjd('start', obsStartMJD, timeScale, timeScale, false);
+      setLastChangedType(null);
+    }, 500);
+    return () => clearTimeout(startMjdDebounce.current);
+  }
+}, [lastChangedType, obsStartMJD, timeScale, syncFromMjd]);
+
+useEffect(() => {
+  if (lastChangedType === 'end_mjd') {
+    clearTimeout(endMjdDebounce.current);
+    endMjdDebounce.current = setTimeout(() => {
+      syncFromMjd('end', obsEndMJD, timeScale, timeScale, false);
+      setLastChangedType(null);
+    }, 500);
+    return () => clearTimeout(endMjdDebounce.current);
+  }
+}, [lastChangedType, obsEndMJD, timeScale, syncFromMjd]);
 
   const handleClearForm = () => {
     Object.assign(
@@ -600,7 +722,6 @@ const handleEndMjdChange = (e) => {
       setObscoreTable(initialFormState.obscoreTable),
       setShowAdvanced(initialFormState.showAdvanced)
     );
-    setMetEpochIso('2018-01-01T00:00:00Z');
     setMetStartSeconds('');
     setMetEndSeconds('');
     setWarningMessage(''); setLastChangedType(null); setTimeTouched(false); setTimeWarning('');
@@ -620,8 +741,10 @@ const handleEndMjdChange = (e) => {
     let coordsAreValid = false;
     let timeIsValid = false;
 
-    if (timeTouched && timeWarning) {
-      setWarningMessage(timeWarning); setIsSubmitting(false); return;
+    if (timeWarning) {
+      setWarningMessage(timeWarning);
+      setIsSubmitting(false);
+      return;
     }
 
     // coords
@@ -655,43 +778,12 @@ const handleEndMjdChange = (e) => {
       }
     }
 
-   if (timeScale === 'met') {
-     if (!metEpochIso || !metStartSeconds || !metEndSeconds) {
-       setWarningMessage('Please fill MET epoch, start and end.');
-       setIsSubmitting(false);
-       return;
-     }
-     try {
-       const [{ data: s }, { data: e }] = await Promise.all([
-         axios.post('/api/convert_time', {
-           value: metStartSeconds,
-           input_format: 'met',
-           met_epoch_isot: metEpochIso,
-           met_epoch_scale:'tt',
-         }),
-         axios.post('/api/convert_time', {
-           value: metEndSeconds,
-           input_format: 'met',
-           met_epoch_isot: metEpochIso,
-           met_epoch_scale:'tt',
-         }),
-       ]);
-       finalReqParams.mjd_start = Number(s.tt_mjd);
-       finalReqParams.mjd_end = Number(e.tt_mjd);
-       finalReqParams.time_scale = 'tt';
-       timeIsValid = true;
-     } catch (err) {
-       setWarningMessage('Failed converting MET: ' + err.message);
-       setIsSubmitting(false);
-       return;
-     }
-   }
-
     // time
     const hasBothMJD  = obsStartMJD.trim() !== '' && obsEndMJD.trim() !== '';
     const hasCalendar = !!(obsStartDateObj && obsStartTime.trim() && obsEndDateObj && obsEndTime.trim());
+    const hasBothMET  = metStartSeconds.trim() !== '' && metEndSeconds.trim() !== '';
 
-    if (timeTouched) {
+
       if (hasBothMJD) {
         const startMjdNum = parseMjdInput(obsStartMJD);
         const endMjdNum   = parseMjdInput(obsEndMJD);
@@ -725,8 +817,29 @@ const handleEndMjdChange = (e) => {
           setWarningMessage(err.message || 'Failed to convert calendar Date/Time to MJD.');
           setIsSubmitting(false); return;
         }
-      }
+      } else if (hasBothMET) {
+    // Convert MET → TT MJD (query is in TT)
+    const startConv = await axios.post('/api/convert_time', {
+      value: metStartSeconds,
+      input_format: 'met',
+      input_scale: 'utc',
+      met_epoch_isot: MET_EPOCH_ISO_UTC,
+      met_epoch_scale: MET_EPOCH_SCALE,
+    });
+    const endConv = await axios.post('/api/convert_time', {
+      value: metEndSeconds,
+      input_format: 'met',
+      input_scale: 'utc',
+      met_epoch_isot: MET_EPOCH_ISO_UTC,
+      met_epoch_scale: MET_EPOCH_SCALE,
+    });
+
+    finalReqParams.mjd_start  = Number(startConv.data.tt_mjd);
+    finalReqParams.mjd_end    = Number(endConv.data.tt_mjd);
+    finalReqParams.time_scale = 'tt';
+    timeIsValid = true;
     }
+
 
     if (!coordsAreValid && !timeIsValid) {
       setWarningMessage('Please provide valid coordinates or a complete time interval (Date+Time or MJD).');
@@ -867,225 +980,211 @@ const handleEndMjdChange = (e) => {
           )}
 
           {/* Time Search */}
-          <div className="card mb-3">
-            <div className="card-header">Time Search</div>
-            <div className="card-body">
+        <div className="card mb-3">
+          <div className="card-header">Time Search</div>
+          <div className="card-body">
 
-              {/* Time system selector */}
-              <div className="mb-3">
-                <label className="form-label me-2"><strong>Time System:</strong></label>
-                <div className="btn-group" role="group" aria-label="Time system">
-                  {['tt','utc','met'].map((opt) => (
-                    <button
-                      key={opt}
-                      type="button"
-                      className={`btn btn-sm ${
-                        timeScale === opt ? 'btn-primary' : 'btn-outline-primary'
-                      }`}
-                      onClick={() => handleTimeScaleChange({ target: { value: opt } })}
-                      disabled={isSubmitting}
-                    >
-                      {opt.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Start */}
-              <label className="form-label">Observation Start</label>
-              <div className="row g-2 mb-2">
-                <div className="col-md-4">
-                  <DatePicker
-                    selected={obsStartDateObj}
-                    onChange={handleStartDateChange}
-                    dateFormat="yyyy-MM-dd"
-                    placeholderText="YYYY-MM-DD"
-                    className="form-control form-control-sm"
-                    wrapperClassName="w-100"
-                    disabled={isSubmitting}
-                    showMonthDropdown
-                    showYearDropdown
-                    dropdownMode="select"
-                  />
-                </div>
-                <div className="col-md-3">
-                  <input
-                    type="time"
-                    step="1"
-                    className="form-control form-control-sm"
-                    value={obsStartTime}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      const parts = v.split(':');
-                      const hh = parts[0] ?? '00';
-                      const mm = parts[1] ?? '00';
-                      const ss = parts[2] ?? '00';
-                      const norm = `${hh.padStart(2,'0')}:${mm.padStart(2,'0')}:${ss.padStart(2,'0')}`;
-                      setObsStartTime(norm);
-                      setTimeTouched(true);
-                      setLastChangedType('start_dt');
-                    }}
-                    onFocus={() => setIsEditingStartTime(true)}
-                    onBlur={() => { setIsEditingStartTime(false); setLastChangedType('start_dt'); }}
-                    aria-label="Start time"
-                    disabled={isSubmitting}
-                  />
-                </div>
-                <div className="col-md-5">
-                  <div className="input-group input-group-sm">
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      className="form-control"
-                      placeholder={`Start MJD (${timeScale.toUpperCase()})`}
-                      aria-label={`Start MJD in ${timeScale.toUpperCase()}`}
-                      value={obsStartMJD}
-                      onChange={handleStartMjdChange}
-                      disabled={isSubmitting}
-                    />
-                    <span className="input-group-text">
-                      MJD ({timeScale.toUpperCase()})
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* End */}
-              <label className="form-label">Observation End</label>
-              <div className="row g-2 mb-3">
-                <div className="col-md-4">
-                  <DatePicker
-                    selected={obsEndDateObj}
-                    onChange={handleEndDateChange}
-                    dateFormat="yyyy-MM-dd"
-                    placeholderText="YYYY-MM-DD"
-                    className="form-control form-control-sm"
-                    wrapperClassName="w-100"
-                    disabled={isSubmitting}
-                    showMonthDropdown
-                    showYearDropdown
-                    dropdownMode="select"
-                    minDate={obsStartDateObj || null}
-                  />
-                </div>
-                <div className="col-md-3">
-                  <input
-                    type="time"
-                    step="1"
-                    className="form-control form-control-sm"
-                    value={obsEndTime}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      const parts = v.split(':');
-                      const hh = parts[0] ?? '00';
-                      const mm = parts[1] ?? '00';
-                      const ss = parts[2] ?? '00';
-                      const norm = `${hh.padStart(2,'0')}:${mm.padStart(2,'0')}:${ss.padStart(2,'0')}`;
-                      setObsEndTime(norm);
-                      setTimeTouched(true);
-                      setLastChangedType('end_dt');
-                    }}
-                    onFocus={() => setIsEditingEndTime(true)}
-                    onBlur={() => { setIsEditingEndTime(false); setLastChangedType('end_dt'); }}
-                    aria-label="End time"
-                    disabled={isSubmitting}
-                  />
-                </div>
-                <div className="col-md-5">
-                  <div className="input-group input-group-sm">
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      className="form-control"
-                      placeholder={`End MJD (${timeScale.toUpperCase()})`}
-                      aria-label={`End MJD in ${timeScale.toUpperCase()}`}
-                      value={obsEndMJD}
-                      onChange={handleEndMjdChange}
-                      disabled={isSubmitting}
-                    />
-                    <span className="input-group-text">
-                      MJD ({timeScale.toUpperCase()})
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {timeScale === 'met' && (
-              <div className="card mb-3">
-                <div className="card-header">MET Input</div>
-                <div className="card-body">
-                  {/* Shared Epoch */}
-                  <div className="mb-2">
-                    <small className="text-muted">
-                      All MET values are interpreted on the TT scale.
-                    </small>
-                  </div>
-                    <label className="form-label">MET Epoch (ISO)</label>
-                    <input
-                      type="text"
-                      className="form-control form-control-sm"
-                      placeholder="e.g. 2018-01-01T00:00:00Z"
-                      value={metEpochIso}
-                      onChange={e => setMetEpochIso(e.target.value)}
-                      disabled={isSubmitting}
-                    />
-                    <div className="form-text">Common epoch for both start and end.</div>
-
-
-                  {/* MET Start */}
-                  <div className="mb-2">
-                    <label className="form-label">MET Start (s)</label>
-                    <input
-                      type="number"
-                      className="form-control form-control-sm"
-                      placeholder="MET seconds at observation start"
-                      value={metStartSeconds}
-                      onChange={e => {
-                        const v = e.target.value;
-                        setMetStartSeconds(v);
-                        setTimeTouched(true);
-                        if (timeScale === 'met' && v && metEpochIso) {
-                          syncFromMet(v, metEpochIso, 'tt').then(({ mjd, isot }) => {
-                          setObsStartMJD(formatMJD(mjd));
-                          setObsStartDateObj(dateFromIsoDatePart(isot));
-                          setObsStartTime(isot.slice(11,19));
-                          });
-                        }
-                      }}
-                      disabled={isSubmitting}
-                    />
-                  </div>
-
-                  {/* MET End */}
-                  <div className="mb-2">
-                    <label className="form-label">MET End (s)</label>
-                    <input
-                      type="number"
-                      className="form-control form-control-sm"
-                      placeholder="MET seconds at observation end"
-                      value={metEndSeconds}
-                      onChange={e => {
-                        const v = e.target.value;
-                        setMetEndSeconds(v);
-                        setTimeTouched(true);
-
-                        if (timeScale === 'met' && v && metEpochIso) {
-                          syncFromMet(v, metEpochIso, 'tt').then(({ mjd, isot }) => {
-                          setObsEndMJD(formatMJD(mjd));
-                          setObsEndDateObj(dateFromIsoDatePart(isot));
-                          setObsEndTime(isot.slice(11,19));
-                          });
-                        }
-                      }}
-                      disabled={isSubmitting}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
+        {/* Time system selector (Bootstrap button group) */}
+        <div className="d-flex align-items-center justify-content-between mb-3">
+          <div className="d-flex align-items-center">
+            <label className="form-label me-2 mb-0"><strong>Time System:</strong></label>
+            <div className="btn-group" role="group" aria-label="Time system">
+              {['tt','utc'].map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  className={`btn btn-sm ${timeScale === opt ? 'btn-primary' : 'btn-outline-primary'}`}
+                  onClick={() => handleTimeScaleChange({ target: { value: opt } })}
+                  disabled={isSubmitting}
+                >
+                  {opt.toUpperCase()}
+                </button>
+              ))}
             </div>
           </div>
+        </div>
+
+        {/* epoch note under the section header */}
+        <p className="text-muted small mb-2">
+          MET seconds use a fixed epoch: 2001-01-01 00:00:00 TT
+        </p>
+
+        {/* Start */}
+        <label className="form-label fw-semibold">Observation Start</label>
+        <div className="row g-2 align-items-end form-row-tight mb-2">
+          {/* Date */}
+          <div className="col-6 col-md-2">
+            <div className="compact-date">
+              <DatePicker
+                selected={obsStartDateObj}
+                onChange={handleStartDateChange}
+                dateFormat="yyyy-MM-dd"
+                placeholderText="YYYY-MM-DD"
+                className="form-control form-control-sm"
+                wrapperClassName="w-100"
+                disabled={isSubmitting}
+                showMonthDropdown
+                showYearDropdown
+                dropdownMode="select"
+                popperPlacement="bottom-start"
+                popperProps={{
+                  strategy: 'fixed',
+                  middleware: [
+                    offset(8),
+                    flip({ fallbackPlacements: ['bottom-end', 'top-start', 'top-end'] }),
+                    shift({ padding: 8 }),
+                  ],
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Time */}
+          <div className="col-6 col-md-3">
+            <input
+              type="time"
+              step="1"
+              className="form-control form-control-sm input-monospace"
+              value={obsStartTime}
+              onChange={(e) => {
+                const v = e.target.value;
+                const [hh='00', mm='00', ss='00'] = v.split(':');
+                const norm = `${hh.padStart(2,'0')}:${mm.padStart(2,'0')}:${ss.padStart(2,'0')}`;
+                setObsStartTime(norm);
+                setTimeTouched(true);
+                setLastChangedType('start_dt');
+              }}
+              onFocus={() => setIsEditingStartTime(true)}
+              onBlur={() => { setIsEditingStartTime(false); setLastChangedType('start_dt'); }}
+              aria-label="Start time"
+              disabled={isSubmitting}
+            />
+          </div>
+
+          {/* MJD */}
+          <div className="col-12 col-md-4">
+            <div className="input-group input-group-sm">
+              <span className="input-group-text">MJD</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                className="form-control input-monospace"
+                placeholder="Start"
+                aria-label="Start MJD"
+                value={obsStartMJD}
+                onChange={handleStartMjdChange}
+                disabled={isSubmitting}
+                title={obsStartMJD}
+              />
+            </div>
+          </div>
+
+          {/* MET */}
+          <div className="col-12 col-md-3">
+            <div className="input-group input-group-sm">
+              <span className="input-group-text">MET</span>
+              <input
+                type="number"
+                className="form-control input-monospace"
+                placeholder="Start"
+                value={metStartSeconds}
+                onChange={handleMetStartChange}
+                disabled={isSubmitting}
+                title={String(metStartSeconds || '')}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* End */}
+        <label className="form-label fw-semibold">Observation End</label>
+        <div className="row g-2 align-items-end form-row-tight mb-2">
+          {/* Date */}
+          <div className="col-6 col-md-2">
+            <div className="compact-date">
+              <DatePicker
+                selected={obsEndDateObj}
+                onChange={handleEndDateChange}
+                dateFormat="yyyy-MM-dd"
+                placeholderText="YYYY-MM-DD"
+                className="form-control form-control-sm"
+                wrapperClassName="w-100"
+                disabled={isSubmitting}
+                showMonthDropdown
+                showYearDropdown
+                dropdownMode="select"
+                popperPlacement="bottom-start"
+                popperProps={{
+                  strategy: 'fixed',
+                  middleware: [
+                    offset(8),
+                    flip({ fallbackPlacements: ['bottom-end', 'top-start', 'top-end'] }),
+                    shift({ padding: 8 }),
+                  ],
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Time */}
+          <div className="col-6 col-md-3">
+            <input
+              type="time"
+              step="1"
+              className="form-control form-control-sm input-monospace"
+              value={obsEndTime}
+              onChange={(e) => {
+                const v = e.target.value;
+                const [hh='00', mm='00', ss='00'] = v.split(':');
+                const norm = `${hh.padStart(2,'0')}:${mm.padStart(2,'0')}:${ss.padStart(2,'0')}`;
+                setObsEndTime(norm);
+                setTimeTouched(true);
+                setLastChangedType('end_dt');
+              }}
+              onFocus={() => setIsEditingEndTime(true)}
+              onBlur={() => { setIsEditingEndTime(false); setLastChangedType('end_dt'); }}
+              aria-label="End time"
+              disabled={isSubmitting}
+            />
+          </div>
+
+          {/* MJD */}
+          <div className="col-12 col-md-4">
+            <div className="input-group input-group-sm">
+              <span className="input-group-text">MJD</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                className="form-control input-monospace"
+                placeholder="End"
+                aria-label="End MJD"
+                value={obsEndMJD}
+                onChange={handleEndMjdChange}
+                disabled={isSubmitting}
+                title={obsEndMJD}
+              />
+            </div>
+          </div>
+
+          {/* MET */}
+          <div className="col-12 col-md-3">
+            <div className="input-group input-group-sm">
+              <span className="input-group-text">MET</span>
+              <input
+                type="number"
+                className="form-control input-monospace"
+                placeholder="End"
+                value={metEndSeconds}
+                onChange={handleMetEndChange}
+                disabled={isSubmitting}
+                title={String(metEndSeconds || '')}
+              />
+            </div>
+          </div>
+        </div>
+
+          </div>
+        </div>
 
           {/* Advanced */}
           <div className="mb-3">
