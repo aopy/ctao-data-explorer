@@ -95,7 +95,7 @@ This project is a web application to access, visualize, and analyze data from th
        - **Time** (`HH:MM:SS`)
        - **MJD** — *Modified Julian Date*
        - **MET (s)** — *Mission Elapsed Time, seconds since the fixed CTAO reference epoch*
-       You may fill **any** of these; the others auto-fill and stay in sync.
+       - You may fill **any** of these; the others auto-fill and stay in sync.
      - **MET epoch (fixed):** `2001-01-01 00:00:00 TT`
    - Click **Search** to run or **Clear Form** to reset.  
    _Tip: you can use either position, time, or both._
