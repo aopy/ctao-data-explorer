@@ -4,19 +4,48 @@ All notable changes to **CTAO Data Explorer** are documented in this file.
 This file follows *Keep a Changelog* and uses *Semantic Versioning* git tags.
 
 ## [Unreleased]
+### Fixed
+- Search-form wording and style tweaks. ([9707309a] [f390a7ae])
+
+## [v0.8.0] – 2025-10-08
+### Added
+- **OPUS integration:** job-list tab, quick-look analysis, and per-job *Preview* button. ([47a13164] [d0f6e63a] [505f2933])
 
 ### Changed
-
-- Enable multi-selection in charts and sky map. ([61b837e]).
+- Use **application token** instead of user token when querying OPUS. ([c52362b1])
+- Refactor: move constants/defaults to `constants.py` and `config.py`. ([dd01094e])
+- Replace `print` with structured logging. ([150c61fa])
+- Deduplicate ADQL queries and tighten query logic. ([63db6c1a])
+- Remove separate “MET” time-system row; integrate MET fields into Start/End rows with fixed epoch. ([2d9fb6cb])
+- Search form: Time system and scale option for the MJD fields. [87f3af13]
 
 ### Fixed
+- Design issues in job-detail page and broken job-list fetch from OPUS. ([e4fe90ef] [c80f8b39])
+  
+### Removed
+- Local browser storage of jobs. ([80037df3])
+- References to deprecated `gammapy_maps` service. ([6078fced])
 
-- Basket: correct time‑zone shift in the basket tab. ([f1014ea]).
-- Auth/Session: fix logout; inform user when session expires. ([c07ab7d]).
+---
+
+## [v0.7.0] – 2025-08-07
+### Added
+- **MET time-system support** in search form; MET fields now persist across login. ([ec6dc47b] [8d67b024])
+- Unified **TT / UTC** time-system menu. ([d72d8bb8])
+- Toggle and grouped coordinate/time buttons. ([62e8a146])
+- Multi-item selection in maps and charts; bulk *Add to Basket*. ([61b837e2])
+- Default column set and column-toggle improvements in results table. ([1e1c25aa] [29eb58f8])
+
+### Changed
+- Date fields switched to **YYYY-MM-DD**; MJD labels indicate TT / UTC. ([6d5ca1da])
+- Documentation and changelog updates. ([d997c7f2])
+
+### Fixed
+- Time-shift error in Basket tab. ([f1014ea0])
+- Timeline chart TT issue. ([a95f485f])
 
 ### Removed
-
-- Remove old ADQL‑hash feature. ([4e1fde4]).
+- Obsolete **ADQL-hash** feature. ([4e1fde43])  
 
 ---
 
@@ -158,7 +187,9 @@ This file follows *Keep a Changelog* and uses *Semantic Versioning* git tags.
 - **Keep a Changelog** – <https://keepachangelog.com/en/1.1.0/>
 - **Semantic Versioning 2.0.0** – <https://semver.org/spec/v2.0.0.html>
 
-[Unreleased]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/v0.6.0...master
+[Unreleased]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/v0.8.0...master
+[v0.8.0]:    https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/v0.7.0...v0.8.0
+[v0.7.0]:    https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/v0.6.0...v0.7.0
 [v0.6.0]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/v0.5.0...v0.6.0
 [v0.5.0]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/v0.4.0...v0.5.0
 [v0.4.0]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/v0.3.0...v0.4.0
@@ -166,6 +197,36 @@ This file follows *Keep a Changelog* and uses *Semantic Versioning* git tags.
 [v0.2.0]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/v0.1.0...v0.2.0
 [v0.1.0]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/tags/v0.1.0
 
+[150c61fa]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/150c61fa
+[1e1c25aa]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/1e1c25aa
+[2511614c]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/2511614c
+[29eb58f8]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/29eb58f8
+[505f2933]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/505f2933
+[6078fced]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/6078fced
+[62e8a146]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/62e8a146
+[63db6c1a]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/63db6c1a
+[6d5ca1da]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/6d5ca1da
+[80037df3]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/80037df3
+[87f3af13]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/87f3af13
+[8b5ed6d0]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/8b5ed6d0
+[9707309a]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/9707309a
+[a95f485f]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/a95f485f
+[c52362b1]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/c52362b1
+[c80f8b39]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/c80f8b39
+[d0f6e63a]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/d0f6e63a
+[d72d8bb8]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/d72d8bb8
+[d997c7f2]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/d997c7f2
+[dd01094e]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/dd01094e
+[e4fe90ef]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/e4fe90ef
+[ec6dc47b]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/ec6dc47b
+[f390a7ae]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/f390a7ae
+[f781c818]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/f781c818
+[f1014ea0]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/f1014ea0
+[47a13164]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/47a13164
+[2d9fb6cb]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/2d9fb6cb
+[8d67b024]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/8d67b024
+[61b837e2]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/61b837e2
+[4e1fde43]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/4e1fde43
 [01a6827]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/01a6827
 [01e6001]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/01e6001
 [05a6924]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/05a6924
