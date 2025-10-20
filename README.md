@@ -1,6 +1,8 @@
 # CTAO Data Explorer
 
-This project is a web application to access, visualize, and analyze data from the **Cherenkov Telescope Array Observatory (CTAO)**. It combines a **React** frontend with a **FastAPI** backend. Users can search the archive, curate results, explore interactive visualizations, and submit selected items as preview jobs to the [OPUS](https://voparis-uws-test.obspm.fr/client/) service. The application adopts standards from the [International Virtual Observatory Alliance (IVOA)](https://ivoa.net/) to ensure interoperability and broad accessibility of astronomical data. 
+This project is a web application to access, visualize, and analyze data from the **Cherenkov Telescope Array Observatory (CTAO)**. It combines a **React** frontend with a **FastAPI** backend. Users can search the archive, curate results, explore interactive visualizations, and submit selected items as preview jobs to the [OPUS](https://voparis-uws-test.obspm.fr/client/) service. The application adopts standards from the [International Virtual Observatory Alliance (IVOA)](https://ivoa.net/) to ensure interoperability and broad accessibility of astronomical data.
+
+Documentation is available online at https://aopy.github.io/ctao-data-explorer/
 
 ## Table of Contents
 
