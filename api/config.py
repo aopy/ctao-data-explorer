@@ -56,6 +56,13 @@ class Settings(BaseSettings):
     OPUS_APP_TOKEN: str
     OPUS_APP_USER: str = "ctao"
 
+    # Metrics
+    METRICS_ENABLED: bool = False
+    METRICS_ROUTE: str = "/metrics"
+    METRICS_PROTECT_WITH_BASIC_AUTH: bool = False
+    METRICS_BASIC_USER: Optional[str] = None
+    METRICS_BASIC_PASS: Optional[str] = None
+
     @property
     def PRODUCTION(self) -> bool:
         return bool(self.BASE_URL)

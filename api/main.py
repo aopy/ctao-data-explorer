@@ -44,6 +44,7 @@ import astropy.units as u
 import logging
 from .config import get_settings
 from .logging_config import setup_logging
+from .metrics import setup_metrics
 from .constants import (
     COORD_SYS_EQ_DEG, COORD_SYS_EQ_HMS, COORD_SYS_GAL,
     COOKIE_NAME_MAIN_SESSION,
@@ -85,6 +86,17 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+@app.get("/health/live", include_in_schema=False)
+def live():
+    return {"status": "ok"}
+
+@app.get("/health/ready", include_in_schema=False)
+def ready():
+    # (optional) ping DB/Redis
+    return {"status": "ok"}
+
+setup_metrics(app)
 
 logger.info("API starting up")
 
