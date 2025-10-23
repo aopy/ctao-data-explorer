@@ -45,6 +45,8 @@ import logging
 from .config import get_settings
 from .logging_config import setup_logging
 from .metrics import setup_metrics
+import time
+from .metrics import vo_observe_call
 from .constants import (
     COORD_SYS_EQ_DEG, COORD_SYS_EQ_HMS, COORD_SYS_GAL,
     COOKIE_NAME_MAIN_SESSION,
@@ -210,6 +212,7 @@ async def _ned_resolve_via_objectlookup(name: str) -> Optional[Dict[str, Any]]:
     """
     form = {"json": json.dumps({"name": {"v": name}})}
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    t0 = time.perf_counter(); ok = False
     try:
         resp = await asyncio.to_thread(
             requests.post,
@@ -219,9 +222,12 @@ async def _ned_resolve_via_objectlookup(name: str) -> Optional[Dict[str, Any]]:
             timeout=5
         )
         resp.raise_for_status()
+        ok = True
     except Exception as e:
         logger.exception("NED ObjectLookup failed: %s", e)
         return None
+    finally:
+        vo_observe_call("ned-objectlookup", OBJECT_LOOKUP_URL, time.perf_counter() - t0, ok)
 
     obj = resp.json()
     if obj.get("ResultCode") == 3:
@@ -261,14 +267,19 @@ def _adql_escape(s: str) -> str:
     return s.replace("'", "''")
 
 def _run_tap_sync(url: str, adql: str, maxrec: int = 50):
-    r = requests.get(
-        url,
-        params=dict(QUERY=adql, LANG="ADQL", REQUEST="doQuery",
-                    FORMAT="votable", MAXREC=maxrec),
-        timeout=20,
-    )
-    r.raise_for_status()
-    return parse_single_table(BytesIO(r.content)).to_table()
+    t0 = time.perf_counter(); ok = False
+    try:
+        r = requests.get(
+            url,
+            params=dict(QUERY=adql, LANG="ADQL", REQUEST="doQuery",
+                        FORMAT="votable", MAXREC=maxrec),
+            timeout=20,
+        )
+        r.raise_for_status()
+        ok = True
+        return parse_single_table(BytesIO(r.content)).to_table()
+    finally:
+        vo_observe_call("simbad-tap", url, time.perf_counter() - t0, ok)
 
 async def _simbad_suggest(prefix: str, limit: int) -> list[dict]:
     q = prefix.strip()

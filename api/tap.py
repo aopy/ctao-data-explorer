@@ -5,6 +5,9 @@ import math
 from astropy.table import Table
 import traceback
 import logging
+import time
+from .metrics import vo_observe_call
+
 logger = logging.getLogger(__name__)
 
 
@@ -129,10 +132,14 @@ class Tap:
         """
         table = None
         exception = None
+        t0 = time.perf_counter(); ok = False
         try:
             table = self.conn.search(query)
+            ok = True
         except Exception as e:
             exception = e
+        finally:
+            vo_observe_call("tap", self.url, time.perf_counter() - t0, ok)
         return exception, table
 
 def astropy_table_to_list(table: Table | None):

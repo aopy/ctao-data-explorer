@@ -11,6 +11,8 @@ from urllib.parse import urlparse
 from .config import get_settings
 settings = get_settings()
 from .deps import get_current_user
+import time
+from api.metrics import opus_record_submit, opus_record_submit_failure, opus_observe_submit, vo_observe_call
 
 router = APIRouter(prefix="/api/opus", tags=["opus"])
 
@@ -126,33 +128,42 @@ async def create_job(params: QuickLookParams, user=Depends(get_current_user)):
         form["obsids"] = params.obsids
 
     create_url = _rest_url("rest", OPUS_SERVICE)
-    async with httpx.AsyncClient(follow_redirects=False, timeout=30) as client:
-        r = await client.post(create_url, data=form, headers=headers)
+    t0 = time.perf_counter(); ok = False
+    try:
+        async with httpx.AsyncClient(follow_redirects=False, timeout=30) as client:
+            r = await client.post(create_url, data=form, headers=headers)
 
-    if r.status_code not in (200, 201, 303):
-        raise HTTPException(r.status_code, r.text)
+        if r.status_code not in (200, 201, 303):
+            opus_record_submit_failure()
+            raise HTTPException(r.status_code, r.text)
 
-    location = r.headers.get("Location") or r.headers.get("location")
-    if not location:
-        data = _xml_to_json(r.text)
-        location = data.get("uws:job", {}).get("uws:jobId") or data.get("uws:jobId")
+        location = r.headers.get("Location") or r.headers.get("location")
         if not location:
-            raise HTTPException(502, "OPUS did not return job location")
+            data = _xml_to_json(r.text)
+            location = data.get("uws:job", {}).get("uws:jobId") or data.get("uws:jobId")
+            if not location:
+                opus_record_submit_failure()
+                raise HTTPException(502, "OPUS did not return job location")
 
-    if location.startswith("http"):
-        job_id = location.rstrip("/").split("/")[-1]
-        job_url = location
-    else:
-        job_id = location.strip("/")
-        job_url = _rest_url("rest", OPUS_SERVICE, job_id)
+        if location.startswith("http"):
+            job_id = location.rstrip("/").split("/")[-1]
+            job_url = location
+        else:
+            job_id = location.strip("/")
+            job_url = _rest_url("rest", OPUS_SERVICE, job_id)
 
-    run_url = _rest_url("rest", OPUS_SERVICE, job_id, "phase")
-    async with httpx.AsyncClient(timeout=30) as client:
-        r2 = await client.post(run_url, data={"PHASE": "RUN"}, headers=headers)
-    if r2.status_code not in (200, 303):
-        raise HTTPException(r2.status_code, f"Created {job_id} but failed to RUN: {r2.text}")
+        run_url = _rest_url("rest", OPUS_SERVICE, job_id, "phase")
+        async with httpx.AsyncClient(timeout=30) as client:
+            r2 = await client.post(run_url, data={"PHASE": "RUN"}, headers=headers)
+        if r2.status_code not in (200, 303):
+            raise HTTPException(r2.status_code, f"Created {job_id} but failed to RUN: {r2.text}")
 
-    return OpusJobCreateResponse(job_id=job_id, location=job_url)
+        ok = True
+        return OpusJobCreateResponse(job_id=job_id, location=job_url)
+    finally:
+        # observe total time for create+run
+        opus_observe_submit(time.perf_counter() - t0, ok)
+        vo_observe_call("opus-rest", create_url, time.perf_counter() - t0, ok)
 
 def _guess_preview_mime(name: str, rid: Optional[str]) -> str:
     rid_l = (rid or "").lower()

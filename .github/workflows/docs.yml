@@ -2,12 +2,21 @@ name: docs
 on:
   push:
     branches: [ master, main ]
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'requirements-docs.txt'
+      - '.github/workflows/docs.yml'
   workflow_dispatch:
 
 permissions:
   contents: write
   pages: write
   id-token: write
+
+concurrency:
+  group: docs-pages
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -20,8 +29,7 @@ jobs:
       - run: pip install mkdocs-material pymdown-extensions
       - run: mkdocs build --strict --site-dir site
       - uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
+        with: { path: site }
 
   deploy:
     needs: build
