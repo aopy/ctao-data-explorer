@@ -11,6 +11,7 @@ import EmRangeChart from './components/EmRangeChart';
 import BasketPage from './components/BasketPage';
 import UserProfilePage from './components/UserProfilePage';
 import QueryStorePage from './components/QueryStorePage';
+import Header from './components/Header';
 import { API_PREFIX } from './index';
 import {
   launchOidcLogin,
@@ -347,40 +348,17 @@ function TabsApp() {
   const lastOpus = localStorage.getItem("lastOpusJobId");
 
   return (
-    <div className="container-fluid p-3">
+    <>
       {/* Top Navbar */}
-      <div className="d-flex justify-content-between mb-2">
-        <h2>CTAO Data Explorer</h2>
-        <div>
-          {/* isLoggedIn flag */}
-          {isLoggedIn && user ? (
-              <>
-                <span className="me-3 text-success">
-                  Logged in as {user.first_name ? `${user.first_name}` : (user.email || `User ID: ${user.id}`)}
-                </span>
-
-                {lastOpus && (
-                  <a className="btn btn-outline-info me-2"
-                     href={`#/opus/jobs/${encodeURIComponent(lastOpus)}`}>
-                    Last Preview Job
-                  </a>
-                )}
-
-                <button
-                  className="btn btn-outline-secondary me-2"
-                  onClick={() => setActiveTab('profile')}
-                >
-                  Profile
-                </button>
-                <button className="btn btn-outline-danger" onClick={handleLogout}>Logout</button>
-              </>
-            ) : (
-              <button className="btn btn-outline-primary" type="button" onClick={handleLogin}>
-                Login
-              </button>
-            )}
-        </div>
-      </div>
+      <Header
+        isLoggedIn={!!user}
+        user={user}
+        lastOpus={lastOpus}
+        onLogin={handleLogin}
+        onLogout={handleLogout}
+        onNavigate={setActiveTab}
+      />
+      <div className="app-shell container-fluid p-3">
 
       {/* Tab Navigation */}
       <ul className="nav nav-tabs" role="tablist">
@@ -538,6 +516,7 @@ function TabsApp() {
        {/* isLoggedIn */}
       <BasketItemModal show={showBasketModal} onClose={closeBasketModal} basketItem={basketModalItem} />
     </div>
+    </>
   );
 }
 
