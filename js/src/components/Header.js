@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import ctaoLogo from "../assets/ctao-logo.png";
+import ctaoLogo from "../assets/ctao-logo.svg";
 
 export default function Header({
   isLoggedIn,
