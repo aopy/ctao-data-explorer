@@ -46,7 +46,7 @@ from .config import get_settings
 from .logging_config import setup_logging
 from .metrics import setup_metrics
 import time
-from .metrics import vo_observe_call
+from .metrics import vo_observe_call, cache_hit, cache_miss, observe_redis
 from .constants import (
     COORD_SYS_EQ_DEG, COORD_SYS_EQ_HMS, COORD_SYS_GAL,
     COOKIE_NAME_MAIN_SESSION,
@@ -395,9 +395,15 @@ async def object_suggest(
 
     cache_key = f"suggest:{q.lower()}:{use_simbad}:{use_ned}:{limit}"
     if hasattr(app.state, "redis"):
+        t0 = time.perf_counter(); ok = False
         cached = await app.state.redis.get(cache_key)
+        ok = True
+        observe_redis("get", time.perf_counter() - t0, ok)
         if cached:
+            cache_hit("suggest")
             return json.loads(cached.decode() if isinstance(cached, bytes) else cached)
+        else:
+            cache_miss("suggest")
 
     tasks = []
     if use_simbad:
@@ -427,7 +433,10 @@ async def object_suggest(
 
     # store in redis for 24 h
     if hasattr(app.state, "redis"):
+        t0 = time.perf_counter(); ok = False
         await app.state.redis.set(cache_key, json.dumps({"results": results}), ex=86400)
+        ok = True
+        observe_redis("set", time.perf_counter() - t0, ok)
 
     return {"results": results}
 
@@ -582,9 +591,15 @@ async def search_coords(
     cache_key = "search:" + hashlib.sha256(adql_query_str.encode()).hexdigest()
 
     if redis:
+        t0 = time.perf_counter(); ok = False
         cached = await redis.get(cache_key)
+        ok = True
+        observe_redis("get", time.perf_counter() - t0, ok)
         if cached:
+            cache_hit("search")
             return SearchResult.model_validate_json(cached)
+        else:
+            cache_miss("search")
 
     try:
         error, res_table, adql_query_str = perform_query_with_conditions(fields, where_conditions, limit=100)
@@ -652,11 +667,14 @@ async def search_coords(
             # print(f"DEBUG search_coords: SearchResult RECREATED with datalink.")
 
             if redis:
+                t0 = time.perf_counter(); ok = False
                 await redis.set(
                     cache_key,
                     search_result_obj.model_dump_json(),
                     ex=CACHE_TTL
                 )
+                ok = True
+                observe_redis("set", time.perf_counter() - t0, ok)
             else:
                 logger.info("Redis client was None; skipping cache")
 

@@ -76,3 +76,20 @@ def vo_observe_call(service: str, url_or_host: str, seconds: float, ok: bool):
     _vo_req_dur.labels(service=service, host=host).observe(seconds)
     if not ok:
         _vo_req_fail.labels(service=service, host=host).inc()
+
+_cache_hits = Counter("cache_hits_total", "Cache hits", ["cache"])
+_cache_misses = Counter("cache_misses_total", "Cache misses", ["cache"])
+
+_redis_op_dur = Histogram(
+    "redis_op_duration_seconds", "Redis operation latency (s)", ["op"],
+    buckets=(0.001,0.005,0.01,0.02,0.05,0.1,0.2,0.5,1)
+)
+_redis_op_fail = Counter("redis_op_failures_total", "Redis operation failures", ["op"])
+
+def cache_hit(cache: str):   _cache_hits.labels(cache=cache).inc()
+def cache_miss(cache: str):  _cache_misses.labels(cache=cache).inc()
+
+def observe_redis(op: str, seconds: float, ok: bool):
+    _redis_op_dur.labels(op=op).observe(seconds)
+    if not ok: _redis_op_fail.labels(op=op).inc()
+
