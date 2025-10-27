@@ -78,3 +78,21 @@
 .react-datepicker__month-container {
   width: 15rem;
 }
+
+/* Sticky sub-navigation below the fixed header */
+.subnav {
+  position: sticky;
+  top: var(--app-header-height);
+  z-index: 1029;
+  background-color: #fff;
+  border-bottom: 1px solid rgba(0,0,0,.1);
+}
+
+/* Make tabs scrollable horizontally on small screens */
+.nav-tabs-overflow {
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+}
+.nav-tabs-overflow .nav-link { white-space: nowrap; }

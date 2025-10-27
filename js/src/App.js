@@ -361,36 +361,32 @@ function TabsApp() {
       <div className="app-shell container-fluid p-3">
 
       {/* Tab Navigation */}
-      <ul className="nav nav-tabs" role="tablist">
-        <li className="nav-item">
-          <button className={`nav-link ${activeTab==='search'?'active':''}`} onClick={() => setActiveTab('search')} type="button">Search</button>
-        </li>
-        <li className="nav-item">
-          <button className={`nav-link ${activeTab==='results'?'active':''}`} onClick={() => setActiveTab('results')} type="button" disabled={!results}>Results</button>
-        </li>
-        {isLoggedIn && ( // Show basket/history only if logged in
+      <div className="subnav sticky-top">
+        <ul className="nav nav-tabs nav-tabs-overflow" role="tablist">
+          <li className="nav-item">
+            <button className={`nav-link ${activeTab==='search'?'active':''}`} onClick={() => setActiveTab('search')} type="button">Search</button>
+          </li>
+          <li className="nav-item">
+            <button className={`nav-link ${activeTab==='results'?'active':''}`} onClick={() => setActiveTab('results')} type="button" disabled={!results}>Results</button>
+          </li>
+          {isLoggedIn && (
             <>
-        <li className="nav-item">
-          <button className={`nav-link ${activeTab==='basket'?'active':''}`} onClick={() => setActiveTab('basket')} type="button">My Basket</button>
-        </li>
-        <li className="nav-item">
-          <button
-            className={`nav-link ${activeTab==='opusJobs'?'active':''}`}
-            onClick={() => setActiveTab('opusJobs')}
-            type="button"
-          >
-            Preview Jobs
-          </button>
-        </li>
-        <li className="nav-item">
-        <button className={`nav-link ${activeTab==='queryStore'?'active':''}`} onClick={() => setActiveTab('queryStore')} type="button">Query Store</button>
-        </li>
-        <li className="nav-item">
-        <button className={`nav-link ${activeTab==='profile'?'active':''}`} onClick={() => setActiveTab('profile')} type="button">Profile</button>
-        </li>
-        </>
-        )}
-      </ul>
+              <li className="nav-item">
+                <button className={`nav-link ${activeTab==='basket'?'active':''}`} onClick={() => setActiveTab('basket')} type="button">My Basket</button>
+              </li>
+              <li className="nav-item">
+                <button className={`nav-link ${activeTab==='opusJobs'?'active':''}`} onClick={() => setActiveTab('opusJobs')} type="button">Preview Jobs</button>
+              </li>
+              <li className="nav-item">
+                <button className={`nav-link ${activeTab==='queryStore'?'active':''}`} onClick={() => setActiveTab('queryStore')} type="button">Query Store</button>
+              </li>
+              <li className="nav-item">
+                <button className={`nav-link ${activeTab==='profile'?'active':''}`} onClick={() => setActiveTab('profile')} type="button">Profile</button>
+              </li>
+            </>
+          )}
+        </ul>
+      </div>
 
       {/* Tab Content */}
       <div className="tab-content mt-3">
