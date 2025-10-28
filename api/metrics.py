@@ -57,6 +57,46 @@ def opus_observe_submit(seconds: float, ok: bool):
     _opus_submit_request_seconds.observe(seconds)
     # failures are counted separately via opus_record_submit_failure
 
+# OPUS job outcomes
+
+# Count jobs that ended COMPLETED vs ERROR/FAILED/ABORTED
+_opus_job_completed = Counter(
+    "opus_job_completed_total",
+    "OPUS jobs that reached COMPLETED",
+    ["service"],
+)
+_opus_job_failed = Counter(
+    "opus_job_failures_total",
+    "OPUS jobs that ended in ERROR/FAILED/ABORTED",
+    ["service"],
+)
+
+async def opus_record_job_outcome_once(service: str, job_id: str, phase: str, redis=None, ttl_seconds: int = 86400):
+    """
+    Increment outcome counters once per (job_id, phase). If a Redis client is
+    provided (app.state.redis), we use it to ensure we don't double count
+    the same job on repeated polls of /jobs or /jobs/{id}.
+    """
+    phase_u = (phase or "").upper()
+    if phase_u not in ("COMPLETED", "ERROR", "FAILED", "ABORTED"):
+        return
+
+    # De-dup with Redis if available
+    if redis is not None:
+        try:
+            key = f"metrics:opus_outcome:{job_id}:{phase_u}"
+            # set if not exists, with TTL
+            ok = await redis.set(key, "1", nx=True, ex=ttl_seconds)
+            if not ok:
+                return
+        except Exception:
+            pass
+
+    if phase_u == "COMPLETED":
+        _opus_job_completed.labels(service=service).inc()
+    else:
+        _opus_job_failed.labels(service=service).inc()
+
 # VO upstreams (TAP, SIMBAD/NED helpers, etc.)
 _vo_req_dur = Histogram(
     "vo_request_duration_seconds", "VO upstream call duration (s)",

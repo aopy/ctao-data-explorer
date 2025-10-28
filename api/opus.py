@@ -12,7 +12,12 @@ from .config import get_settings
 settings = get_settings()
 from .deps import get_current_user
 import time
-from api.metrics import opus_record_submit, opus_record_submit_failure, opus_observe_submit, vo_observe_call
+from .metrics import (
+    opus_record_submit,
+    opus_record_submit_failure,
+    opus_observe_submit,
+    opus_record_job_outcome_once,
+)
 
 router = APIRouter(prefix="/api/opus", tags=["opus"])
 
@@ -39,6 +44,22 @@ def _basic_headers(user_id: str) -> Dict[str, str]:
         raise HTTPException(500, "OPUS_APP_TOKEN is not configured on the server")
     token = base64.b64encode(f"{user_id}:{OPUS_APP_TOKEN}".encode()).decode()
     return {"Authorization": f"Basic {token}"}
+
+def _extract_phase_from_doc(doc: dict) -> str | None:
+    j = doc.get("uws:job") or doc.get("job") or doc
+    if not isinstance(j, dict):
+        return None
+    phase = j.get("uws:phase") or j.get("phase")
+    if isinstance(phase, dict):
+        phase = phase.get("#text")
+    return phase
+
+def _extract_job_id_from_doc(doc: dict) -> str | None:
+    j = doc.get("uws:job") or doc.get("job") or doc
+    if not isinstance(j, dict):
+        return None
+    jid = j.get("uws:jobId") or j.get("jobId")
+    return jid
 
 # Schemas
 class QuickLookParams(BaseModel):
@@ -67,7 +88,7 @@ async def debug_base(user=Depends(get_current_user)):
 
 # Jobs
 @router.get("/jobs")
-async def list_jobs(user=Depends(get_current_user)):
+async def list_jobs(request: Request, user=Depends(get_current_user)):
     uid = getattr(user, "iam_subject_id", None) if not isinstance(user, dict) else user.get("iam_subject_id")
     if not uid:
         raise HTTPException(401, "Not authenticated")
@@ -78,10 +99,27 @@ async def list_jobs(user=Depends(get_current_user)):
         r = await client.get(url, headers=headers, params={"LAST": "50"})
     if r.status_code >= 400:
         raise HTTPException(r.status_code, r.text)
-    return _xml_to_json(r.text)
+
+    data = _xml_to_json(r.text)
+    redis = getattr(request.app.state, "redis", None)
+
+    root = data.get("uws:jobs") or data.get("jobs") or {}
+    jobrefs = root.get("uws:jobref") or root.get("jobref") or []
+    if isinstance(jobrefs, dict):
+        jobrefs = [jobrefs]
+
+    for ref in jobrefs:
+        if not isinstance(ref, dict):
+            continue
+        jid = ref.get("uws:jobId") or ref.get("jobId") or ref.get("@id")
+        phase = ref.get("uws:phase") or ref.get("phase") or ""
+        if jid and phase:
+            await opus_record_job_outcome_once(OPUS_SERVICE, jid, phase, redis=redis)
+
+    return data
 
 @router.get("/jobs/{job_id}")
-async def get_job(job_id: str, user=Depends(get_current_user)):
+async def get_job(job_id: str, request: Request, user=Depends(get_current_user)):
     uid = getattr(user, "iam_subject_id", None) if not isinstance(user, dict) else user.get("iam_subject_id")
     if not uid:
         raise HTTPException(401, "Not authenticated")
@@ -92,7 +130,15 @@ async def get_job(job_id: str, user=Depends(get_current_user)):
         r = await client.get(url, headers=headers)
     if r.status_code >= 400:
         raise HTTPException(r.status_code, r.text)
-    return _xml_to_json(r.text)
+
+    data = _xml_to_json(r.text)
+
+    # Record terminal outcome once (COMPLETED / ERROR / FAILED / ABORTED)
+    redis = getattr(request.app.state, "redis", None)
+    phase = _extract_phase_from_doc(data) or ""
+    await opus_record_job_outcome_once(OPUS_SERVICE, job_id, phase, redis=redis)
+
+    return data
 
 @router.get("/jobs/{job_id}/results")
 async def list_results(job_id: str, user=Depends(get_current_user)):
@@ -128,12 +174,14 @@ async def create_job(params: QuickLookParams, user=Depends(get_current_user)):
         form["obsids"] = params.obsids
 
     create_url = _rest_url("rest", OPUS_SERVICE)
-    t0 = time.perf_counter(); ok = False
+    t0 = time.perf_counter()
     try:
         async with httpx.AsyncClient(follow_redirects=False, timeout=30) as client:
             r = await client.post(create_url, data=form, headers=headers)
 
         if r.status_code not in (200, 201, 303):
+            dt = time.perf_counter() - t0
+            opus_observe_submit(dt, ok=False)
             opus_record_submit_failure()
             raise HTTPException(r.status_code, r.text)
 
@@ -142,6 +190,8 @@ async def create_job(params: QuickLookParams, user=Depends(get_current_user)):
             data = _xml_to_json(r.text)
             location = data.get("uws:job", {}).get("uws:jobId") or data.get("uws:jobId")
             if not location:
+                dt = time.perf_counter() - t0
+                opus_observe_submit(dt, ok=False)
                 opus_record_submit_failure()
                 raise HTTPException(502, "OPUS did not return job location")
 
@@ -156,14 +206,26 @@ async def create_job(params: QuickLookParams, user=Depends(get_current_user)):
         async with httpx.AsyncClient(timeout=30) as client:
             r2 = await client.post(run_url, data={"PHASE": "RUN"}, headers=headers)
         if r2.status_code not in (200, 303):
+            dt = time.perf_counter() - t0
+            opus_observe_submit(dt, ok=False)
+            opus_record_submit_failure()
             raise HTTPException(r2.status_code, f"Created {job_id} but failed to RUN: {r2.text}")
 
-        ok = True
-        return OpusJobCreateResponse(job_id=job_id, location=job_url)
-    finally:
-        # observe total time for create+run
-        opus_observe_submit(time.perf_counter() - t0, ok)
-        vo_observe_call("opus-rest", create_url, time.perf_counter() - t0, ok)
+    except Exception:
+        # record failure for any exception path
+        if 't0' in locals():
+            dt = time.perf_counter() - t0
+            opus_observe_submit(dt, ok=False)
+        opus_record_submit_failure()
+        raise
+
+    # success path: record once after CREATE+RUN finished
+    dt = time.perf_counter() - t0
+    opus_observe_submit(dt, ok=True)
+    opus_record_submit()
+
+    return OpusJobCreateResponse(job_id=job_id, location=job_url)
+
 
 def _guess_preview_mime(name: str, rid: Optional[str]) -> str:
     rid_l = (rid or "").lower()
