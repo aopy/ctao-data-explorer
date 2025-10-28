@@ -71,28 +71,29 @@ _opus_job_failed = Counter(
     ["service"],
 )
 
-async def opus_record_job_outcome_once(service: str, job_id: str, phase: str, redis=None, ttl_seconds: int = 86400):
+async def opus_record_job_outcome_once(redis, job_id: str, phase: str, service: str):
     """
     Increment outcome counters once per (job_id, phase). If a Redis client is
     provided (app.state.redis), we use it to ensure we don't double count
     the same job on repeated polls of /jobs or /jobs/{id}.
     """
-    phase_u = (phase or "").upper()
-    if phase_u not in ("COMPLETED", "ERROR", "FAILED", "ABORTED"):
+    phase = (phase or "").upper()
+    if phase not in ("COMPLETED","ERROR","FAILED","ABORTED"):
         return
+    key = f"metrics:opus:outcome:{job_id}:{phase}"
+    wrote = True
 
     # De-dup with Redis if available
-    if redis is not None:
+    if redis:
         try:
-            key = f"metrics:opus_outcome:{job_id}:{phase_u}"
-            # set if not exists, with TTL
-            ok = await redis.set(key, "1", nx=True, ex=ttl_seconds)
-            if not ok:
-                return
+            # only first time returns True
+            wrote = await redis.set(key, "1", ex=60 * 60 * 24 * 90, nx=True)
         except Exception:
-            pass
+            wrote = True  # fall through (don’t lose the count)
+    if not wrote:
+        return
 
-    if phase_u == "COMPLETED":
+    if phase == "COMPLETED":
         _opus_job_completed.labels(service=service).inc()
     else:
         _opus_job_failed.labels(service=service).inc()

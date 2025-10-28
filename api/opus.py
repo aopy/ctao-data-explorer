@@ -114,7 +114,12 @@ async def list_jobs(request: Request, user=Depends(get_current_user)):
         jid = ref.get("uws:jobId") or ref.get("jobId") or ref.get("@id")
         phase = ref.get("uws:phase") or ref.get("phase") or ""
         if jid and phase:
-            await opus_record_job_outcome_once(OPUS_SERVICE, jid, phase, redis=redis)
+            await opus_record_job_outcome_once(
+                request.app.state.redis,
+                job_id=jid,
+                phase=phase,
+                service=OPUS_SERVICE,
+            )
 
     return data
 
@@ -134,9 +139,13 @@ async def get_job(job_id: str, request: Request, user=Depends(get_current_user))
     data = _xml_to_json(r.text)
 
     # Record terminal outcome once (COMPLETED / ERROR / FAILED / ABORTED)
-    redis = getattr(request.app.state, "redis", None)
     phase = _extract_phase_from_doc(data) or ""
-    await opus_record_job_outcome_once(OPUS_SERVICE, job_id, phase, redis=redis)
+    await opus_record_job_outcome_once(
+        request.app.state.redis,
+        job_id=job_id,
+        phase=phase,
+        service=OPUS_SERVICE,
+    )
 
     return data
 
