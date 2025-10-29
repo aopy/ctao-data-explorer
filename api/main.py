@@ -29,7 +29,6 @@ from typing import Dict, Any, List
 import asyncio, re, json
 from io import BytesIO
 import requests
-from astropy.io.votable import parse_single_table
 from .db import get_redis_pool
 from .auth import router as auth_api_router
 from .oidc import oidc_router
@@ -39,18 +38,27 @@ import itertools
 import hashlib
 from pydantic import BaseModel
 from typing import Literal, Optional
-from astropy.time import Time
 import astropy.units as u
 import logging
 from .config import get_settings
 from .logging_config import setup_logging
 from .metrics import setup_metrics
 import time
+import os
+import redis.asyncio as redis
+import inspect
 from .metrics import vo_observe_call, cache_hit, cache_miss, observe_redis
 from .constants import (
     COORD_SYS_EQ_DEG, COORD_SYS_EQ_HMS, COORD_SYS_GAL,
     COOKIE_NAME_MAIN_SESSION,
 )
+
+COORD_SYS_ALIASES = {
+    "eq_deg": COORD_SYS_EQ_DEG,
+    "eq_hms": COORD_SYS_EQ_HMS,
+    "hmsdms": COORD_SYS_EQ_HMS,
+    "gal":    COORD_SYS_GAL,
+}
 
 settings = get_settings()
 
@@ -70,15 +78,43 @@ cookie_params = settings.cookie_params
 # App Event Handlers for Redis Pool
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    import redis.asyncio as redis
-    pool = await get_redis_pool()
-    app.state.redis = redis.Redis(connection_pool=pool)
-    logger.info("Redis pool initialised.")
+    logger.info("API starting up")
+    testing = (
+        os.getenv("TESTING", "").lower() in ("1", "true", "yes", "on")
+        or "PYTEST_CURRENT_TEST" in os.environ
+    )
+
+    pool = None
+    if testing:
+        from .tests.fakeredis import FakeRedis
+        app.state.redis = FakeRedis()
+        logger.info("Using in-memory FakeRedis for tests.")
+    else:
+        # Centralised pool config
+        pool = await get_redis_pool()
+        app.state.redis = redis.Redis(connection_pool=pool, decode_responses=True)
+        logger.info("Redis pool initialised.")
+
+        # direct client without helper
+        # app.state.redis = redis.from_url(settings.REDIS_URL, decode_responses=True)
     try:
         yield
     finally:
-        await app.state.redis.close()
-        await pool.disconnect()
+        r = getattr(app.state, "redis", None)
+        if r is not None:
+            try:
+                close = getattr(r, "close", None) or getattr(r, "aclose", None)
+                if callable(close):
+                    maybe = close()
+                    if inspect.isawaitable(maybe):
+                        await maybe
+            except RuntimeError:
+                logger.warning("Loop closed while closing redis client; ignoring.")
+        if pool is not None:
+            try:
+                await pool.disconnect()
+            except RuntimeError:
+                logger.warning("Loop closed while disconnecting redis pool; ignoring.")
         logger.info("Redis pool closed.")
 
 
@@ -463,7 +499,7 @@ async def search_coords(
     # Auth
     user_session_data: Optional[Dict[str, Any]] = Depends(get_optional_session_user),
 ):
-    redis = getattr(app.state, "redis", None)
+    redis_client = getattr(app.state, "redis", None)
     CACHE_TTL = 3600
 
     base_api_url = f"{request.url.scheme}://{request.headers['host']}"
@@ -474,6 +510,9 @@ async def search_coords(
         'obscore_table': {'value': obscore_table},
         'search_radius': {'value': search_radius}
     }
+
+    coordinate_system = COORD_SYS_ALIASES.get(coordinate_system, coordinate_system)
+
     coords_present = False
     time_filter_present = False
 
@@ -545,7 +584,7 @@ async def search_coords(
             fields['target_raj2000'] = {'value': ra}
             fields['target_dej2000'] = {'value': dec}
             coords_present = True
-            logger.debug("search_coords: Galactic coords processed and converted. L=%s, B=%s", l, b)
+            logger.debug("search_coords: Equatorial coords received RA=%s, Dec=%s", ra, dec)
     elif coordinate_system == COORD_SYS_GAL:
         if l is not None and b is not None:
             try:
@@ -590,9 +629,9 @@ async def search_coords(
 
     cache_key = "search:" + hashlib.sha256(adql_query_str.encode()).hexdigest()
 
-    if redis:
+    if redis_client:
         t0 = time.perf_counter(); ok = False
-        cached = await redis.get(cache_key)
+        cached = await redis_client.get(cache_key)
         ok = True
         observe_redis("get", time.perf_counter() - t0, ok)
         if cached:
@@ -666,9 +705,9 @@ async def search_coords(
             search_result_obj = SearchResult(columns=columns_with_datalink, data=data_with_datalink)
             # print(f"DEBUG search_coords: SearchResult RECREATED with datalink.")
 
-            if redis:
+            if redis_client:
                 t0 = time.perf_counter(); ok = False
-                await redis.set(
+                await redis_client.set(
                     cache_key,
                     search_result_obj.model_dump_json(),
                     ex=CACHE_TTL
@@ -826,7 +865,7 @@ def _run_ned_sync_query(adql_query):
 
     out = []
     try:
-        r = requests.get(url, params=params)
+        r = requests.get(url, params=params, timeout=20)
         r.raise_for_status()
 
         votable_buf = BytesIO(r.content)
