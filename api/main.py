@@ -46,6 +46,8 @@ from .metrics import setup_metrics
 import time
 import os
 import redis.asyncio as redis
+from sqlalchemy.ext.asyncio import AsyncSession
+from .db import get_async_session
 import inspect
 from .metrics import vo_observe_call, cache_hit, cache_miss, observe_redis
 from .constants import (
@@ -498,6 +500,7 @@ async def search_coords(
     obscore_table: str = settings.DEFAULT_OBSCORE_TABLE,
     # Auth
     user_session_data: Optional[Dict[str, Any]] = Depends(get_optional_session_user),
+    db_session: AsyncSession = Depends(get_async_session),
 ):
     redis_client = getattr(app.state, "redis", None)
     CACHE_TTL = 3600
@@ -745,12 +748,11 @@ async def search_coords(
                         query_params=params_to_save,
                         results=search_result_obj.model_dump()
                     )
-                    async with AsyncSessionLocal() as history_session:
-                        await _internal_create_query_history(
-                            history=history_payload,
-                            app_user_id=app_user_id,
-                            session=history_session
-                        )
+                    await _internal_create_query_history(
+                        history=history_payload,
+                        app_user_id=app_user_id,
+                        session=db_session,
+                    )
                     logger.debug("Called create_query_history for user app_id=%s", app_user_id)
                 except Exception as history_error:
                     logger.error("saving query history for user app_id=%s: %s.",

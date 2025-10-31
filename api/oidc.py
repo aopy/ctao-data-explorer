@@ -58,17 +58,21 @@ async def auth_callback(
 
     iam_subject_id = userinfo['sub']
     email = userinfo.get('email')
-    full_name_from_iam = userinfo.get('name')
-    given_name_to_store = None
-    family_name_to_store = None
+    # full_name_from_iam = userinfo.get('name')
+    given_name_to_store = userinfo.get('given_name')
+    family_name_to_store = userinfo.get('family_name')
+    # given_name_to_store = None
+    # family_name_to_store = None
 
-    if full_name_from_iam and isinstance(full_name_from_iam, str):
-        name_parts = full_name_from_iam.strip().split(' ', 1)
-        given_name_to_store = name_parts[0]
-        if len(name_parts) > 1:
-            family_name_to_store = name_parts[1]
-        else:
-            family_name_to_store = ""
+    if not (given_name_to_store and family_name_to_store):
+        full_name_from_iam = userinfo.get('name')
+        if full_name_from_iam and isinstance(full_name_from_iam, str):
+            parts = full_name_from_iam.strip().split(' ', 1)
+            given_name_to_store = given_name_to_store or parts[0]
+            if len(parts) > 1:
+                family_name_to_store = family_name_to_store or parts[1]
+            else:
+                family_name_to_store = family_name_to_store or ""
     # print(f"DEBUG OIDC Callback: UserInfo from IAM: {userinfo}")
     # print(f"DEBUG OIDC Callback: Parsed given_name: {given_name_to_store}, family_name: {family_name_to_store}")
 
