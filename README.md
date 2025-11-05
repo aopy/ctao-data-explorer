@@ -1,6 +1,6 @@
 # CTAO Data Explorer
 
-This project is a web application to access, visualize, and analyze data from the **Cherenkov Telescope Array Observatory (CTAO)**. It combines a **React** frontend with a **FastAPI** backend. Users can search the archive, curate results, explore interactive visualizations, and submit selected items as preview jobs to the [OPUS](https://voparis-uws-test.obspm.fr/client/) service. The application adopts standards from the [International Virtual Observatory Alliance (IVOA)](https://ivoa.net/) to ensure interoperability and broad accessibility of astronomical data.
+This project is a web application to access, visualize, and analyze Cherenkov data, in the perspective of the **Cherenkov Telescope Array Observatory (CTAO)**. It combines a **React** frontend with a **FastAPI** backend. Users can search the archive, curate results, explore interactive visualizations, and submit selected items as preview jobs to the [OPUS](https://voparis-uws-test.obspm.fr/client/) service. The application adopts standards from the [International Virtual Observatory Alliance (IVOA)](https://ivoa.net/) to ensure interoperability and broad accessibility of astronomical data.
 
 Documentation is available online at https://aopy.github.io/ctao-data-explorer/
 
@@ -16,7 +16,7 @@ Documentation is available online at https://aopy.github.io/ctao-data-explorer/
 
 ## Features
 
-- Query CTAO data with flexible, customizable parameters.
+- Query data with flexible, customizable parameters.
 - Display results in a selectable data table.
 - Explore selections on an interactive sky map and a timeline/electromagnetic-spectrum chart.
 - Sign in with CTAO IAM.
@@ -86,7 +86,11 @@ Documentation is available online at https://aopy.github.io/ctao-data-explorer/
    ```
 ## Usage
 
-1. **Open the site**  
+> **Warning**  
+> This deployment is hosted by the Paris Astronomical Data Center (PADC).  
+> It is not the official production server; features and APIs may change.
+
+1. **Open the site:**  
    <https://padc-ctao-data-explorer.obspm.fr/> → you land on **Search**.
 
 2. **Build a query (Search page)**
@@ -118,5 +122,5 @@ Documentation is available online at https://aopy.github.io/ctao-data-explorer/
 
 # About CTAO
 
-The Cherenkov Telescope Array Observatory (CTAO) is a ground-based observatory for gamma-ray astronomy. This project interacts with CTAO data to provide users with tools for visualization and analysis, enhancing the accessibility and understanding of gamma-ray observations.
+The Cherenkov Telescope Array Observatory (CTAO) is a ground-based observatory for gamma-ray astronomy. This project will interact with CTAO data to provide users with tools for visualization and analysis, enhancing the accessibility and understanding of gamma-ray observations.
 - [CTAO website](https://www.ctao.org/)
