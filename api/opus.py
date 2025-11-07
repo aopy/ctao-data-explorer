@@ -12,6 +12,7 @@ from .config import get_settings
 settings = get_settings()
 from .deps import get_current_user
 import time
+from datetime import datetime, timedelta, timezone
 from .metrics import (
     opus_record_submit,
     opus_record_submit_failure,
@@ -88,38 +89,62 @@ async def debug_base(user=Depends(get_current_user)):
 
 # Jobs
 @router.get("/jobs")
-async def list_jobs(request: Request, user=Depends(get_current_user)):
+async def list_jobs(
+    request: Request,
+    user=Depends(get_current_user),
+    days: int = 30  # how far back to look
+):
     uid = getattr(user, "iam_subject_id", None) if not isinstance(user, dict) else user.get("iam_subject_id")
     if not uid:
         raise HTTPException(401, "Not authenticated")
     headers = _basic_headers(uid)
+    headers.update({
+        "Accept": "application/xml",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+    })
+
+    phases = ["PENDING", "QUEUED", "EXECUTING", "SUSPENDED", "HELD", "COMPLETED", "ERROR", "ABORTED", "ARCHIVED"]
+    after_dt = datetime.now(timezone.utc) - timedelta(days=max(1, days))
+    after_iso = after_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+    params = [("AFTER", after_iso), ("_ts", str(time.time()))] + [("PHASE", p) for p in phases]
 
     url = _rest_url("rest", OPUS_SERVICE)
     async with httpx.AsyncClient(timeout=30) as client:
-        r = await client.get(url, headers=headers, params={"LAST": "50"})
+        r = await client.get(url, headers=headers, params=params)
     if r.status_code >= 400:
         raise HTTPException(r.status_code, r.text)
 
     data = _xml_to_json(r.text)
-    redis = getattr(request.app.state, "redis", None)
+    redis_client = getattr(request.app.state, "redis", None)
 
     root = data.get("uws:jobs") or data.get("jobs") or {}
     jobrefs = root.get("uws:jobref") or root.get("jobref") or []
     if isinstance(jobrefs, dict):
         jobrefs = [jobrefs]
 
-    for ref in jobrefs:
-        if not isinstance(ref, dict):
-            continue
-        jid = ref.get("uws:jobId") or ref.get("jobId") or ref.get("@id")
-        phase = ref.get("uws:phase") or ref.get("phase") or ""
-        if jid and phase:
-            await opus_record_job_outcome_once(
-                request.app.state.redis,
-                job_id=jid,
-                phase=phase,
-                service=OPUS_SERVICE,
-            )
+    def _phase_of(ref):
+        ph = ref.get("uws:phase") or ref.get("phase") or ""
+        return ph.get("#text") if isinstance(ph, dict) else ph
+
+    if redis_client:
+        for ref in jobrefs:
+            if not isinstance(ref, dict):
+                continue
+            jid = ref.get("uws:jobId") or ref.get("jobId") or ref.get("@id")
+            ph = _phase_of(ref)
+            if jid and ph:
+                await opus_record_job_outcome_once(
+                    redis_client,
+                    job_id=jid,
+                    phase=ph,
+                    service=OPUS_SERVICE,
+                )
+    if data.get("uws:jobs"):
+        data["uws:jobs"]["uws:jobref"] = jobrefs
+    elif data.get("jobs"):
+        data["jobs"]["jobref"] = jobrefs
 
     return data
 
