@@ -4,8 +4,22 @@ All notable changes to **CTAO Data Explorer** are documented in this file.
 This file follows *Keep a Changelog* and uses *Semantic Versioning* git tags.
 
 ## [Unreleased]
+
+## [v0.9.0] – 2025-11-14
+### Added
+- Basic Prometheus metrics in the backend, with hook points and Redis instrumentation for monitoring TAP and OPUS activity. ([b96f2bd] [ef61bf9] [c8a05fa])
+- Fixed header with CTAO SVG logo and sticky sub-navigation for the main tabs. ([92fbbcb] [e24cc79] [3d1ee9e])
+- Pytest coverage for backend endpoints, authentication, baskets, query history, OPUS integration, and logging/metrics. ([24a8e90] [7448478] [e7a7da3] [83ef003])
+- GitLab Pages documentation and updated README describing deployment and usage. ([6e7fcf0] [27dd9d4] [45688e2] [db73b32] [466ddb4])
+
+### Changed
+- Improved wording in the search form (epoch). ([9707309])
+- Updated instance-runner configuration and CI jobs to stabilise Pages builds. ([886c6ca] [7a7031e])
+
 ### Fixed
-- Search-form wording and style tweaks. ([9707309a] [f390a7ae])
+- Corrected metrics for OPUS jobs and avoided double-counting job outcomes. ([3a1c1f4] [b7eb499])
+- Fixed preview-job list refresh after Preview / OPUS actions. ([57986c2])
+- Fixed minor style and content issues in README and documentation. ([f390a7a] [466ddb4])
 
 ## [v0.8.0] – 2025-10-08
 ### Added
@@ -187,7 +201,8 @@ This file follows *Keep a Changelog* and uses *Semantic Versioning* git tags.
 - **Keep a Changelog** – <https://keepachangelog.com/en/1.1.0/>
 - **Semantic Versioning 2.0.0** – <https://semver.org/spec/v2.0.0.html>
 
-[Unreleased]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/v0.8.0...master
+[Unreleased]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/v0.9.0...master
+[v0.9.0]:    https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/v0.8.0...v0.9.0
 [v0.8.0]:    https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/v0.7.0...v0.8.0
 [v0.7.0]:    https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/v0.6.0...v0.7.0
 [v0.6.0]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/compare/v0.5.0...v0.6.0
@@ -318,3 +333,23 @@ This file follows *Keep a Changelog* and uses *Semantic Versioning* git tags.
 [52c705f]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/52c705f
 [3529438]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/3529438
 [a2f227c]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/a2f227c
+[83ef003]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/83ef003
+[57986c2]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/57986c2
+[db73b32]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/db73b32
+[7448478]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/7448478
+[e7a7da3]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/e7a7da3
+[24a8e90]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/24a8e90
+[b7eb499]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/b7eb499
+[3a1c1f4]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/3a1c1f4
+[3d1ee9e]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/3d1ee9e
+[e24cc79]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/e24cc79
+[92fbbcb]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/92fbbcb
+[c8a05fa]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/c8a05fa
+[ef61bf9]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/ef61bf9
+[b96f2bd]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/b96f2bd
+[45688e2]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/45688e2
+[6e7fcf0]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/6e7fcf0
+[886c6ca]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/886c6ca
+[7a7031e]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/7a7031e
+[466ddb4]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/466ddb4
+[27dd9d4]: https://gitlab.obspm.fr/oates/ctao-data-explorer/-/commit/27dd9d4
