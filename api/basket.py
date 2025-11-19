@@ -3,12 +3,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import json
 from .db import get_async_session
 from .auth import get_required_session_user
-from .models import SavedDataset, UserTable, BasketGroup, basket_items_association
+from .models import SavedDataset, BasketGroup, basket_items_association
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 from sqlalchemy import select
-from sqlalchemy.orm import joinedload, selectinload, Session
+from sqlalchemy.orm import selectinload
 from sqlalchemy import func
 import logging
 

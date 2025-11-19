@@ -3,7 +3,6 @@ import os
 import inspect
 import pytest
 import httpx
-from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import StaticPool
 from fastapi import FastAPI
@@ -18,7 +17,8 @@ from api.constants import (
     SESSION_ACCESS_TOKEN_EXPIRY_KEY,
 )
 import uuid
-import json, time
+import json
+import time
 
 
 try:
@@ -86,12 +86,6 @@ def _override_app_deps(fake_redis, sessionmaker, app):
     yield
     app.dependency_overrides.pop(get_async_session, None)
     app.dependency_overrides.pop(get_redis_client, None)
-
-
-@pytest.fixture
-async def client(app):
-    async with AsyncClient(app=app, base_url="http://testserver") as c:
-        yield c
 
 
 # Helper to inject a logged-in user

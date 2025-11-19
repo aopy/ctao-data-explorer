@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 from astropy.table import Table
 from api.tap import (
     build_spatial_icrs_condition,

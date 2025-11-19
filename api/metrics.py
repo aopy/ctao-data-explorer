@@ -1,6 +1,6 @@
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter, Histogram, CONTENT_TYPE_LATEST, generate_latest
-from fastapi import Depends, Response, HTTPException, status
+from fastapi import Depends, Response, HTTPException
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import secrets
 from urllib.parse import urlparse

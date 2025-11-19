@@ -25,12 +25,12 @@ from .query_history import (
     QueryHistoryCreate,
     _internal_create_query_history,
 )
-import fastapi_users
-from .db import AsyncSessionLocal
 import traceback
 from .coords import coord_router
 from typing import Dict, Any, List
-import asyncio, re, json
+import asyncio
+import re
+import json
 from io import BytesIO
 import requests
 from .db import get_redis_pool
@@ -511,8 +511,8 @@ async def search_coords(
     coordinate_system: Optional[str] = None,
     ra: Optional[float] = None,
     dec: Optional[float] = None,
-    l: Optional[float] = None,
-    b: Optional[float] = None,
+    l_deg: float | None = Query(None, alias="l"),
+    b_deg: float | None = Query(None, alias="b"),
     search_radius: float = 5.0,
     # Time Params
     obs_start: Optional[str] = None,
@@ -639,9 +639,9 @@ async def search_coords(
                 "search_coords: Equatorial coords received RA=%s, Dec=%s", ra, dec
             )
     elif coordinate_system == COORD_SYS_GAL:
-        if l is not None and b is not None:
+        if l_deg is not None and b_deg is not None:
             try:
-                c_gal = SkyCoord(l * u.deg, b * u.deg, frame="galactic")
+                c_gal = SkyCoord(l_deg * u.deg, b_deg * u.deg, frame="galactic")
                 c_icrs = c_gal.icrs
                 fields["target_raj2000"] = {"value": c_icrs.ra.deg}
                 fields["target_dej2000"] = {"value": c_icrs.dec.deg}
@@ -837,10 +837,10 @@ async def search_coords(
                         if dec is not None:
                             params_to_save["dec"] = dec
                     elif coordinate_system == COORD_SYS_GAL:
-                        if l is not None:
-                            params_to_save["l"] = l
-                        if b is not None:
-                            params_to_save["b"] = b
+                        if l_deg is not None:
+                            params_to_save["l"] = l_deg
+                        if b_deg is not None:
+                            params_to_save["b"] = b_deg
                     # Store time parameters
                     if obs_start:
                         params_to_save["obs_start_input"] = obs_start
@@ -912,7 +912,6 @@ async def object_resolve(data: dict = Body(...)):
 
     results = []
     simbad_list = []
-    ned_list = []
 
     if use_simbad:
         SIMBAD_TAP = settings.SIMBAD_TAP_BASE

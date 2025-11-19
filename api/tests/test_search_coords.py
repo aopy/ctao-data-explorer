@@ -1,5 +1,4 @@
 import urllib.parse
-import numpy as np
 import pytest
 from astropy.table import Table
 

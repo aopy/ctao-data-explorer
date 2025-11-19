@@ -9,8 +9,6 @@ from pathlib import Path
 import mimetypes
 from urllib.parse import urlparse
 from .config import get_settings
-
-settings = get_settings()
 from .deps import get_current_user
 import time
 from datetime import datetime, timedelta, timezone
@@ -20,6 +18,8 @@ from .metrics import (
     opus_observe_submit,
     opus_record_job_outcome_once,
 )
+
+settings = get_settings()
 
 router = APIRouter(prefix="/api/opus", tags=["opus"])
 

@@ -1,5 +1,4 @@
-import numpy as np
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel, Field, validator
 from typing import Optional
 from astropy.coordinates import SkyCoord
@@ -90,13 +89,13 @@ async def parse_coordinates_endpoint(coord_input: CoordInput):
 
         elif system == "gal":
             # l/b in degrees → convert to ICRS
-            l = float(coord1_str)
-            b = float(coord2_str)
-            if not (0.0 <= l <= 360.0):
+            gal_l = float(coord1_str)
+            gal_b = float(coord2_str)
+            if not (0.0 <= gal_l <= 360.0):
                 raise ValueError("Galactic l must be between 0 and 360 degrees.")
-            if not (-90.0 <= b <= 90.0):
+            if not (-90.0 <= gal_b <= 90.0):
                 raise ValueError("Galactic b must be between -90 and +90 degrees.")
-            c = SkyCoord(l=l * u.deg, b=b * u.deg, frame="galactic").icrs
+            c = SkyCoord(l=gal_l * u.deg, b=gal_b * u.deg, frame="galactic").icrs
         else:
             raise ValueError("Unsupported coordinate system specified.")
 

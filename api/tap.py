@@ -100,7 +100,7 @@ def _process_tap_results(tap_results: vo.dal.TAPResults) -> Table | None:
         )
         return astro_table
     except Exception as convert_error:
-        logger.exception(f"Error: Failed converting TAPResults: %s", convert_error)
+        logger.exception("Error: Failed converting TAPResults: %s", convert_error)
         traceback.print_exc()
         return None
 
@@ -202,7 +202,7 @@ def astropy_table_to_list(table: Table | None):
                                 cell = float(row[col])
                                 if math.isnan(cell) or math.isinf(cell):
                                     cell = None
-                            except:
+                            except Exception:
                                 cell = None
                 else:
                     if cell is None or isinstance(cell, (np.void)):

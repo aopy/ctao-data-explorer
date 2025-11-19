@@ -1,5 +1,5 @@
 from fastapi.responses import RedirectResponse
-from fastapi import APIRouter, Request, Depends, HTTPException, status
+from fastapi import APIRouter, Request, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from .oauth_client import oauth

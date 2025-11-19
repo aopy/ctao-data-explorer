@@ -11,10 +11,8 @@ from sqlalchemy import (
     ForeignKey,
     Table,
     Boolean,
-    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
-from sqlalchemy.ext.declarative import declarative_base
 
 
 basket_items_association = Table(

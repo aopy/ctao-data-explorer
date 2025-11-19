@@ -1,12 +1,5 @@
 from fastapi import APIRouter, Depends, Response, HTTPException, status, Request
-from fastapi_users import FastAPIUsers
-from fastapi_users.db import SQLAlchemyUserDatabase
-from fastapi_users.authentication import (
-    AuthenticationBackend,
-    CookieTransport,
-    JWTStrategy,
-)
-from starlette.config import Config
+from pydantic import ConfigDict
 from fastapi_users import schemas
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -16,9 +9,7 @@ from .oauth_client import oauth, CTAO_PROVIDER_NAME
 import json
 import time
 from typing import Optional, Dict, Any
-from fastapi_users.manager import BaseUserManager
 from datetime import datetime
-from fastapi.responses import JSONResponse
 import redis.asyncio as redis
 import traceback
 from .config import get_settings
@@ -46,14 +37,12 @@ REFRESH_BUFFER_SECONDS = settings.REFRESH_BUFFER_SECONDS
 # User Schemas
 class UserRead(schemas.BaseUser[int]):
     id: int
-    email: Optional[str] = None
-    iam_subject_id: Optional[str] = None
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    # is_active: bool # From fastapi-users BaseUser
+    email: str | None = None
+    iam_subject_id: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserUpdate(schemas.BaseUserUpdate):
