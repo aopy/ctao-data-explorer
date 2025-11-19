@@ -9,6 +9,7 @@ from pathlib import Path
 import mimetypes
 from urllib.parse import urlparse
 from .config import get_settings
+
 settings = get_settings()
 from .deps import get_current_user
 import time
@@ -28,11 +29,13 @@ OPUS_ROOT = _raw_root[:-5] if _raw_root.endswith("/rest") else _raw_root
 OPUS_SERVICE = settings.OPUS_SERVICE.strip("/")
 OPUS_APP_TOKEN = settings.OPUS_APP_TOKEN
 
+
 # helpers
 def _rest_url(*parts: str) -> str:
     base = OPUS_ROOT.rstrip("/")
     path = "/".join(str(p).strip("/") for p in parts if p is not None)
     return f"{base}/{path}"
+
 
 def _xml_to_json(xml_text: str) -> Dict[str, Any]:
     try:
@@ -40,11 +43,13 @@ def _xml_to_json(xml_text: str) -> Dict[str, Any]:
     except Exception:
         return {"raw": xml_text}
 
+
 def _basic_headers(user_id: str) -> Dict[str, str]:
     if not OPUS_APP_TOKEN:
         raise HTTPException(500, "OPUS_APP_TOKEN is not configured on the server")
     token = base64.b64encode(f"{user_id}:{OPUS_APP_TOKEN}".encode()).decode()
     return {"Authorization": f"Basic {token}"}
+
 
 def _extract_phase_from_doc(doc: dict) -> str | None:
     j = doc.get("uws:job") or doc.get("job") or doc
@@ -55,12 +60,14 @@ def _extract_phase_from_doc(doc: dict) -> str | None:
         phase = phase.get("#text")
     return phase
 
+
 def _extract_job_id_from_doc(doc: dict) -> str | None:
     j = doc.get("uws:job") or doc.get("job") or doc
     if not isinstance(j, dict):
         return None
     jid = j.get("uws:jobId") or j.get("jobId")
     return jid
+
 
 # Schemas
 class QuickLookParams(BaseModel):
@@ -72,14 +79,20 @@ class QuickLookParams(BaseModel):
     binsz: float = 0.02
     obsids: Optional[str] = None  # space-separated list used by OPUS
 
+
 class OpusJobCreateResponse(BaseModel):
     job_id: str
     location: str
 
+
 # Debug
 @router.get("/_debug_base")
 async def debug_base(user=Depends(get_current_user)):
-    uid = getattr(user, "iam_subject_id", None) if not isinstance(user, dict) else user.get("iam_subject_id")
+    uid = (
+        getattr(user, "iam_subject_id", None)
+        if not isinstance(user, dict)
+        else user.get("iam_subject_id")
+    )
     return {
         "OPUS_ROOT": OPUS_ROOT,
         "OPUS_SERVICE": OPUS_SERVICE,
@@ -87,28 +100,47 @@ async def debug_base(user=Depends(get_current_user)):
         "iam_subject_id": uid or None,
     }
 
+
 # Jobs
 @router.get("/jobs")
 async def list_jobs(
     request: Request,
     user=Depends(get_current_user),
-    days: int = 30  # how far back to look
+    days: int = 30,  # how far back to look
 ):
-    uid = getattr(user, "iam_subject_id", None) if not isinstance(user, dict) else user.get("iam_subject_id")
+    uid = (
+        getattr(user, "iam_subject_id", None)
+        if not isinstance(user, dict)
+        else user.get("iam_subject_id")
+    )
     if not uid:
         raise HTTPException(401, "Not authenticated")
     headers = _basic_headers(uid)
-    headers.update({
-        "Accept": "application/xml",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache",
-    })
+    headers.update(
+        {
+            "Accept": "application/xml",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
+        }
+    )
 
-    phases = ["PENDING", "QUEUED", "EXECUTING", "SUSPENDED", "HELD", "COMPLETED", "ERROR", "ABORTED", "ARCHIVED"]
+    phases = [
+        "PENDING",
+        "QUEUED",
+        "EXECUTING",
+        "SUSPENDED",
+        "HELD",
+        "COMPLETED",
+        "ERROR",
+        "ABORTED",
+        "ARCHIVED",
+    ]
     after_dt = datetime.now(timezone.utc) - timedelta(days=max(1, days))
     after_iso = after_dt.strftime("%Y-%m-%dT%H:%M:%S")
 
-    params = [("AFTER", after_iso), ("_ts", str(time.time()))] + [("PHASE", p) for p in phases]
+    params = [("AFTER", after_iso), ("_ts", str(time.time()))] + [
+        ("PHASE", p) for p in phases
+    ]
 
     url = _rest_url("rest", OPUS_SERVICE)
     async with httpx.AsyncClient(timeout=30) as client:
@@ -148,9 +180,14 @@ async def list_jobs(
 
     return data
 
+
 @router.get("/jobs/{job_id}")
 async def get_job(job_id: str, request: Request, user=Depends(get_current_user)):
-    uid = getattr(user, "iam_subject_id", None) if not isinstance(user, dict) else user.get("iam_subject_id")
+    uid = (
+        getattr(user, "iam_subject_id", None)
+        if not isinstance(user, dict)
+        else user.get("iam_subject_id")
+    )
     if not uid:
         raise HTTPException(401, "Not authenticated")
     headers = _basic_headers(uid)
@@ -174,9 +211,14 @@ async def get_job(job_id: str, request: Request, user=Depends(get_current_user))
 
     return data
 
+
 @router.get("/jobs/{job_id}/results")
 async def list_results(job_id: str, user=Depends(get_current_user)):
-    uid = getattr(user, "iam_subject_id", None) if not isinstance(user, dict) else user.get("iam_subject_id")
+    uid = (
+        getattr(user, "iam_subject_id", None)
+        if not isinstance(user, dict)
+        else user.get("iam_subject_id")
+    )
     if not uid:
         raise HTTPException(401, "Not authenticated")
     headers = _basic_headers(uid)
@@ -188,9 +230,14 @@ async def list_results(job_id: str, user=Depends(get_current_user)):
         raise HTTPException(r.status_code, r.text)
     return _xml_to_json(r.text)
 
+
 @router.post("/jobs", response_model=OpusJobCreateResponse)
 async def create_job(params: QuickLookParams, user=Depends(get_current_user)):
-    uid = getattr(user, "iam_subject_id", None) if not isinstance(user, dict) else user.get("iam_subject_id")
+    uid = (
+        getattr(user, "iam_subject_id", None)
+        if not isinstance(user, dict)
+        else user.get("iam_subject_id")
+    )
     if not uid:
         raise HTTPException(401, "Not authenticated")
     headers = _basic_headers(uid)
@@ -243,11 +290,13 @@ async def create_job(params: QuickLookParams, user=Depends(get_current_user)):
             dt = time.perf_counter() - t0
             opus_observe_submit(dt, ok=False)
             opus_record_submit_failure()
-            raise HTTPException(r2.status_code, f"Created {job_id} but failed to RUN: {r2.text}")
+            raise HTTPException(
+                r2.status_code, f"Created {job_id} but failed to RUN: {r2.text}"
+            )
 
     except Exception:
         # record failure for any exception path
-        if 't0' in locals():
+        if "t0" in locals():
             dt = time.perf_counter() - t0
             opus_observe_submit(dt, ok=False)
         opus_record_submit_failure()
@@ -265,7 +314,13 @@ def _guess_preview_mime(name: str, rid: Optional[str]) -> str:
     rid_l = (rid or "").lower()
     ext = Path(name or "").suffix.lower()
     ctype, _ = mimetypes.guess_type(name or "")
-    if rid_l in ("stdout", "stderr") or ext in (".txt", ".log", ".cfg", ".yaml", ".yml"):
+    if rid_l in ("stdout", "stderr") or ext in (
+        ".txt",
+        ".log",
+        ".cfg",
+        ".yaml",
+        ".yml",
+    ):
         return "text/plain; charset=utf-8"
     if rid_l == "provjson" or ext == ".json":
         return "application/json; charset=utf-8"
@@ -277,9 +332,11 @@ def _guess_preview_mime(name: str, rid: Optional[str]) -> str:
         return ctype or "image/png"
     return ctype or "application/octet-stream"
 
+
 async def _get_with_auth(url: str, headers: Dict[str, str]) -> httpx.Response:
     async with httpx.AsyncClient(follow_redirects=True, timeout=None) as client:
         return await client.get(url, headers=headers)
+
 
 @router.get("/jobs/{job_id}/fetch")
 async def fetch_by_href(
@@ -288,10 +345,16 @@ async def fetch_by_href(
     href: str = Query(..., description="Absolute xlink:href returned by OPUS"),
     inline: bool = Query(False, description="If true, serve inline"),
     filename: Optional[str] = Query(None, description="Optional filename hint"),
-    rid: Optional[str] = Query(None, description="OPUS result id, e.g. provjson/stdout/excess_map"),
+    rid: Optional[str] = Query(
+        None, description="OPUS result id, e.g. provjson/stdout/excess_map"
+    ),
     user=Depends(get_current_user),
 ):
-    uid = getattr(user, "iam_subject_id", None) if not isinstance(user, dict) else user.get("iam_subject_id")
+    uid = (
+        getattr(user, "iam_subject_id", None)
+        if not isinstance(user, dict)
+        else user.get("iam_subject_id")
+    )
     if not uid:
         raise HTTPException(401, "Not authenticated")
     headers = _basic_headers(uid)
@@ -299,7 +362,9 @@ async def fetch_by_href(
     if not href.startswith(OPUS_ROOT):
         raise HTTPException(400, "Invalid href")
 
-    name_guess = filename or Path(urlparse(href).path).name or f"{job_id}_{rid or 'result'}"
+    name_guess = (
+        filename or Path(urlparse(href).path).name or f"{job_id}_{rid or 'result'}"
+    )
     content_type = _guess_preview_mime(name_guess, rid) if inline else None
 
     resp = await _get_with_auth(href, headers)
@@ -307,17 +372,25 @@ async def fetch_by_href(
         legacy_url = _rest_url("store_old", job_id, rid)
         resp = await _get_with_auth(legacy_url, headers)
 
-        if resp.status_code == 404 and rid.lower() in ("stdout", "stderr", "provjson", "provxml", "provsvg"):
+        if resp.status_code == 404 and rid.lower() in (
+            "stdout",
+            "stderr",
+            "provjson",
+            "provxml",
+            "provsvg",
+        ):
             special_url = _rest_url("rest", OPUS_SERVICE, job_id, rid.lower())
             resp = await _get_with_auth(special_url, headers)
 
     if resp.status_code >= 400:
         raise HTTPException(resp.status_code, resp.text)
 
-    media = content_type or resp.headers.get("content-type") or "application/octet-stream"
+    media = (
+        content_type or resp.headers.get("content-type") or "application/octet-stream"
+    )
     disposition = "inline" if inline else "attachment"
     return Response(
         content=resp.content,
         media_type=media,
-        headers={"Content-Disposition": f'{disposition}; filename="{name_guess}"'}
+        headers={"Content-Disposition": f'{disposition}; filename="{name_guess}"'},
     )

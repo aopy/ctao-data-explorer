@@ -1,11 +1,13 @@
 import time
 
+
 class FakeRedis:
     """Small async in-memory Redis used in tests.
     - Supports get/set with ex/px/nx/xx/keepttl/get (minimal semantics).
     - setex, expire, delete, aclose.
     - TTL is enforced lazily on get()/expire().
     """
+
     def __init__(self):
         self.store: dict[str, str] = {}
         self.expiry: dict[str, float] = {}  # key -> epoch seconds
@@ -26,12 +28,12 @@ class FakeRedis:
         key: str,
         value: str,
         *,
-        ex: float | int | None = None,       # seconds
-        px: float | int | None = None,       # milliseconds
+        ex: float | int | None = None,  # seconds
+        px: float | int | None = None,  # milliseconds
         keepttl: bool = False,
-        nx: bool = False,                    # only set if not exists
-        xx: bool = False,                    # only set if exists
-        get: bool = False,                   # return old value if True
+        nx: bool = False,  # only set if not exists
+        xx: bool = False,  # only set if exists
+        get: bool = False,  # return old value if True
         # (exat/pxat not needed for tests)
         **kwargs,
     ):

@@ -10,23 +10,34 @@ import logging
 logger = logging.getLogger(__name__)
 
 COORD_SYS_ALIASES = {
-    "equatorial": "deg", "eqdeg": "deg", "icrs": "deg", "radec": "deg", "ra/dec": "deg",
-    "galactic": "gal", "lb": "gal", "l/b": "gal",
-    "hms": "hmsdms", "dms": "hmsdms",
+    "equatorial": "deg",
+    "eqdeg": "deg",
+    "icrs": "deg",
+    "radec": "deg",
+    "ra/dec": "deg",
+    "galactic": "gal",
+    "lb": "gal",
+    "l/b": "gal",
+    "hms": "hmsdms",
+    "dms": "hmsdms",
     # keep canonical keys mapping to themselves
-    "deg": "deg", "gal": "gal", "hmsdms": "hmsdms",
+    "deg": "deg",
+    "gal": "gal",
+    "hmsdms": "hmsdms",
 }
+
 
 class CoordInput(BaseModel):
     coord1: str = Field(..., description="First coordinate string (e.g., RA, l)")
     coord2: str = Field(..., description="Second coordinate string (e.g., Dec, b)")
     system: str = Field(..., description="'hmsdms', 'deg', or 'gal'")
 
-    @validator('system')
+    @validator("system")
     def system_must_be_valid(cls, v):
-        if v not in ['hmsdms', 'deg', 'gal']:
+        if v not in ["hmsdms", "deg", "gal"]:
             raise ValueError("System must be 'hmsdms', 'deg', or 'gal'")
         return v
+
 
 class CoordOutput(BaseModel):
     # Output always includes decimal degrees if successful
@@ -36,7 +47,9 @@ class CoordOutput(BaseModel):
     b_deg: Optional[float] = None
     error: Optional[str] = None
 
+
 coord_router = APIRouter()
+
 
 @coord_router.post("/api/parse_coords", response_model=CoordOutput, tags=["coords"])
 async def parse_coordinates_endpoint(coord_input: CoordInput):
@@ -71,7 +84,9 @@ async def parse_coordinates_endpoint(coord_input: CoordInput):
 
         elif system == "hmsdms":
             # RA in hourangle, Dec in deg, still ICRS
-            c = SkyCoord(coord1_str, coord2_str, unit=(u.hourangle, u.deg), frame="icrs")
+            c = SkyCoord(
+                coord1_str, coord2_str, unit=(u.hourangle, u.deg), frame="icrs"
+            )
 
         elif system == "gal":
             # l/b in degrees → convert to ICRS

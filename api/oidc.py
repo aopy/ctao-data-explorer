@@ -13,12 +13,18 @@ import redis.asyncio as redis
 from .config import get_settings
 from .constants import (
     COOKIE_NAME_MAIN_SESSION,
-    SESSION_KEY_PREFIX, SESSION_USER_ID_KEY, SESSION_IAM_SUB_KEY, SESSION_IAM_EMAIL_KEY,
-    SESSION_IAM_GIVEN_NAME_KEY, SESSION_IAM_FAMILY_NAME_KEY,
-    SESSION_ACCESS_TOKEN_KEY, SESSION_ACCESS_TOKEN_EXPIRY_KEY,
+    SESSION_KEY_PREFIX,
+    SESSION_USER_ID_KEY,
+    SESSION_IAM_SUB_KEY,
+    SESSION_IAM_EMAIL_KEY,
+    SESSION_IAM_GIVEN_NAME_KEY,
+    SESSION_IAM_FAMILY_NAME_KEY,
+    SESSION_ACCESS_TOKEN_KEY,
+    SESSION_ACCESS_TOKEN_EXPIRY_KEY,
     CTAO_PROVIDER_NAME,
 )
 import logging
+
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
@@ -26,9 +32,14 @@ cookie_params = settings.cookie_params
 
 oidc_router = APIRouter(prefix="/oidc", tags=["oidc"])
 
+
 @oidc_router.get("/login")
 async def login(request: Request):
-    redirect_uri = settings.OIDC_REDIRECT_URI if not settings.PRODUCTION else f"{settings.BASE_URL}/api/oidc/callback"
+    redirect_uri = (
+        settings.OIDC_REDIRECT_URI
+        if not settings.PRODUCTION
+        else f"{settings.BASE_URL}/api/oidc/callback"
+    )
     # base_url_env = config_env("BASE_URL", default=None)
     # if PRODUCTION and base_url_env:
     #    redirect_uri = f"{base_url_env}/api/oidc/callback"
@@ -40,9 +51,9 @@ async def login(request: Request):
 
 @oidc_router.get("/callback")
 async def auth_callback(
-        request: Request,
-        db_session: AsyncSession = Depends(get_async_session),
-        redis: redis.Redis = Depends(get_redis_client),
+    request: Request,
+    db_session: AsyncSession = Depends(get_async_session),
+    redis: redis.Redis = Depends(get_redis_client),
 ):
     try:
         # This uses the temporary OIDC state session cookie
@@ -50,24 +61,28 @@ async def auth_callback(
     except Exception:
         logger.exception("OIDC authorize_access_token failed")
         # import traceback; traceback.print_exc()
-        raise HTTPException(status_code=400, detail="OIDC authentication failed or was cancelled.")
+        raise HTTPException(
+            status_code=400, detail="OIDC authentication failed or was cancelled."
+        )
 
-    userinfo = token_response.get('userinfo')
-    if not userinfo or not userinfo.get('sub'):
-        raise HTTPException(status_code=400, detail="User identifier (sub) not found in OIDC token.")
+    userinfo = token_response.get("userinfo")
+    if not userinfo or not userinfo.get("sub"):
+        raise HTTPException(
+            status_code=400, detail="User identifier (sub) not found in OIDC token."
+        )
 
-    iam_subject_id = userinfo['sub']
-    email = userinfo.get('email')
+    iam_subject_id = userinfo["sub"]
+    email = userinfo.get("email")
     # full_name_from_iam = userinfo.get('name')
-    given_name_to_store = userinfo.get('given_name')
-    family_name_to_store = userinfo.get('family_name')
+    given_name_to_store = userinfo.get("given_name")
+    family_name_to_store = userinfo.get("family_name")
     # given_name_to_store = None
     # family_name_to_store = None
 
     if not (given_name_to_store and family_name_to_store):
-        full_name_from_iam = userinfo.get('name')
+        full_name_from_iam = userinfo.get("name")
         if full_name_from_iam and isinstance(full_name_from_iam, str):
-            parts = full_name_from_iam.strip().split(' ', 1)
+            parts = full_name_from_iam.strip().split(" ", 1)
             given_name_to_store = given_name_to_store or parts[0]
             if len(parts) > 1:
                 family_name_to_store = family_name_to_store or parts[1]
@@ -76,9 +91,9 @@ async def auth_callback(
     # print(f"DEBUG OIDC Callback: UserInfo from IAM: {userinfo}")
     # print(f"DEBUG OIDC Callback: Parsed given_name: {given_name_to_store}, family_name: {family_name_to_store}")
 
-    iam_access_token = token_response['access_token']
-    iam_refresh_token = token_response.get('refresh_token')
-    expires_in = token_response.get('expires_in', 3600) # Default to 1 hour
+    iam_access_token = token_response["access_token"]
+    iam_refresh_token = token_response.get("refresh_token")
+    expires_in = token_response.get("expires_in", 3600)  # Default to 1 hour
     if settings.OIDC_FAKE_EXPIRES_IN:
         expires_in = settings.OIDC_FAKE_EXPIRES_IN
     iam_access_token_expiry = time.time() + expires_in
@@ -95,12 +110,12 @@ async def auth_callback(
             # email=email,
             hashed_password="",
             is_active=True,
-            is_verified=True # Verified by IAM
+            is_verified=True,  # Verified by IAM
         )
         db_session.add(user_record)
         await db_session.flush()
         await db_session.refresh(user_record)
-    #elif email and user_record.email != email:
+    # elif email and user_record.email != email:
     #    user_record.email = email
     #    db_session.add(user_record)
     #    await db_session.flush()
@@ -114,34 +129,35 @@ async def auth_callback(
         if encrypted_rt:
             rt_stmt = select(UserRefreshToken).where(
                 UserRefreshToken.user_id == app_user_id,
-                UserRefreshToken.iam_provider_name == CTAO_PROVIDER_NAME
+                UserRefreshToken.iam_provider_name == CTAO_PROVIDER_NAME,
             )
             rt_result = await db_session.execute(rt_stmt)
             existing_rt_record = rt_result.scalars().first()
             if existing_rt_record:
                 existing_rt_record.encrypted_refresh_token = encrypted_rt
-                existing_rt_record.last_used_at = datetime.utcnow() # or creation time
+                existing_rt_record.last_used_at = datetime.utcnow()  # or creation time
                 db_session.add(existing_rt_record)
             else:
                 new_rt_record = UserRefreshToken(
                     user_id=app_user_id,
                     iam_provider_name=CTAO_PROVIDER_NAME,
-                    encrypted_refresh_token=encrypted_rt
+                    encrypted_refresh_token=encrypted_rt,
                 )
                 db_session.add(new_rt_record)
             logger.info("Stored/Updated refresh token for user_id: %s", app_user_id)
         else:
-            logger.warning("Failed to encrypt refresh token for user_id=%s", app_user_id)
+            logger.warning(
+                "Failed to encrypt refresh token for user_id=%s", app_user_id
+            )
     else:
         logger.warning("No refresh token received from IAM for user_id=%s", app_user_id)
 
-
     # Create Server-Side Session in Redis
-    session_id = str(uuid.uuid4()) # Generate a secure random session ID
+    session_id = str(uuid.uuid4())  # Generate a secure random session ID
     session_data_to_store = {
         SESSION_USER_ID_KEY: app_user_id,
         SESSION_IAM_SUB_KEY: iam_subject_id,
-        SESSION_IAM_EMAIL_KEY: email, # Optional
+        SESSION_IAM_EMAIL_KEY: email,  # Optional
         SESSION_IAM_GIVEN_NAME_KEY: given_name_to_store,
         SESSION_IAM_FAMILY_NAME_KEY: family_name_to_store,
         SESSION_ACCESS_TOKEN_KEY: iam_access_token,
@@ -149,8 +165,8 @@ async def auth_callback(
     }
     await redis.setex(
         f"{SESSION_KEY_PREFIX}{session_id}",
-        settings.SESSION_DURATION_SECONDS, # Session TTL in Redis
-        json.dumps(session_data_to_store)
+        settings.SESSION_DURATION_SECONDS,  # Session TTL in Redis
+        json.dumps(session_data_to_store),
     )
     logger.info("Created Redis session %s for user_id: %s", session_id, app_user_id)
 
@@ -160,8 +176,9 @@ async def auth_callback(
     except Exception as db_exc:
         await db_session.rollback()
         logger.exception("Error committing user/refresh token to DB: %s", db_exc)
-        raise HTTPException(status_code=500, detail="Failed to finalize user session setup.")
-
+        raise HTTPException(
+            status_code=500, detail="Failed to finalize user session setup."
+        )
 
     # Set Session ID Cookie and Redirect
     response = RedirectResponse(url="/")
@@ -169,6 +186,6 @@ async def auth_callback(
         key=COOKIE_NAME_MAIN_SESSION,
         value=session_id,
         max_age=settings.SESSION_DURATION_SECONDS,
-        **cookie_params
+        **cookie_params,
     )
     return response

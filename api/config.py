@@ -2,6 +2,7 @@ from functools import lru_cache
 from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -35,7 +36,9 @@ class Settings(BaseSettings):
     DEFAULT_SELECT_LIMIT: int = 100
 
     # OIDC / OAuth
-    OIDC_SERVER_METADATA_URL: str = "https://iam-ctao.cloud.cnaf.infn.it/.well-known/openid-configuration"
+    OIDC_SERVER_METADATA_URL: str = (
+        "https://iam-ctao.cloud.cnaf.infn.it/.well-known/openid-configuration"
+    )
     CTAO_CLIENT_ID: Optional[str] = None
     CTAO_CLIENT_SECRET: Optional[str] = None
     OIDC_REDIRECT_URI: str = "http://localhost:8000/api/oidc/callback"
@@ -74,10 +77,13 @@ class Settings(BaseSettings):
             samesite = "Lax"
         else:
             samesite = samesite.capitalize()
-        params = dict(secure=self.COOKIE_SECURE, httponly=True, samesite=samesite, path="/")
+        params = dict(
+            secure=self.COOKIE_SECURE, httponly=True, samesite=samesite, path="/"
+        )
         if self.COOKIE_DOMAIN:
             params["domain"] = self.COOKIE_DOMAIN
         return params
+
 
 @lru_cache
 def get_settings() -> Settings:

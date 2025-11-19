@@ -9,18 +9,23 @@ from prometheus_client import generate_latest
 from api.logging_config import setup_logging
 from api.metrics import (
     setup_metrics,
-    cache_hit, cache_miss,
-    vo_observe_call, observe_redis,
+    cache_hit,
+    cache_miss,
+    vo_observe_call,
+    observe_redis,
     opus_record_job_outcome_once,
 )
 
 # helpers
 
-_METRIC_LINE = re.compile(r'^(?P<name>[a-zA-Z_:][a-zA-Z0-9_:]*)\{(?P<labels>[^}]*)\}\s+(?P<value>[0-9.e+-]+)$')
+_METRIC_LINE = re.compile(
+    r"^(?P<name>[a-zA-Z_:][a-zA-Z0-9_:]*)\{(?P<labels>[^}]*)\}\s+(?P<value>[0-9.e+-]+)$"
+)
+
 
 def _parse_value(text: str, name: str, **labels) -> float:
     """Return the last observed value for metric 'name' with exact labels, or 0.0 if not present."""
-    want = ','.join(f'{k}="{v}"' for k, v in sorted(labels.items()))
+    want = ",".join(f'{k}="{v}"' for k, v in sorted(labels.items()))
     last = 0.0
     for line in text.splitlines():
         m = _METRIC_LINE.match(line)
@@ -35,6 +40,7 @@ def _parse_value(text: str, name: str, **labels) -> float:
 
 # logging tests
 
+
 def test_logging_levels_and_access_toggle():
     # debug + access muted
     setup_logging(level="DEBUG", include_access=False, json=False)
@@ -48,6 +54,7 @@ def test_logging_levels_and_access_toggle():
 
 
 # metrics endpoint tests
+
 
 def _patch_settings(monkeypatch, **overrides):
     base = dict(
@@ -71,7 +78,9 @@ def test_metrics_endpoint_disabled(monkeypatch):
 
 
 def test_metrics_endpoint_enabled_public(monkeypatch):
-    _patch_settings(monkeypatch, METRICS_ENABLED=True, METRICS_PROTECT_WITH_BASIC_AUTH=False)
+    _patch_settings(
+        monkeypatch, METRICS_ENABLED=True, METRICS_PROTECT_WITH_BASIC_AUTH=False
+    )
     app = FastAPI()
     setup_metrics(app)
 
@@ -109,6 +118,7 @@ def test_metrics_endpoint_basic_auth(monkeypatch):
 
 # metric helpers
 
+
 @pytest.mark.anyio
 async def test_custom_counters_histograms_and_opus_dedup(monkeypatch):
     # baseline snapshot
@@ -145,7 +155,9 @@ async def test_custom_counters_histograms_and_opus_dedup(monkeypatch):
 
     # OPUS outcome counters with Redis de-dup
     class FakeRedis:
-        def __init__(self): self._seen = set()
+        def __init__(self):
+            self._seen = set()
+
         async def set(self, key, value, ex=None, nx=False):
             if nx:
                 if key in self._seen:

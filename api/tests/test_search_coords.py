@@ -3,14 +3,16 @@ import numpy as np
 import pytest
 from astropy.table import Table
 
+
 @pytest.mark.anyio
 async def test_search_coords_happy_path_adds_datalink(app, client, monkeypatch):
     # Build a small Astropy Table as if returned from TAP
     tab = Table(
         names=("obs_publisher_did", "s_ra"),
         dtype=("U100", float),
-        rows=[("ivo://padc.obspm/hess#123", 83.63)]
+        rows=[("ivo://padc.obspm/hess#123", 83.63)],
     )
+
     # Stub perform_query_with_conditions to return (error=None, table, adql)
     def fake_perform(fields, where_conditions, limit=100):
         # Basic sanity: the spatial condition should be present if coords provided
@@ -49,6 +51,7 @@ async def test_search_coords_happy_path_adds_datalink(app, client, monkeypatch):
 
     # Response should be cached
     assert any(k.startswith("search:") for k in app.state.redis.store.keys())
+
 
 @pytest.mark.anyio
 async def test_search_coords_requires_coords_or_time(client):
