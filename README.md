@@ -6,12 +6,17 @@ Documentation is available online at https://aopy.github.io/ctao-data-explorer/
 
 ## Table of Contents
 
-- [Features](#features)
-- [Requirements](#requirements)
-- [Installation](#installation)
-  - [Backend Setup](#backend-setup)
-  - [Frontend Setup](#frontend-setup)
-- [Usage](#usage)
+- [CTAO Data Explorer](#ctao-data-explorer)
+  - [Table of Contents](#table-of-contents)
+  - [Features](#features)
+  - [Requirements](#requirements)
+    - [Backend](#backend)
+    - [Frontend](#frontend)
+  - [Installation](#installation)
+    - [Backend Setup](#backend-setup)
+    - [Frontend Setup](#frontend-setup)
+  - [Usage](#usage)
+- [Containerization, pixi, docker-compose and Helm charts](#containerization-pixi-docker-compose-and-helm-charts)
 - [About CTAO](#about-ctao)
 
 ## Features
@@ -119,6 +124,27 @@ Documentation is available online at https://aopy.github.io/ctao-data-explorer/
    - **Run a Preview Job (OPUS):**
      - With a basket active, click **Run Preview Job**. Review the prefilled parameters (e.g., RA, Dec, `nxpix`, `nypix`, `binsz`) and submit.
      - Track progress under **Preview Jobs**. Open a job to **Download** outputs or **Show preview** inline for PNG/SVG/text results.
+
+# Containerization, pixi, docker-compose and Helm charts
+Two Dockerfiles contain the instructions for building the backend and frontend, with the help of pixi. The final goal is to have a Helm chart with all the directives.
+
+Quick setup
+```
+pixi install  # run where pixi.toml is
+pixi shell  # activate env
+
+# Backend
+docker compose up postgres redis
+# start fastapi (which is doing: uvicorn api.main:app --reload --host 0.0.0.0 --port 8000)
+pixi run serve-reload 
+
+# Frontend
+cd js
+npm install
+npm start
+```
+Note: `pixi run migrate`  currently does not work
+
 
 # About CTAO
 
