@@ -1,0 +1,25 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Env & VCS
+.env
+.env.*
+.git
+.gitignore
+
+# Node
+js/node_modules/
+js/.npm/
+js/.pnpm-store/
+# We copy build from the builder stage, no need to send it as context
+js/build/
+
+# OS/IDE
+.DS_Store
+.vscode/

@@ -1,0 +1,66 @@
+services:
+
+  # PostgreSQL
+  postgres:
+    image: postgres:17
+    #restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ao}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-fastapi_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  # Redis
+  redis:
+    image: redis:8
+    #restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  # Backend (FastAPI)
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    #restart: unless-stopped
+    env_file: .env
+    working_dir: /app
+    volumes:
+      - ./:/app
+
+    depends_on:
+      - postgres
+      - redis
+
+    ports:
+      - "8000:8000"
+
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-ao}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-fastapi_db}"
+      REDIS_URL: "redis://redis:6379/0"
+    command: >
+      sh -c "
+        alembic upgrade head &&
+        uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+
+  # Frontend
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    #restart: unless-stopped
+    working_dir: /frontend
+    volumes:
+      - ./js:/frontend
+    ports:
+      - "3000:3000"
+    # command: ["npm", "run", "build"] 
+    command: ["npm", "start"] 
+
+volumes:
+  postgres_data:

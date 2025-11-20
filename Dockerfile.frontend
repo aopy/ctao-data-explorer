@@ -1,0 +1,14 @@
+# Frontend (Node.js)
+FROM harbor.cta-observatory.org/proxy_cache/node:24.2-alpine AS frontend
+
+WORKDIR /frontend
+
+COPY js/package*.json ./
+
+RUN npm install
+
+COPY js .
+
+# Default: start in development mode
+EXPOSE 3000
+CMD ["npm", "start"]
