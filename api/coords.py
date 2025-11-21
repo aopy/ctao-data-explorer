@@ -1,10 +1,10 @@
+import logging
+import math
+
+import astropy.units as u
+from astropy.coordinates import SkyCoord
 from fastapi import APIRouter
 from pydantic import BaseModel, Field, validator
-from typing import Optional
-from astropy.coordinates import SkyCoord
-import astropy.units as u
-import math
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -40,11 +40,11 @@ class CoordInput(BaseModel):
 
 class CoordOutput(BaseModel):
     # Output always includes decimal degrees if successful
-    ra_deg: Optional[float] = None
-    dec_deg: Optional[float] = None
-    l_deg: Optional[float] = None
-    b_deg: Optional[float] = None
-    error: Optional[str] = None
+    ra_deg: float | None = None
+    dec_deg: float | None = None
+    l_deg: float | None = None
+    b_deg: float | None = None
+    error: str | None = None
 
 
 coord_router = APIRouter()
@@ -83,9 +83,7 @@ async def parse_coordinates_endpoint(coord_input: CoordInput):
 
         elif system == "hmsdms":
             # RA in hourangle, Dec in deg, still ICRS
-            c = SkyCoord(
-                coord1_str, coord2_str, unit=(u.hourangle, u.deg), frame="icrs"
-            )
+            c = SkyCoord(coord1_str, coord2_str, unit=(u.hourangle, u.deg), frame="icrs")
 
         elif system == "gal":
             # l/b in degrees → convert to ICRS

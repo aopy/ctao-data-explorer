@@ -39,27 +39,17 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_saved_baskets_id"), "saved_baskets", ["id"], unique=False)
-    op.create_index(
-        op.f("ix_saved_baskets_user_id"), "saved_baskets", ["user_id"], unique=False
-    )
-    op.add_column(
-        "saved_datasets", sa.Column("basket_id", sa.Integer(), nullable=False)
-    )
+    op.create_index(op.f("ix_saved_baskets_user_id"), "saved_baskets", ["user_id"], unique=False)
+    op.add_column("saved_datasets", sa.Column("basket_id", sa.Integer(), nullable=False))
     op.create_index(
         op.f("ix_saved_datasets_basket_id"),
         "saved_datasets",
         ["basket_id"],
         unique=False,
     )
-    op.create_index(
-        op.f("ix_saved_datasets_id"), "saved_datasets", ["id"], unique=False
-    )
-    op.drop_constraint(
-        "saved_datasets_user_id_fkey", "saved_datasets", type_="foreignkey"
-    )
-    op.create_foreign_key(
-        None, "saved_datasets", "saved_baskets", ["basket_id"], ["id"]
-    )
+    op.create_index(op.f("ix_saved_datasets_id"), "saved_datasets", ["id"], unique=False)
+    op.drop_constraint("saved_datasets_user_id_fkey", "saved_datasets", type_="foreignkey")
+    op.create_foreign_key(None, "saved_datasets", "saved_baskets", ["basket_id"], ["id"])
     op.drop_column("saved_datasets", "user_id")
     # ### end Alembic commands ###
 

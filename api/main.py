@@ -1,64 +1,62 @@
-from fastapi import FastAPI, Query, HTTPException, Body, Response, Request, Depends
-from fastapi.middleware.cors import CORSMiddleware
-from .models import SearchResult
-from .tap import (
-    astropy_table_to_list,
-    build_spatial_icrs_condition,
-    build_time_overlap_condition,
-    build_where_clause,
-    build_select_query,
-    perform_query_with_conditions,
-)
-import pyvo as vo
+import asyncio
+import hashlib
+import inspect
+import itertools
+import json
+import logging
 import math
-from astropy.io.votable import parse_single_table
+import os
+import re
+import time
+import traceback
+import urllib.parse
+from contextlib import asynccontextmanager
+from datetime import datetime
+from io import BytesIO
+from typing import Any, Literal
+
+import astropy.units as u
+import pyvo as vo
+import redis.asyncio as redis
+import requests
 from astropy.coordinates import SkyCoord
-from .auth import get_optional_session_user
+from astropy.io.votable import parse_single_table
+from astropy.time import Time
+from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.staticfiles import StaticFiles
+
+from .auth import get_optional_session_user, router as auth_api_router
 from .basket import basket_router
-import urllib.parse
-from astropy.time import Time
-from datetime import datetime
-from .query_history import (
-    query_history_router,
-    QueryHistoryCreate,
-    _internal_create_query_history,
-)
-import traceback
-from .coords import coord_router
-from typing import Dict, Any, List
-import asyncio
-import re
-import json
-from io import BytesIO
-import requests
-from .db import get_redis_pool
-from .auth import router as auth_api_router
-from .oidc import oidc_router
-from .opus import router as opus_router
-from contextlib import asynccontextmanager
-import itertools
-import hashlib
-from pydantic import BaseModel
-from typing import Literal, Optional
-import astropy.units as u
-import logging
 from .config import get_settings
-from .logging_config import setup_logging
-from .metrics import setup_metrics
-import time
-import os
-import redis.asyncio as redis
-from sqlalchemy.ext.asyncio import AsyncSession
-from .db import get_async_session
-import inspect
-from .metrics import vo_observe_call, cache_hit, cache_miss, observe_redis
 from .constants import (
+    COOKIE_NAME_MAIN_SESSION,
     COORD_SYS_EQ_DEG,
     COORD_SYS_EQ_HMS,
     COORD_SYS_GAL,
-    COOKIE_NAME_MAIN_SESSION,
+)
+from .coords import coord_router
+from .db import get_async_session, get_redis_pool
+from .logging_config import setup_logging
+from .metrics import cache_hit, cache_miss, observe_redis, setup_metrics, vo_observe_call
+from .models import SearchResult
+from .oidc import oidc_router
+from .opus import router as opus_router
+from .query_history import (
+    QueryHistoryCreate,
+    _internal_create_query_history,
+    query_history_router,
+)
+from .tap import (
+    astropy_table_to_list,
+    build_select_query,
+    build_spatial_icrs_condition,
+    build_time_overlap_condition,
+    build_where_clause,
+    perform_query_with_conditions,
 )
 
 COORD_SYS_ALIASES = {
@@ -212,8 +210,8 @@ class ConvertReq(BaseModel):
     input_format: Literal["isot", "mjd", "met"] = "isot"
     input_scale: Literal["utc", "tt", "tai"] = "utc"
     # MET only:
-    met_epoch_isot: Optional[str] = None
-    met_epoch_scale: Optional[Literal["utc", "tt", "tai"]] = "utc"
+    met_epoch_isot: str | None = None
+    met_epoch_scale: Literal["utc", "tt", "tai"] | None = "utc"
 
 
 class ConvertResp(BaseModel):
@@ -228,9 +226,7 @@ def convert_time(req: ConvertReq):
     # Build Time object from the request
     if req.input_format == "met":
         if not req.met_epoch_isot:
-            raise HTTPException(
-                status_code=400, detail="met_epoch_isot required for MET."
-            )
+            raise HTTPException(status_code=400, detail="met_epoch_isot required for MET.")
         iso = req.met_epoch_isot or ""
         scale = req.met_epoch_scale or "utc"
         if iso.endswith("Z") and scale != "utc":
@@ -239,16 +235,16 @@ def convert_time(req: ConvertReq):
         # epoch = Time(req.met_epoch_isot, format="isot", scale=req.met_epoch_scale or "utc")
         try:
             seconds = float(str(req.value).replace(",", "."))
-        except Exception:
+        except Exception as e:
             raise HTTPException(
                 status_code=400, detail="MET value must be numeric (seconds)."
-            )
+            ) from e
         t = epoch + seconds * u.s
     elif req.input_format == "mjd":
         try:
             mjd = float(str(req.value).replace(",", "."))
-        except Exception:
-            raise HTTPException(status_code=400, detail="MJD value must be numeric.")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail="MJD value must be numeric.") from e
         t = Time(mjd, format="mjd", scale=req.input_scale)
     else:  # "isot"
         t = Time(req.value, format="isot", scale=req.input_scale)
@@ -261,7 +257,7 @@ def convert_time(req: ConvertReq):
     )
 
 
-async def _ned_resolve_via_objectlookup(name: str) -> Optional[Dict[str, Any]]:
+async def _ned_resolve_via_objectlookup(name: str) -> dict[str, Any] | None:
     """
     Returns {'service','name','ra','dec'} or None if not found/error.
     """
@@ -279,9 +275,7 @@ async def _ned_resolve_via_objectlookup(name: str) -> Optional[Dict[str, Any]]:
         logger.exception("NED ObjectLookup failed: %s", e)
         return None
     finally:
-        vo_observe_call(
-            "ned-objectlookup", OBJECT_LOOKUP_URL, time.perf_counter() - t0, ok
-        )
+        vo_observe_call("ned-objectlookup", OBJECT_LOOKUP_URL, time.perf_counter() - t0, ok)
 
     obj = resp.json()
     if obj.get("ResultCode") == 3:
@@ -329,13 +323,13 @@ def _run_tap_sync(url: str, adql: str, maxrec: int = 50):
     try:
         r = requests.get(
             url,
-            params=dict(
-                QUERY=adql,
-                LANG="ADQL",
-                REQUEST="doQuery",
-                FORMAT="votable",
-                MAXREC=maxrec,
-            ),
+            params={
+                "QUERY": adql,
+                "LANG": "ADQL",
+                "REQUEST": "doQuery",
+                "FORMAT": "votable",
+                "MAXREC": maxrec,
+            },
             timeout=20,
         )
         r.raise_for_status()
@@ -399,7 +393,7 @@ async def _simbad_suggest(prefix: str, limit: int) -> list[dict]:
     return [{"service": "SIMBAD", "name": n} for n in ordered]
 
 
-async def _ned_suggest(prefix: str, limit: int) -> List[Dict[str, str]]:
+async def _ned_suggest(prefix: str, limit: int) -> list[dict[str, str]]:
     """
     Returns up to `limit` suggestions via the ObjectLookup FuzzyMatches.
     """
@@ -447,7 +441,7 @@ async def object_suggest(
     use_simbad: bool = True,
     use_ned: bool = False,
     limit: int = 15,
-) -> Dict[str, List[Dict[str, Any]]]:
+) -> dict[str, list[dict[str, Any]]]:
     q = q.strip()
     if len(q) < 4 and not _is_short_catalog(q):
         return {"results": []}
@@ -508,23 +502,23 @@ async def object_suggest(
 async def search_coords(
     request: Request,
     # Coordinate Params
-    coordinate_system: Optional[str] = None,
-    ra: Optional[float] = None,
-    dec: Optional[float] = None,
+    coordinate_system: str | None = None,
+    ra: float | None = None,
+    dec: float | None = None,
     l_deg: float | None = Query(None, alias="l"),
     b_deg: float | None = Query(None, alias="b"),
     search_radius: float = 5.0,
     # Time Params
-    obs_start: Optional[str] = None,
-    obs_end: Optional[str] = None,
-    mjd_start: Optional[float] = Query(None),
-    mjd_end: Optional[float] = Query(None),
-    time_scale: Optional[str] = Query("tt"),
+    obs_start: str | None = None,
+    obs_end: str | None = None,
+    mjd_start: float | None = Query(None),
+    mjd_end: float | None = Query(None),
+    time_scale: str | None = Query("tt"),
     # TAP Params
     tap_url: str = settings.DEFAULT_TAP_URL,
     obscore_table: str = settings.DEFAULT_OBSCORE_TABLE,
     # Auth
-    user_session_data: Optional[Dict[str, Any]] = Depends(get_optional_session_user),
+    user_session_data: dict[str, Any] | None = Depends(get_optional_session_user),
     db_session: AsyncSession = Depends(get_async_session),
 ):
     redis_client = getattr(app.state, "redis", None)
@@ -557,9 +551,7 @@ async def search_coords(
                 detail=f"MJD values out of expected range ({MIN_VALID_MJD}-{MAX_VALID_MJD}).",
             )
         if mjd_end <= mjd_start:
-            raise HTTPException(
-                status_code=400, detail="mjd_end must be greater than mjd_start."
-            )
+            raise HTTPException(status_code=400, detail="mjd_end must be greater than mjd_start.")
 
         scale = (time_scale or "tt").lower()
         if scale not in ("tt", "utc"):
@@ -590,9 +582,7 @@ async def search_coords(
             dt_start = datetime.strptime(obs_start, "%d/%m/%Y %H:%M:%S")
             dt_end = datetime.strptime(obs_end, "%d/%m/%Y %H:%M:%S")
             if dt_end <= dt_start:
-                raise HTTPException(
-                    status_code=400, detail="obs_end must be after obs_start."
-                )
+                raise HTTPException(status_code=400, detail="obs_end must be after obs_start.")
 
             scale = (time_scale or "tt").lower()
             if scale not in ("tt", "utc"):
@@ -619,15 +609,13 @@ async def search_coords(
                 scale,
             )
 
-        except ValueError as ve:
+        except ValueError as e:
             raise HTTPException(
-                status_code=400, detail=f"Invalid date/time format or value: {ve}"
-            )
+                status_code=400, detail=f"Invalid date/time format or value: {e}"
+            ) from e
         except Exception as e:
             logger.error("Unexpected error during time processing: %s", e)
-            raise HTTPException(
-                status_code=500, detail="Error processing time parameters."
-            )
+            raise HTTPException(status_code=500, detail="Error processing time parameters.") from e
 
     # Process coordinates
     if coordinate_system == COORD_SYS_EQ_DEG or coordinate_system == COORD_SYS_EQ_HMS:
@@ -635,9 +623,7 @@ async def search_coords(
             fields["target_raj2000"] = {"value": ra}
             fields["target_dej2000"] = {"value": dec}
             coords_present = True
-            logger.debug(
-                "search_coords: Equatorial coords received RA=%s, Dec=%s", ra, dec
-            )
+            logger.debug("search_coords: Equatorial coords received RA=%s, Dec=%s", ra, dec)
     elif coordinate_system == COORD_SYS_GAL:
         if l_deg is not None and b_deg is not None:
             try:
@@ -646,11 +632,11 @@ async def search_coords(
                 fields["target_raj2000"] = {"value": c_icrs.ra.deg}
                 fields["target_dej2000"] = {"value": c_icrs.dec.deg}
                 coords_present = True
-            except Exception as coord_exc:
-                logger.error("Galactic conversion failed: %s", coord_exc)
+            except Exception as e:
+                logger.error("Galactic conversion failed: %s", e)
                 raise HTTPException(
                     status_code=400, detail="Invalid galactic coordinates provided."
-                )
+                ) from e
 
     logger.debug("search_coords: Fields prepared: %s", fields)
     logger.debug(
@@ -664,9 +650,7 @@ async def search_coords(
     error = None
 
     if not coords_present and not time_filter_present:
-        raise HTTPException(
-            status_code=400, detail="Provide Coordinates or Time Interval."
-        )
+        raise HTTPException(status_code=400, detail="Provide Coordinates or Time Interval.")
 
     where_conditions = []
     if coords_present:
@@ -686,9 +670,7 @@ async def search_coords(
         )
 
     where_sql = build_where_clause(where_conditions)
-    adql_query_str = build_select_query(
-        fields["obscore_table"]["value"], where_sql, limit=100
-    )
+    adql_query_str = build_select_query(fields["obscore_table"]["value"], where_sql, limit=100)
 
     cache_key = "search:" + hashlib.sha256(adql_query_str.encode()).hexdigest()
 
@@ -714,11 +696,9 @@ async def search_coords(
             type(res_table),
         )
 
-    except Exception as query_exc:
-        logger.error(
-            "search_coords: Exception during perform_query call: %s", query_exc
-        )
-        raise HTTPException(status_code=500, detail="Failed during query execution.")
+    except Exception as e:
+        logger.error("search_coords: Exception during perform_query call: %s", e)
+        raise HTTPException(status_code=500, detail="Failed during query execution.") from e
 
     if error is None:
         # print(f"DEBUG search_coords: No error from query function. Processing table.")
@@ -726,18 +706,11 @@ async def search_coords(
             columns, data = astropy_table_to_list(res_table)
             # print(f"DEBUG search_coords: astropy_table_to_list returned {len(columns)} cols, {len(data)} rows.")
 
-            if (
-                not columns
-                and not data
-                and res_table is not None
-                and len(res_table) > 0
-            ):
+            if not columns and not data and res_table is not None and len(res_table) > 0:
                 logger.error(
                     "search_coords: astropy_table_to_list returned empty lists despite input."
                 )
-                raise HTTPException(
-                    status_code=500, detail="Internal error processing results."
-                )
+                raise HTTPException(status_code=500, detail="Internal error processing results.")
 
             columns = list(columns) if columns else []
             data = [list(row) for row in data] if data else []
@@ -767,16 +740,12 @@ async def search_coords(
                         did = new_row[idx]
                         if did:  # Check if DID is not None or empty
                             encoded_did = urllib.parse.quote(str(did), safe="")
-                            datalink_url = (
-                                f"{base_api_url}/api/datalink?ID={encoded_did}"
-                            )
+                            datalink_url = f"{base_api_url}/api/datalink?ID={encoded_did}"
                             if len(new_row) == len(columns_with_datalink) - 1:
                                 new_row.append(datalink_url)
                             elif len(new_row) == len(columns_with_datalink):
                                 # If column existed, overwrite
-                                new_row[columns_with_datalink.index(datalink_col)] = (
-                                    datalink_url
-                                )
+                                new_row[columns_with_datalink.index(datalink_col)] = datalink_url
                             else:
                                 logger.warning(
                                     "Row %s length mismatch when adding datalink.",
@@ -787,26 +756,20 @@ async def search_coords(
                                 new_row.append(None)
 
                     else:
-                        logger.warning(
-                            "Row %s too short for DID index %s.", row_idx, idx
-                        )
+                        logger.warning("Row %s too short for DID index %s.", row_idx, idx)
                         if len(new_row) == len(columns_with_datalink) - 1:
                             new_row.append(None)
 
                     data_with_datalink.append(new_row)
 
             # recreate SearchResult with datalink info
-            search_result_obj = SearchResult(
-                columns=columns_with_datalink, data=data_with_datalink
-            )
+            search_result_obj = SearchResult(columns=columns_with_datalink, data=data_with_datalink)
             # print(f"DEBUG search_coords: SearchResult RECREATED with datalink.")
 
             if redis_client:
                 t0 = time.perf_counter()
                 ok = False
-                await redis_client.set(
-                    cache_key, search_result_obj.model_dump_json(), ex=CACHE_TTL
-                )
+                await redis_client.set(cache_key, search_result_obj.model_dump_json(), ex=CACHE_TTL)
                 ok = True
                 observe_redis("set", time.perf_counter() - t0, ok)
             else:
@@ -860,9 +823,7 @@ async def search_coords(
                         app_user_id=app_user_id,
                         session=db_session,
                     )
-                    logger.debug(
-                        "Called create_query_history for user app_id=%s", app_user_id
-                    )
+                    logger.debug("Called create_query_history for user app_id=%s", app_user_id)
                 except Exception as history_error:
                     logger.error(
                         "saving query history for user app_id=%s: %s.",
@@ -874,15 +835,15 @@ async def search_coords(
             logger.debug("search_coords: Returning SearchResult object.")
             return search_result_obj
 
-        except Exception as processing_exc:
+        except Exception as e:
             logger.error(
                 "ERROR search_coords: Exception during results processing: %s",
-                processing_exc,
+                e,
             )
             traceback.print_exc()
             raise HTTPException(
                 status_code=500, detail="Internal error processing search results."
-            )
+            ) from e
 
     else:
         logger.error("search_coords: Query function returned error: %s", error)
@@ -1041,7 +1002,9 @@ async def datalink_endpoint(
                 service_def = ""
         else:
             access_url = ""
-            error_message = f"NotFoundFault: {id_val} is not recognized as a valid ivo:// identifier"
+            error_message = (
+                f"NotFoundFault: {id_val} is not recognized as a valid ivo:// identifier"
+            )
             service_def = ""
         rows += (
             "                <TR>\n"

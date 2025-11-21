@@ -42,9 +42,7 @@ def upgrade() -> None:
     op.create_index(op.f("ix_query_history_id"), "query_history", ["id"], unique=False)
     op.drop_index("ix_saved_datasets_basket_id", table_name="saved_datasets")
     op.drop_index("ix_saved_datasets_id", table_name="saved_datasets")
-    op.drop_constraint(
-        "saved_datasets_user_id_fkey", "saved_datasets", type_="foreignkey"
-    )
+    op.drop_constraint("saved_datasets_user_id_fkey", "saved_datasets", type_="foreignkey")
     op.create_foreign_key(None, "saved_datasets", "users", ["user_id"], ["id"])
     op.drop_column("saved_datasets", "basket_id")
     # ### end Alembic commands ###
@@ -66,9 +64,7 @@ def downgrade() -> None:
         ondelete="CASCADE",
     )
     op.create_index("ix_saved_datasets_id", "saved_datasets", ["id"], unique=False)
-    op.create_index(
-        "ix_saved_datasets_basket_id", "saved_datasets", ["basket_id"], unique=False
-    )
+    op.create_index("ix_saved_datasets_basket_id", "saved_datasets", ["basket_id"], unique=False)
     op.drop_index(op.f("ix_query_history_id"), table_name="query_history")
     op.drop_table("query_history")
     # ### end Alembic commands ###

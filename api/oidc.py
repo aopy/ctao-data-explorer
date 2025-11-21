@@ -1,29 +1,31 @@
-from fastapi.responses import RedirectResponse
-from fastapi import APIRouter, Request, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from .oauth_client import oauth
 import json
+import logging
 import time
 import uuid
 from datetime import datetime
-from .db import get_async_session, get_redis_client, encrypt_token
-from .models import UserTable, UserRefreshToken
+
 import redis.asyncio as redis
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import RedirectResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+
 from .config import get_settings
 from .constants import (
     COOKIE_NAME_MAIN_SESSION,
+    CTAO_PROVIDER_NAME,
+    SESSION_ACCESS_TOKEN_EXPIRY_KEY,
+    SESSION_ACCESS_TOKEN_KEY,
+    SESSION_IAM_EMAIL_KEY,
+    SESSION_IAM_FAMILY_NAME_KEY,
+    SESSION_IAM_GIVEN_NAME_KEY,
+    SESSION_IAM_SUB_KEY,
     SESSION_KEY_PREFIX,
     SESSION_USER_ID_KEY,
-    SESSION_IAM_SUB_KEY,
-    SESSION_IAM_EMAIL_KEY,
-    SESSION_IAM_GIVEN_NAME_KEY,
-    SESSION_IAM_FAMILY_NAME_KEY,
-    SESSION_ACCESS_TOKEN_KEY,
-    SESSION_ACCESS_TOKEN_EXPIRY_KEY,
-    CTAO_PROVIDER_NAME,
 )
-import logging
+from .db import encrypt_token, get_async_session, get_redis_client
+from .models import UserRefreshToken, UserTable
+from .oauth_client import oauth
 
 logger = logging.getLogger(__name__)
 
@@ -58,12 +60,12 @@ async def auth_callback(
     try:
         # This uses the temporary OIDC state session cookie
         token_response = await oauth.ctao.authorize_access_token(request)
-    except Exception:
+    except Exception as e:
         logger.exception("OIDC authorize_access_token failed")
         # import traceback; traceback.print_exc()
         raise HTTPException(
             status_code=400, detail="OIDC authentication failed or was cancelled."
-        )
+        ) from e
 
     userinfo = token_response.get("userinfo")
     if not userinfo or not userinfo.get("sub"):
@@ -146,9 +148,7 @@ async def auth_callback(
                 db_session.add(new_rt_record)
             logger.info("Stored/Updated refresh token for user_id: %s", app_user_id)
         else:
-            logger.warning(
-                "Failed to encrypt refresh token for user_id=%s", app_user_id
-            )
+            logger.warning("Failed to encrypt refresh token for user_id=%s", app_user_id)
     else:
         logger.warning("No refresh token received from IAM for user_id=%s", app_user_id)
 
@@ -173,12 +173,10 @@ async def auth_callback(
     # Commit DB changes
     try:
         await db_session.commit()
-    except Exception as db_exc:
+    except Exception as e:
         await db_session.rollback()
-        logger.exception("Error committing user/refresh token to DB: %s", db_exc)
-        raise HTTPException(
-            status_code=500, detail="Failed to finalize user session setup."
-        )
+        logger.exception("Error committing user/refresh token to DB: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to finalize user session setup.") from e
 
     # Set Session ID Cookie and Redirect
     response = RedirectResponse(url="/")

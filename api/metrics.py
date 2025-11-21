@@ -1,9 +1,11 @@
-from prometheus_fastapi_instrumentator import Instrumentator
-from prometheus_client import Counter, Histogram, CONTENT_TYPE_LATEST, generate_latest
-from fastapi import Depends, Response, HTTPException
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import secrets
 from urllib.parse import urlparse
+
+from fastapi import Depends, HTTPException, Response
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from prometheus_fastapi_instrumentator import Instrumentator
+
 from api.config import get_settings
 
 # HTTP instrumentation
@@ -51,9 +53,7 @@ def setup_metrics(app):
 # Custom app metrics
 # OPUS
 _opus_submit_total = Counter("opus_submit_total", "OPUS job submissions")
-_opus_submit_fail_total = Counter(
-    "opus_submit_failures_total", "Failed OPUS submissions"
-)
+_opus_submit_fail_total = Counter("opus_submit_failures_total", "Failed OPUS submissions")
 # Duration of the create+run HTTP interaction
 _opus_submit_request_seconds = Histogram(
     "opus_submit_request_seconds",
@@ -70,7 +70,8 @@ def opus_record_submit_failure():
     _opus_submit_fail_total.inc()
 
 
-def opus_observe_submit(seconds: float, ok: bool):
+def opus_observe_submit(seconds: float, ok: bool) -> None:
+    _ = ok
     _opus_submit_request_seconds.observe(seconds)
     # failures are counted separately via opus_record_submit_failure
 
@@ -108,7 +109,7 @@ async def opus_record_job_outcome_once(redis, job_id: str, phase: str, service: 
             # only first time returns True
             wrote = await redis.set(key, "1", ex=60 * 60 * 24 * 90, nx=True)
         except Exception:
-            wrote = True  # fall through (don’t lose the count)
+            wrote = True  # fall through
     if not wrote:
         return
 
@@ -125,9 +126,7 @@ _vo_req_dur = Histogram(
     ["service", "host"],
     buckets=(0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10),
 )
-_vo_req_fail = Counter(
-    "vo_request_failures_total", "VO upstream failures", ["service", "host"]
-)
+_vo_req_fail = Counter("vo_request_failures_total", "VO upstream failures", ["service", "host"])
 
 
 def vo_observe_call(service: str, url_or_host: str, seconds: float, ok: bool):

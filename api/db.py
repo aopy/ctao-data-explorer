@@ -1,11 +1,12 @@
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
+import logging
+
 import redis.asyncio as redis
 from cryptography.fernet import Fernet
-from typing import Optional
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+
 from .config import get_settings
-import logging
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -37,7 +38,7 @@ redis_pool = None
 async def get_redis_pool():
     global redis_pool
     if redis_pool is None:
-        print(f"Connecting to Redis at {REDIS_URL}")
+        # print(f"Connecting to Redis at {REDIS_URL}")
         redis_pool = redis.ConnectionPool.from_url(REDIS_URL, decode_responses=True)
     return redis_pool
 
@@ -65,13 +66,13 @@ else:
         fernet_cipher = None
 
 
-def encrypt_token(token: str) -> Optional[str]:
+def encrypt_token(token: str) -> str | None:
     if fernet_cipher and token:
         return fernet_cipher.encrypt(token.encode()).decode()
     return None
 
 
-def decrypt_token(encrypted_token: str) -> Optional[str]:
+def decrypt_token(encrypted_token: str) -> str | None:
     if fernet_cipher and encrypted_token:
         try:
             return fernet_cipher.decrypt(encrypted_token.encode()).decode()

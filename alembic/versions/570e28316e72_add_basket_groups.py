@@ -18,9 +18,7 @@ depends_on = None
 
 def upgrade():
     # 1. Drop the foreign key constraint from saved_datasets that depends on saved_baskets.
-    op.drop_constraint(
-        "saved_datasets_basket_id_fkey", "saved_datasets", type_="foreignkey"
-    )
+    op.drop_constraint("saved_datasets_basket_id_fkey", "saved_datasets", type_="foreignkey")
 
     # 2. Drop the old saved_baskets table.
     op.drop_table("saved_baskets")
@@ -31,17 +29,13 @@ def upgrade():
         sa.Column("id", sa.Integer(), primary_key=True, index=True),
         sa.Column("user_id", sa.Integer(), nullable=False),
         sa.Column("name", sa.String(), nullable=False, server_default="My Basket"),
-        sa.Column(
-            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
-        ),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), onupdate=sa.func.now()),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"]),
     )
 
     # 4. Add the new basket_group_id column to saved_datasets.
-    op.add_column(
-        "saved_datasets", sa.Column("basket_group_id", sa.Integer(), nullable=True)
-    )
+    op.add_column("saved_datasets", sa.Column("basket_group_id", sa.Integer(), nullable=True))
 
     # 5. Create a new foreign key constraint on saved_datasets.basket_group_id referencing basket_groups.id.
     op.create_foreign_key(
@@ -55,9 +49,7 @@ def upgrade():
 
 def downgrade():
     # Reverse the upgrade steps:
-    op.drop_constraint(
-        "saved_datasets_basket_group_id_fkey", "saved_datasets", type_="foreignkey"
-    )
+    op.drop_constraint("saved_datasets_basket_group_id_fkey", "saved_datasets", type_="foreignkey")
     op.drop_column("saved_datasets", "basket_group_id")
     op.drop_table("basket_groups")
     op.create_table(

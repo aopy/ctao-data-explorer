@@ -1,10 +1,8 @@
 from logging.config import dictConfig
-from typing import Any, Dict
+from typing import Any
 
 
-def setup_logging(
-    *, level: str = "INFO", include_access: bool = True, json: bool = False
-) -> None:
+def setup_logging(*, level: str = "INFO", include_access: bool = True, json: bool = False) -> None:
     """
     Configure logging for the app and uvicorn.
     - level: base level the app logger
@@ -15,7 +13,7 @@ def setup_logging(
     default_fmt = "%(asctime)s %(levelname)s [%(name)s] %(message)s"
     date_fmt = "%Y-%m-%d %H:%M:%S"
 
-    formatters: Dict[str, Any] = {
+    formatters: dict[str, Any] = {
         "default": {
             "format": default_fmt,
             "datefmt": date_fmt,
@@ -82,9 +80,7 @@ def setup_logging(
                     "handlers": ["uvicorn_access"],
                     "level": "INFO",
                     "propagate": False,
-                    **(
-                        {} if include_access else {"level": "CRITICAL"}
-                    ),  # mutes access logs
+                    **({} if include_access else {"level": "CRITICAL"}),  # mutes access logs
                 },
             },
         }

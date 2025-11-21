@@ -1,25 +1,26 @@
 import asyncio
-import os
 import inspect
-import pytest
+import json
+import os
+import time
+import uuid
+
 import httpx
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.pool import StaticPool
+import pytest
 from fastapi import FastAPI
-from api.db import Base, get_async_session, get_redis_client
-from api.models import UserTable
 from sqlalchemy import select
-from api.tests.fakeredis import FakeRedis
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
+
 from api.constants import (
     COOKIE_NAME_MAIN_SESSION,
-    SESSION_KEY_PREFIX,
-    SESSION_ACCESS_TOKEN_KEY,
     SESSION_ACCESS_TOKEN_EXPIRY_KEY,
+    SESSION_ACCESS_TOKEN_KEY,
+    SESSION_KEY_PREFIX,
 )
-import uuid
-import json
-import time
-
+from api.db import Base, get_async_session, get_redis_client
+from api.models import UserTable
+from api.tests.fakeredis import FakeRedis
 
 try:
     from starlette.testclient import LifespanManager
@@ -100,9 +101,7 @@ def as_user(db_session, fake_redis, client):
         sub = iam_subject_id or f"test-sub-{uuid.uuid4().hex[:8]}"
 
         # Reuse if exists, else create
-        res = await db_session.execute(
-            select(UserTable).where(UserTable.iam_subject_id == sub)
-        )
+        res = await db_session.execute(select(UserTable).where(UserTable.iam_subject_id == sub))
         user = res.scalars().first()
         if not user:
             user = UserTable(iam_subject_id=sub, hashed_password="")

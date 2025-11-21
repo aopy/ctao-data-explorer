@@ -1,0 +1,51 @@
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+extend-exclude = """
+(
+  ^alembic/|
+  ^js/|
+  ^node_modules/|
+  ^dist/|
+  ^build/|
+  ^docs/_build/
+)
+"""
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["api", "tests"]
+respect-gitignore = true
+extend-exclude = [
+  "alembic",
+  "js",
+  "node_modules",
+  "dist",
+  "build",
+  "docs/_build",
+]
+
+[tool.ruff.lint]
+# Pyflakes/pycodestyle/isort/pyupgrade/bugbear/comprehensions/unused-args family
+select = ["F", "E", "W", "I", "UP", "B", "C4", "ARG", "RUF"]
+# let Black own line length
+extend-ignore = ["E501"]
+fixable = ["ALL"]
+unfixable = []
+
+# isort tuning (Ruff implements isort)
+[tool.ruff.lint.isort]
+known-first-party = ["api"]
+combine-as-imports = true
+
+# targeted ignores
+[tool.ruff.lint.per-file-ignores]
+# FastAPI endpoints: allow Depends/Query/Body in defaults
+"api/**/*.py" = ["B008"]
+
+"tests/**" = ["ARG", "S101", "ARG001", "ARG002"]
+"api/tests/**" = ["ARG", "S101", "ARG001", "ARG002"]
+
+# Allow re-exports in package init files
+"api/**/__init__.py" = ["F401"]

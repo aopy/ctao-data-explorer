@@ -28,9 +28,7 @@ def upgrade() -> None:
         sa.Column("service", sa.String(length=50), nullable=False),
         sa.Column("email", sa.String(length=255), nullable=False),
         sa.Column("token_encrypted", sa.String(), nullable=False),
-        sa.Column(
-            "created_at", sa.DateTime(), server_default=sa.text("now()"), nullable=True
-        ),
+        sa.Column("created_at", sa.DateTime(), server_default=sa.text("now()"), nullable=True),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("user_id", "service"),
     )

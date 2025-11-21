@@ -1,23 +1,25 @@
 from dataclasses import dataclass
-from typing import Optional, Dict, Any
+from typing import Any
+
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from .db import get_async_session
+
 from .auth import get_required_session_user
+from .db import get_async_session
 
 
 @dataclass
 class CurrentUser:
     id: int
-    email: Optional[str] = None
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    iam_subject_id: Optional[str] = None
-    iam_access_token: Optional[str] = None
+    email: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    iam_subject_id: str | None = None
+    iam_access_token: str | None = None
 
 
 async def get_current_user(
-    user_data: Dict[str, Any] = Depends(get_required_session_user),
+    user_data: dict[str, Any] = Depends(get_required_session_user),
 ) -> CurrentUser:
     return CurrentUser(
         id=int(user_data["app_user_id"]),

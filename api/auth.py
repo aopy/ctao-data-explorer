@@ -1,30 +1,32 @@
-from fastapi import APIRouter, Depends, Response, HTTPException, status, Request
-from pydantic import ConfigDict
+import json
+import logging
+import time
+import traceback
+from datetime import datetime
+from typing import Any
+
+import redis.asyncio as redis
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi_users import schemas
+from pydantic import ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from .db import get_async_session, get_redis_client, encrypt_token, decrypt_token
-from .models import UserRefreshToken
-from .oauth_client import oauth, CTAO_PROVIDER_NAME
-import json
-import time
-from typing import Optional, Dict, Any
-from datetime import datetime
-import redis.asyncio as redis
-import traceback
+
 from .config import get_settings
 from .constants import (
+    COOKIE_NAME_MAIN_SESSION,
+    SESSION_ACCESS_TOKEN_EXPIRY_KEY,
+    SESSION_ACCESS_TOKEN_KEY,
+    SESSION_IAM_EMAIL_KEY,
+    SESSION_IAM_FAMILY_NAME_KEY,
+    SESSION_IAM_GIVEN_NAME_KEY,
+    SESSION_IAM_SUB_KEY,
     SESSION_KEY_PREFIX,
     SESSION_USER_ID_KEY,
-    SESSION_IAM_SUB_KEY,
-    SESSION_IAM_EMAIL_KEY,
-    SESSION_IAM_GIVEN_NAME_KEY,
-    SESSION_IAM_FAMILY_NAME_KEY,
-    COOKIE_NAME_MAIN_SESSION,
-    SESSION_ACCESS_TOKEN_KEY,
-    SESSION_ACCESS_TOKEN_EXPIRY_KEY,
 )
-import logging
+from .db import decrypt_token, encrypt_token, get_async_session, get_redis_client
+from .models import UserRefreshToken
+from .oauth_client import CTAO_PROVIDER_NAME, oauth
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +48,7 @@ class UserRead(schemas.BaseUser[int]):
 
 
 class UserUpdate(schemas.BaseUserUpdate):
-    email: Optional[str] = None
+    email: str | None = None
     # No name updates
 
 
@@ -58,7 +60,7 @@ async def get_current_session_user_data(
     request: Request,
     db_session: AsyncSession = Depends(get_async_session),
     redis: redis.Redis = Depends(get_redis_client),
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     # Read cookie via constant
     session_id = request.cookies.get(COOKIE_NAME_MAIN_SESSION)
     if not session_id:
@@ -95,9 +97,7 @@ async def get_current_session_user_data(
                 # expire IAM token but DO NOT drop the app session
                 session_data[SESSION_ACCESS_TOKEN_KEY] = None
                 session_data[SESSION_ACCESS_TOKEN_EXPIRY_KEY] = None
-                await redis.setex(
-                    key, SESSION_DURATION_SECONDS, json.dumps(session_data)
-                )
+                await redis.setex(key, SESSION_DURATION_SECONDS, json.dumps(session_data))
                 iam_access_token = None
 
             elif remaining < REFRESH_BUFFER_SECONDS:
@@ -137,9 +137,7 @@ async def get_current_session_user_data(
                             )
                             iam_access_token = new_at
                         except Exception:
-                            logger.exception(
-                                "IAM token refresh failed (keeping app session)."
-                            )
+                            logger.exception("IAM token refresh failed (keeping app session).")
                     else:
                         logger.warning(
                             "Failed to decrypt RT; keeping app session without IAM token."
@@ -147,9 +145,7 @@ async def get_current_session_user_data(
                 else:
                     logger.info("No RT on file; keeping app session without IAM token.")
     except Exception:
-        logger.exception(
-            "Non-fatal error in session token handling; preserving session."
-        )
+        logger.exception("Non-fatal error in session token handling; preserving session.")
 
     iam_subject_id = (
         session_data.get(SESSION_IAM_SUB_KEY)
@@ -182,19 +178,17 @@ async def get_current_session_user_data(
 
 # Dependency for required Authenticated User
 async def get_required_session_user(
-    user_data: Optional[Dict[str, Any]] = Depends(get_current_session_user_data),
-) -> Dict[str, Any]:
+    user_data: dict[str, Any] | None = Depends(get_current_session_user_data),
+) -> dict[str, Any]:
     if not user_data:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     return user_data
 
 
 # Dependency for optional Authenticated User
 async def get_optional_session_user(
-    user_data: Optional[Dict[str, Any]] = Depends(get_current_session_user_data),
-) -> Optional[Dict[str, Any]]:
+    user_data: dict[str, Any] | None = Depends(get_current_session_user_data),
+) -> dict[str, Any] | None:
     return user_data
 
 
@@ -204,7 +198,7 @@ auth_api_router = APIRouter()
 
 @auth_api_router.get("/users/me_from_session", response_model=UserRead, tags=["users"])
 async def get_me(
-    user_session_data: Dict[str, Any] = Depends(get_required_session_user),
+    user_session_data: dict[str, Any] = Depends(get_required_session_user),
 ):
     # print("DEBUG get_me: user_session_data received:", user_session_data)
     try:
@@ -220,14 +214,11 @@ async def get_me(
         }
 
         validated_user = UserRead.model_validate(data_for_pydantic)
-        # print(f"DEBUG get_me: Returning validated UserRead: {validated_user.model_dump_json(indent=2)}")
         return validated_user
     except Exception as e:
         logger.exception("ERROR in get_me constructing UserRead: %s", e)
         traceback.print_exc()
-        raise HTTPException(
-            status_code=500, detail="Error creating user response object."
-        )
+        raise HTTPException(status_code=500, detail="Error creating user response object.") from e
 
 
 # Logout Endpoint (uses new session logic)
@@ -237,7 +228,7 @@ async def logout_session(
     response: Response,  # Keep Response for cookie clearing
     redis: redis.Redis = Depends(get_redis_client),
     # Optional: get user_id for RT deletion
-    user_session_data: Optional[Dict[str, Any]] = Depends(get_optional_session_user),
+    user_session_data: dict[str, Any] | None = Depends(get_optional_session_user),
     db_session: AsyncSession = Depends(get_async_session),
 ):
     session_id = request.cookies.get("ctao_session_main")
@@ -248,9 +239,7 @@ async def logout_session(
         if user_session_data and user_session_data.get("app_user_id"):
             app_user_id = user_session_data["app_user_id"]
             # Delete refresh token from DB
-            stmt = select(UserRefreshToken).where(
-                UserRefreshToken.user_id == app_user_id
-            )
+            stmt = select(UserRefreshToken).where(UserRefreshToken.user_id == app_user_id)
             result = await db_session.execute(stmt)
             rt_to_delete = result.scalars().all()
             for rt_rec in rt_to_delete:

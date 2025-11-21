@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Optional
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,10 +11,10 @@ class Settings(BaseSettings):
     )
 
     # App / cookies
-    BASE_URL: Optional[str] = None
+    BASE_URL: str | None = None
     COOKIE_SAMESITE: str = "Lax"
     COOKIE_SECURE: bool = False
-    COOKIE_DOMAIN: Optional[str] = None
+    COOKIE_DOMAIN: str | None = None
     SESSION_DURATION_SECONDS: int = 3600 * 8
     REFRESH_BUFFER_SECONDS: int = 300
     SESSION_SECRET_KEY_OIDC: str = "a_different_strong_secret_for_oidc_state"
@@ -39,14 +39,14 @@ class Settings(BaseSettings):
     OIDC_SERVER_METADATA_URL: str = (
         "https://iam-ctao.cloud.cnaf.infn.it/.well-known/openid-configuration"
     )
-    CTAO_CLIENT_ID: Optional[str] = None
-    CTAO_CLIENT_SECRET: Optional[str] = None
+    CTAO_CLIENT_ID: str | None = None
+    CTAO_CLIENT_SECRET: str | None = None
     OIDC_REDIRECT_URI: str = "http://localhost:8000/api/oidc/callback"
-    OIDC_FAKE_EXPIRES_IN: Optional[int] = None
+    OIDC_FAKE_EXPIRES_IN: int | None = None
 
-    JWT_SECRET: Optional[str] = None
-    DB_URL: Optional[str] = None
-    NODE_OPTIONS: Optional[str] = None
+    JWT_SECRET: str | None = None
+    DB_URL: str | None = None
+    NODE_OPTIONS: str | None = None
 
     # Logs
     LOG_LEVEL: str = "INFO"
@@ -63,8 +63,8 @@ class Settings(BaseSettings):
     METRICS_ENABLED: bool = False
     METRICS_ROUTE: str = "/metrics"
     METRICS_PROTECT_WITH_BASIC_AUTH: bool = False
-    METRICS_BASIC_USER: Optional[str] = None
-    METRICS_BASIC_PASS: Optional[str] = None
+    METRICS_BASIC_USER: str | None = None
+    METRICS_BASIC_PASS: str | None = None
 
     @property
     def PRODUCTION(self) -> bool:
@@ -77,9 +77,7 @@ class Settings(BaseSettings):
             samesite = "Lax"
         else:
             samesite = samesite.capitalize()
-        params = dict(
-            secure=self.COOKIE_SECURE, httponly=True, samesite=samesite, path="/"
-        )
+        params = {"secure": self.COOKIE_SECURE, "httponly": True, "samesite": samesite, "path": "/"}
         if self.COOKIE_DOMAIN:
             params["domain"] = self.COOKIE_DOMAIN
         return params

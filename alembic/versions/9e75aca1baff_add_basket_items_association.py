@@ -35,9 +35,7 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("basket_group_id", "saved_dataset_id"),
     )
-    op.drop_constraint(
-        "saved_datasets_basket_group_id_fkey", "saved_datasets", type_="foreignkey"
-    )
+    op.drop_constraint("saved_datasets_basket_group_id_fkey", "saved_datasets", type_="foreignkey")
     op.drop_column("saved_datasets", "basket_group_id")
     # ### end Alembic commands ###
 

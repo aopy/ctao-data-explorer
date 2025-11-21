@@ -1,22 +1,24 @@
-from typing import Optional, List, Dict, Any
 import base64
+import mimetypes
+import time
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
+
 import httpx
 import xmltodict
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from starlette.responses import Response
-from pathlib import Path
-import mimetypes
-from urllib.parse import urlparse
+
 from .config import get_settings
 from .deps import get_current_user
-import time
-from datetime import datetime, timedelta, timezone
 from .metrics import (
-    opus_record_submit,
-    opus_record_submit_failure,
     opus_observe_submit,
     opus_record_job_outcome_once,
+    opus_record_submit,
+    opus_record_submit_failure,
 )
 
 settings = get_settings()
@@ -37,14 +39,14 @@ def _rest_url(*parts: str) -> str:
     return f"{base}/{path}"
 
 
-def _xml_to_json(xml_text: str) -> Dict[str, Any]:
+def _xml_to_json(xml_text: str) -> dict[str, Any]:
     try:
         return xmltodict.parse(xml_text)
     except Exception:
         return {"raw": xml_text}
 
 
-def _basic_headers(user_id: str) -> Dict[str, str]:
+def _basic_headers(user_id: str) -> dict[str, str]:
     if not OPUS_APP_TOKEN:
         raise HTTPException(500, "OPUS_APP_TOKEN is not configured on the server")
     token = base64.b64encode(f"{user_id}:{OPUS_APP_TOKEN}".encode()).decode()
@@ -71,13 +73,13 @@ def _extract_job_id_from_doc(doc: dict) -> str | None:
 
 # Schemas
 class QuickLookParams(BaseModel):
-    obs_ids: List[str] = []  # not used by OPUS
+    obs_ids: list[str] = []  # not used by OPUS
     RA: float
     Dec: float
     nxpix: int = 400
     nypix: int = 400
     binsz: float = 0.02
-    obsids: Optional[str] = None  # space-separated list used by OPUS
+    obsids: str | None = None  # space-separated list used by OPUS
 
 
 class OpusJobCreateResponse(BaseModel):
@@ -135,12 +137,10 @@ async def list_jobs(
         "ABORTED",
         "ARCHIVED",
     ]
-    after_dt = datetime.now(timezone.utc) - timedelta(days=max(1, days))
+    after_dt = datetime.now(UTC) - timedelta(days=max(1, days))
     after_iso = after_dt.strftime("%Y-%m-%dT%H:%M:%S")
 
-    params = [("AFTER", after_iso), ("_ts", str(time.time()))] + [
-        ("PHASE", p) for p in phases
-    ]
+    params = [("AFTER", after_iso), ("_ts", str(time.time()))] + [("PHASE", p) for p in phases]
 
     url = _rest_url("rest", OPUS_SERVICE)
     async with httpx.AsyncClient(timeout=30) as client:
@@ -290,9 +290,7 @@ async def create_job(params: QuickLookParams, user=Depends(get_current_user)):
             dt = time.perf_counter() - t0
             opus_observe_submit(dt, ok=False)
             opus_record_submit_failure()
-            raise HTTPException(
-                r2.status_code, f"Created {job_id} but failed to RUN: {r2.text}"
-            )
+            raise HTTPException(r2.status_code, f"Created {job_id} but failed to RUN: {r2.text}")
 
     except Exception:
         # record failure for any exception path
@@ -310,7 +308,7 @@ async def create_job(params: QuickLookParams, user=Depends(get_current_user)):
     return OpusJobCreateResponse(job_id=job_id, location=job_url)
 
 
-def _guess_preview_mime(name: str, rid: Optional[str]) -> str:
+def _guess_preview_mime(name: str, rid: str | None) -> str:
     rid_l = (rid or "").lower()
     ext = Path(name or "").suffix.lower()
     ctype, _ = mimetypes.guess_type(name or "")
@@ -333,7 +331,7 @@ def _guess_preview_mime(name: str, rid: Optional[str]) -> str:
     return ctype or "application/octet-stream"
 
 
-async def _get_with_auth(url: str, headers: Dict[str, str]) -> httpx.Response:
+async def _get_with_auth(url: str, headers: dict[str, str]) -> httpx.Response:
     async with httpx.AsyncClient(follow_redirects=True, timeout=None) as client:
         return await client.get(url, headers=headers)
 
@@ -344,12 +342,11 @@ async def fetch_by_href(
     job_id: str,
     href: str = Query(..., description="Absolute xlink:href returned by OPUS"),
     inline: bool = Query(False, description="If true, serve inline"),
-    filename: Optional[str] = Query(None, description="Optional filename hint"),
-    rid: Optional[str] = Query(
-        None, description="OPUS result id, e.g. provjson/stdout/excess_map"
-    ),
+    filename: str | None = Query(None, description="Optional filename hint"),
+    rid: str | None = Query(None, description="OPUS result id, e.g. provjson/stdout/excess_map"),
     user=Depends(get_current_user),
 ):
+    _ = request
     uid = (
         getattr(user, "iam_subject_id", None)
         if not isinstance(user, dict)
@@ -362,9 +359,7 @@ async def fetch_by_href(
     if not href.startswith(OPUS_ROOT):
         raise HTTPException(400, "Invalid href")
 
-    name_guess = (
-        filename or Path(urlparse(href).path).name or f"{job_id}_{rid or 'result'}"
-    )
+    name_guess = filename or Path(urlparse(href).path).name or f"{job_id}_{rid or 'result'}"
     content_type = _guess_preview_mime(name_guess, rid) if inline else None
 
     resp = await _get_with_auth(href, headers)
@@ -385,9 +380,7 @@ async def fetch_by_href(
     if resp.status_code >= 400:
         raise HTTPException(resp.status_code, resp.text)
 
-    media = (
-        content_type or resp.headers.get("content-type") or "application/octet-stream"
-    )
+    media = content_type or resp.headers.get("content-type") or "application/octet-stream"
     disposition = "inline" if inline else "attachment"
     return Response(
         content=resp.content,

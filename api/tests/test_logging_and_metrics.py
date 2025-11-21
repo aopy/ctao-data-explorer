@@ -1,6 +1,7 @@
 import logging
 import re
 from types import SimpleNamespace
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -8,12 +9,12 @@ from prometheus_client import generate_latest
 
 from api.logging_config import setup_logging
 from api.metrics import (
-    setup_metrics,
     cache_hit,
     cache_miss,
-    vo_observe_call,
     observe_redis,
     opus_record_job_outcome_once,
+    setup_metrics,
+    vo_observe_call,
 )
 
 # helpers
@@ -57,13 +58,13 @@ def test_logging_levels_and_access_toggle():
 
 
 def _patch_settings(monkeypatch, **overrides):
-    base = dict(
-        METRICS_ENABLED=True,
-        METRICS_ROUTE="/metrics",
-        METRICS_PROTECT_WITH_BASIC_AUTH=False,
-        METRICS_BASIC_USER=None,
-        METRICS_BASIC_PASS=None,
-    )
+    base = {
+        "METRICS_ENABLED": True,
+        "METRICS_ROUTE": "/metrics",
+        "METRICS_PROTECT_WITH_BASIC_AUTH": False,
+        "METRICS_BASIC_USER": None,
+        "METRICS_BASIC_PASS": None,
+    }
     base.update(overrides)
     monkeypatch.setattr("api.metrics.get_settings", lambda: SimpleNamespace(**base))
 
@@ -78,9 +79,7 @@ def test_metrics_endpoint_disabled(monkeypatch):
 
 
 def test_metrics_endpoint_enabled_public(monkeypatch):
-    _patch_settings(
-        monkeypatch, METRICS_ENABLED=True, METRICS_PROTECT_WITH_BASIC_AUTH=False
-    )
+    _patch_settings(monkeypatch, METRICS_ENABLED=True, METRICS_PROTECT_WITH_BASIC_AUTH=False)
     app = FastAPI()
     setup_metrics(app)
 

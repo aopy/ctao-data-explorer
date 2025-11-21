@@ -1,7 +1,9 @@
-import pytest
-from api.models import UserTable, BasketGroup, SavedDataset
 import uuid
+
+import pytest
 from sqlalchemy.orm import attributes
+
+from api.models import BasketGroup, SavedDataset, UserTable
 
 
 @pytest.mark.anyio
@@ -23,6 +25,7 @@ async def test_basket_group_adds_items(db_session):
 
     # Verify via association table
     from sqlalchemy import select
+
     from api.models import basket_items_association
 
     rows = (

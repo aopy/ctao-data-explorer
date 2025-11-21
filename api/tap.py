@@ -1,11 +1,13 @@
+import logging
+import math
+import time
+import traceback
+
+import numpy as np
 import pyvo as vo
 import requests
-import numpy as np
-import math
 from astropy.table import Table
-import traceback
-import logging
-import time
+
 from .metrics import vo_observe_call
 
 logger = logging.getLogger(__name__)
@@ -36,9 +38,7 @@ def build_where_clause(conditions: list[str]) -> str:
     return " AND ".join(parts) if parts else "1=1"
 
 
-def build_select_query(
-    table: str, where: str, limit: int = 100, columns: str = "*"
-) -> str:
+def build_select_query(table: str, where: str, limit: int = 100, columns: str = "*") -> str:
     """
     Compose the final SELECT with WHERE.
     """
@@ -95,9 +95,7 @@ def _process_tap_results(tap_results: vo.dal.TAPResults) -> Table | None:
         return None
     try:
         astro_table = tap_results.to_table()
-        logger.debug(
-            "Converted TAPResults to Astropy Table with %s rows.", len(astro_table)
-        )
+        logger.debug("Converted TAPResults to Astropy Table with %s rows.", len(astro_table))
         return astro_table
     except Exception as convert_error:
         logger.exception("Error: Failed converting TAPResults: %s", convert_error)
@@ -186,9 +184,7 @@ def astropy_table_to_list(table: Table | None):
                         cell = None
                     else:
                         try:
-                            cell = float(
-                                cell.__str__()
-                            )  # temporary fix for floating point issue
+                            cell = float(cell.__str__())  # temporary fix for floating point issue
                             if math.isnan(cell) or math.isinf(cell):
                                 cell = None
                         except Exception as e:

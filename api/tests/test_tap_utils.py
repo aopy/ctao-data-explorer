@@ -1,11 +1,12 @@
 import numpy as np
 from astropy.table import Table
+
 from api.tap import (
+    astropy_table_to_list,
+    build_select_query,
     build_spatial_icrs_condition,
     build_time_overlap_condition,
     build_where_clause,
-    build_select_query,
-    astropy_table_to_list,
 )
 
 

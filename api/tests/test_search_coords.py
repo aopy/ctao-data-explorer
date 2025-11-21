@@ -1,4 +1,5 @@
 import urllib.parse
+
 import pytest
 from astropy.table import Table
 
@@ -26,14 +27,14 @@ async def test_search_coords_happy_path_adds_datalink(app, client, monkeypatch):
     # Query with equatorial deg coords; no time filter
     r = await client.get(
         "/api/search_coords",
-        params=dict(
-            coordinate_system="eq_deg",  # COORD_SYS_EQ_DEG in settings
-            ra=83.63,
-            dec=22.01,
-            search_radius=5.0,
-            tap_url="https://example.invalid/tap",
-            obscore_table="ivoa.obscore",
-        ),
+        params={
+            "coordinate_system": "eq_deg",
+            "ra": 83.63,
+            "dec": 22.01,
+            "search_radius": 5.0,
+            "tap_url": "https://example.invalid/tap",
+            "obscore_table": "ivoa.obscore",
+        },
     )
     assert r.status_code == 200
     data = r.json()

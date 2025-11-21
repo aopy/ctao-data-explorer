@@ -1,14 +1,14 @@
 import json
+
 import pytest
 from sqlalchemy import select
-from api.constants import SESSION_KEY_PREFIX, CTAO_PROVIDER_NAME
+
+from api.constants import CTAO_PROVIDER_NAME, SESSION_KEY_PREFIX
 from api.models import UserRefreshToken
 
 
 @pytest.mark.anyio
-async def test_logout_deletes_session_and_refresh_tokens(
-    client, as_user, db_session, fake_redis
-):
+async def test_logout_deletes_session_and_refresh_tokens(client, as_user, db_session, fake_redis):
     user = await as_user()
     # Create a refresh token row
     rt = UserRefreshToken(

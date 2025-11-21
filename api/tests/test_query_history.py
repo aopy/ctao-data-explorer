@@ -1,6 +1,7 @@
 import pytest
 from astropy.table import Table
 from sqlalchemy import select
+
 from api.models import QueryHistory
 
 
@@ -25,14 +26,14 @@ async def test_search_coords_writes_history(client, as_user, db_session, monkeyp
     # Act
     r = await client.get(
         "/api/search_coords",
-        params=dict(
-            coordinate_system="eq_deg",
-            ra=83.63,
-            dec=22.01,
-            search_radius=5.0,
-            tap_url="https://example.invalid/tap",
-            obscore_table="ivoa.obscore",
-        ),
+        params={
+            "coordinate_system": "eq_deg",
+            "ra": 83.63,
+            "dec": 22.01,
+            "search_radius": 5.0,
+            "tap_url": "https://example.invalid/tap",
+            "obscore_table": "ivoa.obscore",
+        },
     )
     assert r.status_code == 200
 
