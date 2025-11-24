@@ -48,4 +48,3 @@ build-sonar:
     - if: $CI_COMMIT_BRANCH == 'develop'
   tags:
     - sonar
-    - iova
