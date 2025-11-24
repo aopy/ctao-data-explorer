@@ -28,8 +28,8 @@ stages:
 build-sonar:
   stage: build-sonar
   image: 
-      name: sonarsource/sonar-scanner-cli:11
-      entrypoint: [""]
+    name: sonarsource/sonar-scanner-cli:11
+    entrypoint: [""]
   
   cache:
     policy: pull-push
