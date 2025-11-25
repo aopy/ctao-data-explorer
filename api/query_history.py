@@ -35,12 +35,11 @@ class QueryHistoryRead(BaseModel):
 query_history_router = APIRouter(prefix="/query-history", tags=["query_history"])
 
 
-# @query_history_router.post("", response_model=QueryHistoryRead)
 async def _internal_create_query_history(
     history: QueryHistoryCreate,
     app_user_id: int,  # Expect app_user_id directly
     session: AsyncSession,
-):
+) -> QueryHistoryRead:
     """Creates a query history record."""
 
     try:
@@ -81,7 +80,7 @@ async def create_query_history(
     # Get app_user_id from the new session dependency
     user_session_data: dict[str, Any] = Depends(get_required_session_user),
     session: AsyncSession = Depends(get_async_session),
-):
+) -> QueryHistoryRead:
     app_user_id = user_session_data["app_user_id"]
     # Call the internal logic function
     return await _internal_create_query_history(history, app_user_id, session)
@@ -91,7 +90,7 @@ async def create_query_history(
 async def get_query_history(
     user_session_data: dict[str, Any] = Depends(get_required_session_user),
     session: AsyncSession = Depends(get_async_session),
-):
+) -> list[QueryHistoryRead]:
     """Retrieves the query history for the logged-in user."""
     app_user_id = user_session_data["app_user_id"]
     try:
@@ -135,7 +134,7 @@ async def delete_query_history_item(
     history_id: int,
     user_session_data: dict[str, Any] = Depends(get_required_session_user),
     session: AsyncSession = Depends(get_async_session),
-):
+) -> None:
     """Deletes a specific query history item for the user."""
     app_user_id = user_session_data["app_user_id"]
     stmt = select(QueryHistory).where(

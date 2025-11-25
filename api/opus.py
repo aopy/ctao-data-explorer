@@ -3,7 +3,7 @@ import mimetypes
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlparse
 
 import httpx
@@ -41,7 +41,7 @@ def _rest_url(*parts: str) -> str:
 
 def _xml_to_json(xml_text: str) -> dict[str, Any]:
     try:
-        return xmltodict.parse(xml_text)
+        return cast(dict[str, Any], xmltodict.parse(xml_text))
     except Exception:
         return {"raw": xml_text}
 
@@ -53,22 +53,22 @@ def _basic_headers(user_id: str) -> dict[str, str]:
     return {"Authorization": f"Basic {token}"}
 
 
-def _extract_phase_from_doc(doc: dict) -> str | None:
+def _extract_phase_from_doc(doc: dict[str, Any]) -> str | None:
     j = doc.get("uws:job") or doc.get("job") or doc
     if not isinstance(j, dict):
         return None
-    phase = j.get("uws:phase") or j.get("phase")
+    phase: Any = j.get("uws:phase") or j.get("phase")
     if isinstance(phase, dict):
         phase = phase.get("#text")
-    return phase
+    return cast(str | None, phase)
 
 
-def _extract_job_id_from_doc(doc: dict) -> str | None:
+def _extract_job_id_from_doc(doc: dict[str, Any]) -> str | None:
     j = doc.get("uws:job") or doc.get("job") or doc
     if not isinstance(j, dict):
         return None
     jid = j.get("uws:jobId") or j.get("jobId")
-    return jid
+    return cast(str | None, jid)
 
 
 # Schemas
@@ -89,7 +89,7 @@ class OpusJobCreateResponse(BaseModel):
 
 # Debug
 @router.get("/_debug_base")
-async def debug_base(user=Depends(get_current_user)):
+async def debug_base(user: Any = Depends(get_current_user)) -> dict[str, Any]:
     uid = (
         getattr(user, "iam_subject_id", None)
         if not isinstance(user, dict)
@@ -107,9 +107,9 @@ async def debug_base(user=Depends(get_current_user)):
 @router.get("/jobs")
 async def list_jobs(
     request: Request,
-    user=Depends(get_current_user),
+    user: Any = Depends(get_current_user),
     days: int = 30,  # how far back to look
-):
+) -> dict[str, Any]:
     uid = (
         getattr(user, "iam_subject_id", None)
         if not isinstance(user, dict)
@@ -140,7 +140,11 @@ async def list_jobs(
     after_dt = datetime.now(UTC) - timedelta(days=max(1, days))
     after_iso = after_dt.strftime("%Y-%m-%dT%H:%M:%S")
 
-    params = [("AFTER", after_iso), ("_ts", str(time.time()))] + [("PHASE", p) for p in phases]
+    params: list[tuple[str, str | int | float | bool | None]] = [
+        ("AFTER", after_iso),
+        ("_ts", str(time.time())),
+    ]
+    params.extend([("PHASE", p) for p in phases])
 
     url = _rest_url("rest", OPUS_SERVICE)
     async with httpx.AsyncClient(timeout=30) as client:
@@ -156,9 +160,11 @@ async def list_jobs(
     if isinstance(jobrefs, dict):
         jobrefs = [jobrefs]
 
-    def _phase_of(ref):
+    def _phase_of(ref: dict[str, Any]) -> str:
         ph = ref.get("uws:phase") or ref.get("phase") or ""
-        return ph.get("#text") if isinstance(ph, dict) else ph
+        if isinstance(ph, dict):
+            ph = ph.get("#text") or ""
+        return str(ph)
 
     if redis_client:
         for ref in jobrefs:
@@ -182,7 +188,9 @@ async def list_jobs(
 
 
 @router.get("/jobs/{job_id}")
-async def get_job(job_id: str, request: Request, user=Depends(get_current_user)):
+async def get_job(
+    job_id: str, request: Request, user: Any = Depends(get_current_user)
+) -> dict[str, Any]:
     uid = (
         getattr(user, "iam_subject_id", None)
         if not isinstance(user, dict)
@@ -213,7 +221,7 @@ async def get_job(job_id: str, request: Request, user=Depends(get_current_user))
 
 
 @router.get("/jobs/{job_id}/results")
-async def list_results(job_id: str, user=Depends(get_current_user)):
+async def list_results(job_id: str, user: Any = Depends(get_current_user)) -> dict[str, Any]:
     uid = (
         getattr(user, "iam_subject_id", None)
         if not isinstance(user, dict)
@@ -232,7 +240,9 @@ async def list_results(job_id: str, user=Depends(get_current_user)):
 
 
 @router.post("/jobs", response_model=OpusJobCreateResponse)
-async def create_job(params: QuickLookParams, user=Depends(get_current_user)):
+async def create_job(
+    params: QuickLookParams, user: Any = Depends(get_current_user)
+) -> OpusJobCreateResponse:
     uid = (
         getattr(user, "iam_subject_id", None)
         if not isinstance(user, dict)
@@ -344,8 +354,8 @@ async def fetch_by_href(
     inline: bool = Query(False, description="If true, serve inline"),
     filename: str | None = Query(None, description="Optional filename hint"),
     rid: str | None = Query(None, description="OPUS result id, e.g. provjson/stdout/excess_map"),
-    user=Depends(get_current_user),
-):
+    user: Any = Depends(get_current_user),
+) -> Response:
     _ = request
     uid = (
         getattr(user, "iam_subject_id", None)

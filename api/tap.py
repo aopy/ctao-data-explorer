@@ -2,11 +2,13 @@ import logging
 import math
 import time
 import traceback
+from typing import Any
 
 import numpy as np
 import pyvo as vo
 import requests
 from astropy.table import Table
+from requests import Response, Session
 
 from .metrics import vo_observe_call
 
@@ -45,7 +47,9 @@ def build_select_query(table: str, where: str, limit: int = 100, columns: str = 
     return f"SELECT TOP {int(limit)} {columns} FROM {table} WHERE {where}"
 
 
-def perform_query_with_conditions(fields, conditions: list[str], limit: int = 100):
+def perform_query_with_conditions(
+    fields: dict[str, Any], conditions: list[str], limit: int = 100
+) -> tuple[str | None, Table | None, str]:
     """
     Build a WHERE clause from `conditions`, compose the SELECT, execute, and return:
     (error_message_or_None, astropy_table_or_None, adql_query_string)
@@ -108,11 +112,11 @@ class CTAOHTTPAdapter(requests.adapters.HTTPAdapter):
     A subclass of HTTPAdapter to handle timeouts
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any):
         self.timeout = kwargs.pop("timeout", None)
         super().__init__(*args, **kwargs)
 
-    def send(self, *args, **kwargs):
+    def send(self, *args: Any, **kwargs: Any) -> Response:
         kwargs["timeout"] = self.timeout
         return super().send(*args, **kwargs)
 
@@ -122,21 +126,23 @@ class Tap:
     Class to handle TAP/ADQL queries
     """
 
-    def __init__(self, url):
+    def __init__(self, url: str) -> None:
         self.url = url
-        self.conn = None
+        # self.conn = None
+        self.conn: vo.dal.TAPService | None = None
 
-    def connect(self, timeout=5):
+    def connect(self, timeout: int = 5) -> None:
         """
         Retrieve a connection to the TAP server, setting a timeout for the connection
         """
-        session = requests.Session()
+        session: Session = requests.Session()
         adapter = CTAOHTTPAdapter(timeout=timeout)
         session.mount("https://", adapter)
         session.mount("http://", adapter)
         self.conn = vo.dal.TAPService(self.url, session=session)
 
-    def query(self, query):
+    # def query(self, query):
+    def query(self, query: str) -> tuple[Exception | None, vo.dal.TAPResults | None]:
         """
         Launch a TAP query
         """
@@ -145,6 +151,8 @@ class Tap:
         t0 = time.perf_counter()
         ok = False
         try:
+            if self.conn is None:
+                raise RuntimeError("TAPService connection not initialized")
             table = self.conn.search(query)
             ok = True
         except Exception as e:
@@ -154,7 +162,7 @@ class Tap:
         return exception, table
 
 
-def astropy_table_to_list(table: Table | None):
+def astropy_table_to_list(table: Table | None) -> tuple[list[str], list[list[Any]]]:
     """
     Convert an Astropy Table object to a list of lists suitable for JSON conversion,
     along with the list of column names.
@@ -215,7 +223,7 @@ def astropy_table_to_list(table: Table | None):
         return [], []
 
 
-def perform_coords_query(fields):
+def perform_coords_query(fields: dict[str, Any]) -> tuple[str | None, Table | None, str]:
     conds = [
         build_spatial_icrs_condition(
             fields["target_raj2000"]["value"],
@@ -226,7 +234,7 @@ def perform_coords_query(fields):
     return perform_query_with_conditions(fields, conds, limit=100)
 
 
-def perform_time_query(fields):
+def perform_time_query(fields: dict[str, Any]) -> tuple[str | None, Table | None, str]:
     conds = [
         build_time_overlap_condition(
             fields["search_mjd_start"]["value"],
@@ -236,7 +244,7 @@ def perform_time_query(fields):
     return perform_query_with_conditions(fields, conds, limit=100)
 
 
-def perform_coords_time_query(fields):
+def perform_coords_time_query(fields: dict[str, Any]) -> tuple[str | None, Table | None, str]:
     conds = [
         build_spatial_icrs_condition(
             fields["target_raj2000"]["value"],

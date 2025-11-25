@@ -1,7 +1,8 @@
 import secrets
+from typing import Any
 from urllib.parse import urlparse
 
-from fastapi import Depends, HTTPException, Response
+from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -12,7 +13,7 @@ from api.config import get_settings
 _security = HTTPBasic()
 
 
-def _metrics_auth(credentials: HTTPBasicCredentials = Depends(_security)):
+def _metrics_auth(credentials: HTTPBasicCredentials = Depends(_security)) -> bool:
     s = get_settings()
     if not s.METRICS_PROTECT_WITH_BASIC_AUTH:
         return True
@@ -29,7 +30,7 @@ def _metrics_auth(credentials: HTTPBasicCredentials = Depends(_security)):
     return True
 
 
-def setup_metrics(app):
+def setup_metrics(app: FastAPI) -> None:
     s = get_settings()
     if not s.METRICS_ENABLED:
         return
@@ -37,13 +38,13 @@ def setup_metrics(app):
     instr = Instrumentator(
         should_group_status_codes=True,
         should_ignore_untemplated=True,
-        excluded_handlers={s.METRICS_ROUTE, "/health/live", "/health/ready"},
+        excluded_handlers=[s.METRICS_ROUTE, "/health/live", "/health/ready"],
     ).instrument(app)
 
     if s.METRICS_PROTECT_WITH_BASIC_AUTH:
 
         @app.get(s.METRICS_ROUTE, include_in_schema=False)
-        def metrics_endpoint(_: bool = Depends(_metrics_auth)):
+        def metrics_endpoint(_: bool = Depends(_metrics_auth)) -> Response:
             return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     else:
@@ -62,11 +63,11 @@ _opus_submit_request_seconds = Histogram(
 )
 
 
-def opus_record_submit():
+def opus_record_submit() -> None:
     _opus_submit_total.inc()
 
 
-def opus_record_submit_failure():
+def opus_record_submit_failure() -> None:
     _opus_submit_fail_total.inc()
 
 
@@ -91,7 +92,7 @@ _opus_job_failed = Counter(
 )
 
 
-async def opus_record_job_outcome_once(redis, job_id: str, phase: str, service: str):
+async def opus_record_job_outcome_once(redis: Any, job_id: str, phase: str, service: str) -> None:
     """
     Increment outcome counters once per (job_id, phase). If a Redis client is
     provided (app.state.redis), we use it to ensure we don't double count
@@ -129,7 +130,7 @@ _vo_req_dur = Histogram(
 _vo_req_fail = Counter("vo_request_failures_total", "VO upstream failures", ["service", "host"])
 
 
-def vo_observe_call(service: str, url_or_host: str, seconds: float, ok: bool):
+def vo_observe_call(service: str, url_or_host: str, seconds: float, ok: bool) -> None:
     """service: 'tap' | 'simbad-tap' | 'ned-objectlookup' | 'opus-rest' | etc."""
     host = url_or_host
     try:
@@ -153,15 +154,15 @@ _redis_op_dur = Histogram(
 _redis_op_fail = Counter("redis_op_failures_total", "Redis operation failures", ["op"])
 
 
-def cache_hit(cache: str):
+def cache_hit(cache: str) -> None:
     _cache_hits.labels(cache=cache).inc()
 
 
-def cache_miss(cache: str):
+def cache_miss(cache: str) -> None:
     _cache_misses.labels(cache=cache).inc()
 
 
-def observe_redis(op: str, seconds: float, ok: bool):
+def observe_redis(op: str, seconds: float, ok: bool) -> None:
     _redis_op_dur.labels(op=op).observe(seconds)
     if not ok:
         _redis_op_fail.labels(op=op).inc()

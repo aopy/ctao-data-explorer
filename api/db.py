@@ -1,10 +1,10 @@
 import logging
+from collections.abc import AsyncGenerator
 
 import redis.asyncio as redis
 from cryptography.fernet import Fernet
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase
 
 from .config import get_settings
 
@@ -14,18 +14,19 @@ settings = get_settings()
 DATABASE_URL = settings.DATABASE_URL
 engine = create_async_engine(DATABASE_URL, echo=True)  # echo=False for production
 
-AsyncSessionLocal = sessionmaker(
-    bind=engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-    autoflush=False,
+AsyncSessionLocal = async_sessionmaker(
+    bind=engine, expire_on_commit=False, autoflush=False, class_=AsyncSession
 )
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    """Typed declarative base for SQLAlchemy 2.0."""
+
+    pass
 
 
 # The dependency function
-async def get_async_session() -> AsyncSession:
+async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         yield session
 
@@ -35,7 +36,7 @@ REDIS_URL = settings.REDIS_URL
 redis_pool = None
 
 
-async def get_redis_pool():
+async def get_redis_pool() -> redis.ConnectionPool:
     global redis_pool
     if redis_pool is None:
         # print(f"Connecting to Redis at {REDIS_URL}")

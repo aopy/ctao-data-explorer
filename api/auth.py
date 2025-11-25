@@ -2,7 +2,7 @@ import json
 import logging
 import time
 import traceback
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import redis.asyncio as redis
@@ -39,7 +39,8 @@ REFRESH_BUFFER_SECONDS = settings.REFRESH_BUFFER_SECONDS
 # User Schemas
 class UserRead(schemas.BaseUser[int]):
     id: int
-    email: str | None = None
+    # email: str | None = None
+    email: str
     iam_subject_id: str | None = None
     first_name: str | None = None
     last_name: str | None = None
@@ -124,10 +125,15 @@ async def get_current_session_user_data(
                             new_at_exp = time.time() + new_exp
 
                             if "refresh_token" in token_response:
-                                user_rt_record.encrypted_refresh_token = encrypt_token(
-                                    token_response["refresh_token"]
-                                )
-                                user_rt_record.last_used_at = datetime.utcnow()
+                                # user_rt_record.encrypted_refresh_token = encrypt_token(
+                                #    token_response["refresh_token"]
+                                # )
+                                # user_rt_record.last_used_at = datetime.utcnow()
+                                # db_session.add(user_rt_record)
+                                enc = encrypt_token(token_response["refresh_token"])
+                                if enc is not None:
+                                    user_rt_record.encrypted_refresh_token = enc
+                                user_rt_record.last_used_at = datetime.now(UTC)
                                 db_session.add(user_rt_record)
 
                             session_data[SESSION_ACCESS_TOKEN_KEY] = new_at
@@ -199,7 +205,7 @@ auth_api_router = APIRouter()
 @auth_api_router.get("/users/me_from_session", response_model=UserRead, tags=["users"])
 async def get_me(
     user_session_data: dict[str, Any] = Depends(get_required_session_user),
-):
+) -> UserRead:
     # print("DEBUG get_me: user_session_data received:", user_session_data)
     try:
         data_for_pydantic = {
@@ -230,7 +236,7 @@ async def logout_session(
     # Optional: get user_id for RT deletion
     user_session_data: dict[str, Any] | None = Depends(get_optional_session_user),
     db_session: AsyncSession = Depends(get_async_session),
-):
+) -> dict[str, str]:
     session_id = request.cookies.get("ctao_session_main")
     if session_id:
         await redis.delete(f"{SESSION_KEY_PREFIX}{session_id}")

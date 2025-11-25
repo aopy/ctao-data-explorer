@@ -32,7 +32,7 @@ class CoordInput(BaseModel):
     system: str = Field(..., description="'hmsdms', 'deg', or 'gal'")
 
     @validator("system")
-    def system_must_be_valid(cls, v):
+    def system_must_be_valid(cls: type["CoordInput"], v: str) -> str:
         if v not in ["hmsdms", "deg", "gal"]:
             raise ValueError("System must be 'hmsdms', 'deg', or 'gal'")
         return v
@@ -51,7 +51,7 @@ coord_router = APIRouter()
 
 
 @coord_router.post("/api/parse_coords", response_model=CoordOutput, tags=["coords"])
-async def parse_coordinates_endpoint(coord_input: CoordInput):
+async def parse_coordinates_endpoint(coord_input: CoordInput) -> CoordOutput:
     """
     Parses coordinate strings in:
       - Decimal Degrees (ICRS): system='deg' (aliases: eqdeg/equatorial/icrs/radec/ra/dec)
@@ -102,11 +102,14 @@ async def parse_coordinates_endpoint(coord_input: CoordInput):
         if not (math.isfinite(ra_deg) and math.isfinite(dec_deg)):
             raise ValueError("Parsed coordinates are not finite.")
 
-        extra = {}
         if system == "gal":
-            extra = {"l_deg": float(coord1_str), "b_deg": float(coord2_str)}
-
-        return CoordOutput(ra_deg=ra_deg, dec_deg=dec_deg, **extra)
+            return CoordOutput(
+                ra_deg=ra_deg,
+                dec_deg=dec_deg,
+                l_deg=float(coord1_str),
+                b_deg=float(coord2_str),
+            )
+        return CoordOutput(ra_deg=ra_deg, dec_deg=dec_deg)
 
     except ValueError as ve:
         logger.exception("ERROR parsing coordinates: %s", ve)

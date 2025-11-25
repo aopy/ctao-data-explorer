@@ -10,10 +10,24 @@ import re
 import time
 import traceback
 import urllib.parse
+from collections.abc import (
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Iterable,
+    Iterator,
+    Mapping,
+    Sequence,
+)
 from contextlib import asynccontextmanager
 from datetime import datetime
 from io import BytesIO
-from typing import Any, Literal
+from typing import (
+    Any,
+    Literal,
+    TypedDict,
+    cast,
+)
 
 import astropy.units as u
 import pyvo as vo
@@ -21,6 +35,7 @@ import redis.asyncio as redis
 import requests
 from astropy.coordinates import SkyCoord
 from astropy.io.votable import parse_single_table
+from astropy.table import Table
 from astropy.time import Time
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -59,7 +74,7 @@ from .tap import (
     perform_query_with_conditions,
 )
 
-COORD_SYS_ALIASES = {
+COORD_SYS_ALIASES: dict[str, str] = {
     "eq_deg": COORD_SYS_EQ_DEG,
     "eq_hms": COORD_SYS_EQ_HMS,
     "hmsdms": COORD_SYS_EQ_HMS,
@@ -83,7 +98,7 @@ cookie_params = settings.cookie_params
 
 # App Event Handlers for Redis Pool
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("API starting up")
     testing = (
         os.getenv("TESTING", "").lower() in ("1", "true", "yes", "on")
@@ -134,13 +149,12 @@ app = FastAPI(
 
 
 @app.get("/health/live", include_in_schema=False)
-def live():
+def live() -> dict[str, str]:
     return {"status": "ok"}
 
 
 @app.get("/health/ready", include_in_schema=False)
-def ready():
-    # (optional) ping DB/Redis
+def ready() -> dict[str, str]:
     return {"status": "ok"}
 
 
@@ -158,15 +172,6 @@ app.add_middleware(
     # same_site="lax",
     max_age=600,
 )
-
-# Add session middleware
-# app.add_middleware(
-#    SessionMiddleware,
-#    secret_key="SECRET_KEY",
-#    session_cookie="ctao_session",
-#    same_site="lax",  # 'lax'/'strict','none'
-#    https_only=False,
-# )
 
 # CORS configuration
 origins = [
@@ -187,17 +192,24 @@ app.add_middleware(
 
 
 @app.middleware("http")
-async def rolling_session_cookie(request: Request, call_next):
+async def rolling_session_cookie(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
     response = await call_next(request)
 
     existing = response.headers.getlist("set-cookie")
     if any(f"{COOKIE_NAME_MAIN_SESSION}=" in hdr for hdr in existing):
         return response
 
-    session_id = request.cookies.get(COOKIE_NAME_MAIN_SESSION)
+    cookie_name: str = COOKIE_NAME_MAIN_SESSION or "ctao_session_main"
+    session_id = request.cookies.get(cookie_name)
+
+    # session_id = request.cookies.get(COOKIE_NAME_MAIN_SESSION)
     if session_id:
         response.set_cookie(
-            COOKIE_NAME_MAIN_SESSION,
+            # COOKIE_NAME_MAIN_SESSION,
+            cookie_name,
             session_id,
             max_age=settings.SESSION_DURATION_SECONDS,
             **cookie_params,
@@ -221,8 +233,15 @@ class ConvertResp(BaseModel):
     tt_mjd: float
 
 
+FieldValue = str | float | int
+
+
+class FieldBox(TypedDict):
+    value: FieldValue
+
+
 @app.post("/api/convert_time", response_model=ConvertResp, tags=["time"])
-def convert_time(req: ConvertReq):
+def convert_time(req: ConvertReq) -> ConvertResp:
     # Build Time object from the request
     if req.input_format == "met":
         if not req.met_epoch_isot:
@@ -277,7 +296,7 @@ async def _ned_resolve_via_objectlookup(name: str) -> dict[str, Any] | None:
     finally:
         vo_observe_call("ned-objectlookup", OBJECT_LOOKUP_URL, time.perf_counter() - t0, ok)
 
-    obj = resp.json()
+    obj = cast(dict[str, Any], resp.json())
     if obj.get("ResultCode") == 3:
         interp = obj["Interpreted"]
         pos = obj["Preferred"]["Position"]
@@ -290,7 +309,7 @@ async def _ned_resolve_via_objectlookup(name: str) -> dict[str, Any] | None:
     return None
 
 
-def _catalog_variants(name: str):
+def _catalog_variants(name: str) -> Iterator[str]:
     """
     Yield 'M  42', 'M   42', … or 'NGC  3242', etc., matching SIMBAD's
     fixed-width alias layout.  If `name` is not a Messier/NGC/IC code,
@@ -317,21 +336,18 @@ def _adql_escape(s: str) -> str:
     return s.replace("'", "''")
 
 
-def _run_tap_sync(url: str, adql: str, maxrec: int = 50):
+def _run_tap_sync(url: str, adql: str, maxrec: int = 50) -> Table:
     t0 = time.perf_counter()
     ok = False
     try:
-        r = requests.get(
-            url,
-            params={
-                "QUERY": adql,
-                "LANG": "ADQL",
-                "REQUEST": "doQuery",
-                "FORMAT": "votable",
-                "MAXREC": maxrec,
-            },
-            timeout=20,
-        )
+        params: dict[str, str | int] = {
+            "QUERY": adql,
+            "LANG": "ADQL",
+            "REQUEST": "doQuery",
+            "FORMAT": "votable",
+            "MAXREC": maxrec,
+        }
+        r = requests.get(url, params=params, timeout=20)
         r.raise_for_status()
         ok = True
         return parse_single_table(BytesIO(r.content)).to_table()
@@ -339,7 +355,7 @@ def _run_tap_sync(url: str, adql: str, maxrec: int = 50):
         vo_observe_call("simbad-tap", url, time.perf_counter() - t0, ok)
 
 
-async def _simbad_suggest(prefix: str, limit: int) -> list[dict]:
+async def _simbad_suggest(prefix: str, limit: int) -> list[dict[str, Any]]:
     q = prefix.strip()
     if len(q) < 2:
         return []
@@ -354,7 +370,7 @@ async def _simbad_suggest(prefix: str, limit: int) -> list[dict]:
     )
     try:
         tab = await asyncio.to_thread(_run_tap_sync, SIMBAD_TAP_SYNC, exact_sql, 1)
-        rows.extend(str(r["main_id"]).strip() for r in tab)
+        rows.extend(str(r["main_id"]).strip() for r in cast(Iterable[Mapping[str, Any]], tab))
     except Exception as exc:
         logger.exception("SIMBAD exact failed: %s", exc)
 
@@ -435,13 +451,17 @@ async def _ned_suggest(prefix: str, limit: int) -> list[dict[str, str]]:
     return out
 
 
+class SuggestResult(TypedDict):
+    results: list[dict[str, Any]]
+
+
 @app.get("/api/object_suggest", tags=["object_resolve"])
 async def object_suggest(
     q: str = Query(..., min_length=2, max_length=50),
     use_simbad: bool = True,
     use_ned: bool = False,
     limit: int = 15,
-) -> dict[str, list[dict[str, Any]]]:
+) -> SuggestResult:
     q = q.strip()
     if len(q) < 4 and not _is_short_catalog(q):
         return {"results": []}
@@ -457,7 +477,12 @@ async def object_suggest(
         observe_redis("get", time.perf_counter() - t0, ok)
         if cached:
             cache_hit("suggest")
-            return json.loads(cached.decode() if isinstance(cached, bytes) else cached)
+            cached_obj = cast(
+                SuggestResult,
+                json.loads(cached.decode() if isinstance(cached, bytes) else cached),
+            )
+            return cached_obj
+            # return json.loads(cached.decode() if isinstance(cached, bytes) else cached)
         else:
             cache_miss("suggest")
 
@@ -485,7 +510,7 @@ async def object_suggest(
             if len(merged) >= limit:
                 break
 
-    results = merged[:limit]
+    results: list[dict[str, Any]] = merged[:limit]
 
     # store in redis for 24 h
     if hasattr(app.state, "redis"):
@@ -520,20 +545,20 @@ async def search_coords(
     # Auth
     user_session_data: dict[str, Any] | None = Depends(get_optional_session_user),
     db_session: AsyncSession = Depends(get_async_session),
-):
+) -> SearchResult:
     redis_client = getattr(app.state, "redis", None)
     CACHE_TTL = 3600
 
     base_api_url = f"{request.url.scheme}://{request.headers['host']}"
     # print(f"DEBUG search_coords: START. Params received: {request.query_params}")
 
-    fields = {
+    fields: dict[str, FieldBox] = {
         "tap_url": {"value": tap_url},
         "obscore_table": {"value": obscore_table},
         "search_radius": {"value": search_radius},
     }
-
-    coordinate_system = COORD_SYS_ALIASES.get(coordinate_system, coordinate_system)
+    if coordinate_system is not None:
+        coordinate_system = COORD_SYS_ALIASES.get(coordinate_system, coordinate_system)
 
     coords_present = False
     time_filter_present = False
@@ -656,21 +681,22 @@ async def search_coords(
     if coords_present:
         where_conditions.append(
             build_spatial_icrs_condition(
-                fields["target_raj2000"]["value"],
-                fields["target_dej2000"]["value"],
-                fields["search_radius"]["value"],
+                float(fields["target_raj2000"]["value"]),
+                float(fields["target_dej2000"]["value"]),
+                float(fields["search_radius"]["value"]),
             )
         )
+
     if time_filter_present:
         where_conditions.append(
             build_time_overlap_condition(
-                fields["search_mjd_start"]["value"],
-                fields["search_mjd_end"]["value"],
+                float(fields["search_mjd_start"]["value"]),
+                float(fields["search_mjd_end"]["value"]),
             )
         )
 
     where_sql = build_where_clause(where_conditions)
-    adql_query_str = build_select_query(fields["obscore_table"]["value"], where_sql, limit=100)
+    adql_query_str = build_select_query(str(fields["obscore_table"]["value"]), where_sql, limit=100)
 
     cache_key = "search:" + hashlib.sha256(adql_query_str.encode()).hexdigest()
 
@@ -851,7 +877,7 @@ async def search_coords(
 
 
 @app.post("/api/object_resolve", tags=["object_resolve"])
-async def object_resolve(data: dict = Body(...)):
+async def object_resolve(data: dict = Body(...)) -> dict[str, list[dict[str, Any]]]:
     """
     Unified endpoint to resolve an object name from either/both SIMBAD & NED,
     Example JSON:
@@ -878,19 +904,33 @@ async def object_resolve(data: dict = Body(...)):
         SIMBAD_TAP = settings.SIMBAD_TAP_BASE
         simbad = vo.dal.TAPService(SIMBAD_TAP)
 
-        def _try_alias(alias: str, top: int = 1):
+        def _try_alias(alias: str, top: int = 1) -> Sequence[Mapping[str, Any]]:
             sql = (
                 f"SELECT TOP {top} ra, dec, main_id "
                 "FROM ident i JOIN basic b ON b.oid = i.oidref "
                 f"WHERE i.id = '{_adql_escape(alias)}'"
             )
             try:
-                return simbad.search(sql)
+                res = simbad.search(sql)
+                return cast(Sequence[Mapping[str, Any]], res)
             except Exception:
                 return []
 
         alias_raw = object_name.strip()
         tab = _try_alias(alias_raw)
+
+        for row in tab:
+            ra_val, dec_val = float(row["ra"]), float(row["dec"])
+            if math.isnan(ra_val) or math.isnan(dec_val):
+                continue
+            simbad_list.append(
+                {
+                    "service": "SIMBAD",
+                    "name": str(row["main_id"]).strip(),
+                    "ra": ra_val,
+                    "dec": dec_val,
+                }
+            )
 
         if len(tab) == 0:
             for alias in _catalog_variants(alias_raw):
@@ -931,13 +971,13 @@ async def object_resolve(data: dict = Body(...)):
     return {"results": results}
 
 
-def _run_ned_sync_query(adql_query):
+def _run_ned_sync_query(adql_query: str) -> list[dict[str, Any]]:
     """
     Helper function to run a synchronous NED TAP query (returns a list of dict).
     By default, NED returns a VOTable. Parse it with astropy.io.votable.
     """
     url = settings.NED_TAP_SYNC_URL
-    params = {
+    params: dict[str, str | int] = {
         "QUERY": adql_query,
         "LANG": "ADQL",
         "REQUEST": "doQuery",
@@ -945,16 +985,14 @@ def _run_ned_sync_query(adql_query):
         "MAXREC": 5000,
     }
 
-    out = []
+    # out = []
+    out: list[dict[str, Any]] = []
     try:
         r = requests.get(url, params=params, timeout=20)
         r.raise_for_status()
-
         votable_buf = BytesIO(r.content)
         table = parse_single_table(votable_buf).to_table()
-
-        # columns: ra, dec, prefname
-        for row in table:
+        for row in cast(Iterable[Mapping[str, Any]], table):
             ra_val = float(row["ra"])
             dec_val = float(row["dec"])
             pref_val = str(row["prefname"])
@@ -973,7 +1011,7 @@ async def datalink_endpoint(
         ...,
         description="One or more dataset identifiers (e.g., ivo://padc.obspm/hess#23523)",
     )
-):
+) -> Response:
     """
     DataLink endpoint that returns a VOTable containing links for each dataset ID.
     """
