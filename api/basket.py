@@ -15,6 +15,8 @@ from .models import BasketGroup, SavedDataset, basket_items_association
 
 logger = logging.getLogger(__name__)
 
+ERR_BASKET_NOT_FOUND = "Basket group not found"
+
 
 class BasketCreate(BaseModel):
     """Data the frontend sends when user adds a row to the basket."""
@@ -90,7 +92,7 @@ async def add_items_bulk(
     res = await session.execute(stmt_group)
     group = res.scalars().first()
     if not group:
-        raise HTTPException(status_code=404, detail="Basket group not found")
+        raise HTTPException(status_code=404, detail=ERR_BASKET_NOT_FOUND)
 
     added: list[SavedDataset] = []
 
@@ -229,7 +231,7 @@ async def duplicate_basket_group(
     res = await session.execute(orig_stmt)
     orig = res.scalars().first()
     if not orig:
-        raise HTTPException(status_code=404, detail="Basket group not found")
+        raise HTTPException(status_code=404, detail=ERR_BASKET_NOT_FOUND)
 
     new_name = await _next_default_group_name(session, app_user_id)
 
@@ -508,7 +510,7 @@ async def update_basket_group(
     )
     group = result.scalars().first()
     if not group:
-        raise HTTPException(status_code=404, detail="Basket group not found")
+        raise HTTPException(status_code=404, detail=ERR_BASKET_NOT_FOUND)
     group.name = group_data.name
     await session.commit()
     await session.refresh(group)
@@ -547,7 +549,7 @@ async def delete_basket_group(
     )
     group = result.scalars().first()
     if not group:
-        raise HTTPException(status_code=404, detail="Basket group not found")
+        raise HTTPException(status_code=404, detail=ERR_BASKET_NOT_FOUND)
     await session.delete(group)
     await session.commit()
     return None

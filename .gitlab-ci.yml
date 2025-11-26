@@ -1,28 +1,51 @@
-
 variables:
   SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"  # Defines the location of the analysis task cache
   GIT_DEPTH: "0"  # Tells git to fetch all the branches of the project, required by the analysis task
 
 stages:
+  - test
   - build-sonar
+
+pytest:
+  stage: test
+  image: python:3.12
+  before_script:
+    - python -V
+    - pip install -U pip
+    - pip install -r requirements.txt
+    - pip install -r requirements-dev.txt
+  script:
+    - pytest --maxfail=1 --disable-warnings --cov=api --cov-report=xml:coverage.xml
+  artifacts:
+    when: always
+    paths:
+      - coverage.xml
+    expire_in: 1 week
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_BRANCH == 'master'
+    - if: $CI_COMMIT_BRANCH == 'main'
+    - if: $CI_COMMIT_BRANCH == 'develop'
 
 build-sonar:
   stage: build-sonar
-  
-  image: 
+  image:
     name: sonarsource/sonar-scanner-cli:11
     entrypoint: [""]
-  
+  script:
+    - sonar-scanner -Dsonar.host.url="${SONAR_HOST_URL}" -Dsonar.login="${SONAR_TOKEN}"
+  dependencies:
+    - pytest
   cache:
     policy: pull-push
     key: "sonar-cache-$CI_COMMIT_REF_SLUG"
     paths:
       - "${SONAR_USER_HOME}/cache"
       - sonar-scanner/
-      
-  script: 
-  - sonar-scanner -Dsonar.host.url="${SONAR_HOST_URL}"
   allow_failure: true
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+    GIT_DEPTH: "0"
   rules:
     - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
     - if: $CI_COMMIT_BRANCH == 'master'

@@ -205,10 +205,8 @@ async def rolling_session_cookie(
     cookie_name: str = COOKIE_NAME_MAIN_SESSION or "ctao_session_main"
     session_id = request.cookies.get(cookie_name)
 
-    # session_id = request.cookies.get(COOKIE_NAME_MAIN_SESSION)
     if session_id:
         response.set_cookie(
-            # COOKIE_NAME_MAIN_SESSION,
             cookie_name,
             session_id,
             max_age=settings.SESSION_DURATION_SECONDS,
@@ -482,7 +480,6 @@ async def object_suggest(
                 json.loads(cached.decode() if isinstance(cached, bytes) else cached),
             )
             return cached_obj
-            # return json.loads(cached.decode() if isinstance(cached, bytes) else cached)
         else:
             cache_miss("suggest")
 
@@ -985,7 +982,6 @@ def _run_ned_sync_query(adql_query: str) -> list[dict[str, Any]]:
         "MAXREC": 5000,
     }
 
-    # out = []
     out: list[dict[str, Any]] = []
     try:
         r = requests.get(url, params=params, timeout=20)

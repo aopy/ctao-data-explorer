@@ -125,11 +125,6 @@ async def get_current_session_user_data(
                             new_at_exp = time.time() + new_exp
 
                             if "refresh_token" in token_response:
-                                # user_rt_record.encrypted_refresh_token = encrypt_token(
-                                #    token_response["refresh_token"]
-                                # )
-                                # user_rt_record.last_used_at = datetime.utcnow()
-                                # db_session.add(user_rt_record)
                                 enc = encrypt_token(token_response["refresh_token"])
                                 if enc is not None:
                                     user_rt_record.encrypted_refresh_token = enc

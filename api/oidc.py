@@ -2,7 +2,7 @@ import json
 import logging
 import time
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, cast
 
 import redis.asyncio as redis
@@ -125,7 +125,7 @@ async def auth_callback(
             existing_rt_record = rt_result.scalars().first()
             if existing_rt_record:
                 existing_rt_record.encrypted_refresh_token = encrypted_rt
-                existing_rt_record.last_used_at = datetime.utcnow()
+                existing_rt_record.last_used_at = datetime.now(UTC)
                 db_session.add(existing_rt_record)
             else:
                 new_rt_record = UserRefreshToken(

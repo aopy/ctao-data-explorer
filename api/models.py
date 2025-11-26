@@ -8,6 +8,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
 
+USER_ID_FK = "users.id"
+
 basket_items_association = Table(
     "basket_items_association",
     Base.metadata,
@@ -52,7 +54,7 @@ class UserTable(Base):
 class QueryHistory(Base):
     __tablename__ = "query_history"
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey(USER_ID_FK), nullable=False)
     query_date: Mapped[Any] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -64,7 +66,7 @@ class QueryHistory(Base):
 class BasketGroup(Base):
     __tablename__ = "basket_groups"
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey(USER_ID_FK), nullable=False)
     name: Mapped[str] = mapped_column(String, nullable=False, default="My Basket")
     created_at: Mapped[Any] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[Any | None] = mapped_column(DateTime(timezone=True), onupdate=func.now())
@@ -81,7 +83,7 @@ class BasketGroup(Base):
 class SavedDataset(Base):
     __tablename__ = "saved_datasets"
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey(USER_ID_FK), nullable=False)
     obs_id: Mapped[str] = mapped_column(String, nullable=False)
     dataset_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[Any | None] = mapped_column(
@@ -100,7 +102,7 @@ class SavedDataset(Base):
 class UserRefreshToken(Base):
     __tablename__ = "user_refresh_tokens"
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey(USER_ID_FK, ondelete="CASCADE"), nullable=False)
     iam_provider_name: Mapped[str] = mapped_column(String, nullable=False, default="ctao")
     encrypted_refresh_token: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[Any | None] = mapped_column(

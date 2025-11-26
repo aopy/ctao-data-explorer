@@ -128,7 +128,6 @@ class Tap:
 
     def __init__(self, url: str) -> None:
         self.url = url
-        # self.conn = None
         self.conn: vo.dal.TAPService | None = None
 
     def connect(self, timeout: int = 5) -> None:
