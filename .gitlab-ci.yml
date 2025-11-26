@@ -10,15 +10,10 @@ pytest:
     PIP_NO_CACHE_DIR: "1"
     PYTHONPATH: "$CI_PROJECT_DIR:$CI_PROJECT_DIR/api"
   before_script:
-    - printf "OPUS_SERVICE=%s\nOPUS_APP_TOKEN=%s\nOPUS_APP_USER=%s\n" \
-      "${OPUS_SERVICE:-http://example.invalid/opus}" \
-      "${OPUS_APP_TOKEN:-dummy-ci-token}" \
-      "${OPUS_APP_USER:-ci}" > .env.ci
     - python -V
     - python -m venv .venv
     - . .venv/bin/activate
     - pip install -U pip
-    # Prefer a CI-specific file
     - |
       if [ -f api/requirements-ci.txt ]; then
         pip install -r api/requirements-ci.txt
@@ -27,6 +22,14 @@ pytest:
       elif [ -f requirements.txt ]; then
         pip install -r requirements.txt
       fi
+    - printf "OPUS_SERVICE=%s\nOPUS_APP_TOKEN=%s\nOPUS_APP_USER=%s\n" \
+      "${OPUS_SERVICE:-http://example.invalid/opus}" \
+      "${OPUS_APP_TOKEN:-dummy-ci-token}" \
+      "${OPUS_APP_USER:-ci}" > .env.ci
+    - python - <<'PY' >> .env.ci
+  from cryptography.fernet import Fernet
+  print("REFRESH_TOKEN_ENCRYPTION_KEY="+Fernet.generate_key().decode())
+  PY
   script:
     - pytest api --maxfail=1 --disable-warnings --cov=api --cov-report=xml:coverage.xml
   artifacts:

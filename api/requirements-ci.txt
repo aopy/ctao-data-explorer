@@ -7,6 +7,7 @@ alembic
 redis>=5
 hiredis
 httpx
+anyio
 requests
 cryptography
 authlib
@@ -34,3 +35,4 @@ aiosqlite
 pytest
 pytest-asyncio
 pytest-cov
+asgi-lifespan>=2.1
