@@ -14,22 +14,23 @@ pytest:
     - python -m venv .venv
     - . .venv/bin/activate
     - pip install -U pip
-    - |
-      if [ -f api/requirements-ci.txt ]; then
-        pip install -r api/requirements-ci.txt
-      elif [ -f api/requirements.txt ]; then
-        pip install -r api/requirements.txt
-      elif [ -f requirements.txt ]; then
-        pip install -r requirements.txt
-      fi
+    # Install app deps if present (top-level or under api/)
+    - if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    - if [ -f api/requirements.txt ]; then pip install -r api/requirements.txt; fi
+    # Install CI/test-only deps
+    - if [ -f requirements-ci.txt ]; then pip install -r requirements-ci.txt; fi
+    - if [ -f api/requirements-ci.txt ]; then pip install -r api/requirements-ci.txt; fi
+    # Create a throwaway .env.ci with safe defaults
     - printf "OPUS_SERVICE=%s\nOPUS_APP_TOKEN=%s\nOPUS_APP_USER=%s\n" \
-      "${OPUS_SERVICE:-http://example.invalid/opus}" \
-      "${OPUS_APP_TOKEN:-dummy-ci-token}" \
-      "${OPUS_APP_USER:-ci}" > .env.ci
-    - python - <<'PY' >> .env.ci
-  from cryptography.fernet import Fernet
-  print("REFRESH_TOKEN_ENCRYPTION_KEY="+Fernet.generate_key().decode())
-  PY
+        "${OPUS_SERVICE:-http://example.invalid/opus}" \
+        "${OPUS_APP_TOKEN:-dummy-ci-token}" \
+        "${OPUS_APP_USER:-ci}" > .env.ci
+    # Append a generated encryption key
+    - |
+      python - <<'PY' >> .env.ci
+      from cryptography.fernet import Fernet
+      print("REFRESH_TOKEN_ENCRYPTION_KEY="+Fernet.generate_key().decode())
+      PY
   script:
     - pytest api --maxfail=1 --disable-warnings --cov=api --cov-report=xml:coverage.xml
   artifacts:
@@ -46,7 +47,9 @@ build-sonar:
   image:
     name: sonarsource/sonar-scanner-cli:11
     entrypoint: [""]
-  needs: ["pytest"]   # wait for coverage.xml
+  needs:
+    - job: pytest
+      artifacts: true
   script:
     - sonar-scanner -Dsonar.host.url="${SONAR_HOST_URL}" -Dsonar.login="${SONAR_TOKEN}"
   variables:
