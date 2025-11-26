@@ -1,7 +1,3 @@
-variables:
-  SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"  # Defines the location of the analysis task cache
-  GIT_DEPTH: "0"  # Tells git to fetch all the branches of the project, required by the analysis task
-
 stages:
   - test
   - build-sonar
@@ -12,10 +8,11 @@ pytest:
   variables:
     PIP_DISABLE_PIP_VERSION_CHECK: "1"
     PIP_NO_CACHE_DIR: "1"
+    PYTHONPATH: "$CI_PROJECT_DIR:$CI_PROJECT_DIR/api"
   before_script:
     - python -V
     - pip install -U pip setuptools wheel
-    # Install deps no matter where they are:
+    # Try all likely requirements locations (root and api/)
     - |
       if [ -f requirements.txt ]; then
         pip install -r requirements.txt
@@ -32,14 +29,8 @@ pytest:
       if [ -f api/requirements-dev.txt ]; then
         pip install -r api/requirements-dev.txt
       fi
-    - |
-      if [ -f pyproject.toml ]; then
-        pip install .
-      fi
-    # Test tooling (in case not in dev requirements)
     - pip install pytest pytest-cov
   script:
-    # Run tests in the backend dir and emit coverage at repo root
     - pytest api --maxfail=1 --disable-warnings --cov=api --cov-report=xml:coverage.xml
   artifacts:
     when: always
@@ -47,7 +38,6 @@ pytest:
       - coverage.xml
     expire_in: 1 week
   rules:
-    # Run for MRs and for any branch push
     - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
     - if: $CI_COMMIT_BRANCH
 
@@ -56,17 +46,13 @@ build-sonar:
   image:
     name: sonarsource/sonar-scanner-cli:11
     entrypoint: [""]
-  needs: ["pytest"]
+  needs: ["pytest"]   # ensures we get coverage.xml from the previous job
   script:
     - sonar-scanner -Dsonar.host.url="${SONAR_HOST_URL}" -Dsonar.login="${SONAR_TOKEN}"
-  artifacts:
-    when: always
-    expire_in: 1 week
   variables:
     SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
     GIT_DEPTH: "0"
   rules:
-
     - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
     - if: $CI_COMMIT_BRANCH
   allow_failure: true
