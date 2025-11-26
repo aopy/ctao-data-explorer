@@ -24,4 +24,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    pass
+    """Irreversible migration: dropped external_tokens table (data loss)."""
+    # We deliberately do not attempt to recreate the dropped table here,
+    # because this migration removes data/structure that can't be restored safely.
+    raise NotImplementedError("Downgrade not supported for this migration.")

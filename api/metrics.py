@@ -13,21 +13,20 @@ from api.config import get_settings
 _security = HTTPBasic()
 
 
-def _metrics_auth(credentials: HTTPBasicCredentials = Depends(_security)) -> bool:
+def _metrics_auth(credentials: HTTPBasicCredentials = Depends(_security)) -> None:
     s = get_settings()
     if not s.METRICS_PROTECT_WITH_BASIC_AUTH:
-        return True
+        return
     if not (s.METRICS_BASIC_USER and s.METRICS_BASIC_PASS):
         raise HTTPException(status_code=503, detail="metrics auth misconfigured")
-    uok = secrets.compare_digest(credentials.username, s.METRICS_BASIC_USER)
-    pok = secrets.compare_digest(credentials.password, s.METRICS_BASIC_PASS)
+    uok = secrets.compare_digest(credentials.username or "", s.METRICS_BASIC_USER)
+    pok = secrets.compare_digest(credentials.password or "", s.METRICS_BASIC_PASS)
     if not (uok and pok):
         raise HTTPException(
             status_code=401,
             detail="Unauthorized",
             headers={"WWW-Authenticate": "Basic"},
         )
-    return True
 
 
 def setup_metrics(app: FastAPI) -> None:
@@ -35,18 +34,24 @@ def setup_metrics(app: FastAPI) -> None:
     if not s.METRICS_ENABLED:
         return
 
+    # Instrument all endpoints (excluding health + metrics)
     instr = Instrumentator(
         should_group_status_codes=True,
         should_ignore_untemplated=True,
         excluded_handlers=[s.METRICS_ROUTE, "/health/live", "/health/ready"],
     ).instrument(app)
 
+    def _metrics_handler() -> Response:
+        return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
     if s.METRICS_PROTECT_WITH_BASIC_AUTH:
-
-        @app.get(s.METRICS_ROUTE, include_in_schema=False)
-        def metrics_endpoint(_: bool = Depends(_metrics_auth)) -> Response:
-            return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
-
+        app.add_api_route(
+            s.METRICS_ROUTE,
+            _metrics_handler,
+            methods=["GET"],
+            include_in_schema=False,
+            dependencies=[Depends(_metrics_auth)],
+        )
     else:
         instr.expose(app, endpoint=s.METRICS_ROUTE, include_in_schema=False)
 
