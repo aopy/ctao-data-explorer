@@ -1,0 +1,18 @@
+# Runtime
+fastapi
+starlette
+pydantic>=2
+sqlalchemy[asyncio]
+redis>=5
+httpx
+requests
+astropy
+pyvo
+prometheus-client
+prometheus-fastapi-instrumentator
+uvicorn
+
+# Tests
+pytest
+pytest-asyncio
+pytest-cov
