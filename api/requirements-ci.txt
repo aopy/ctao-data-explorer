@@ -1,18 +1,29 @@
-# Runtime
+# --- runtime deps tests import ---
 fastapi
 starlette
 pydantic>=2
-sqlalchemy[asyncio]
+sqlalchemy[asyncio]>=2.0
+alembic
 redis>=5
+hiredis
 httpx
 requests
+cryptography
+authlib
+itsdangerous
+fastapi-users
+fastapi-users-db-sqlalchemy
+asyncpg
+xmltodict
 astropy
+numpy
 pyvo
 prometheus-client
 prometheus-fastapi-instrumentator
 uvicorn
+aiofiles
 
-# Tests
+# --- test deps ---
 pytest
 pytest-asyncio
 pytest-cov
