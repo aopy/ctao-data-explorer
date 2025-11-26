@@ -1,11 +1,13 @@
 from functools import lru_cache
+from typing import Any
 
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env.ci", ".env", ".env.local"),
         case_sensitive=False,
         extra="ignore",
     )
@@ -53,10 +55,10 @@ class Settings(BaseSettings):
     LOG_INCLUDE_ACCESS: bool = True
     LOG_JSON: bool = False
 
-    # OPUS / UWS
+    # OPUS / UWS  — safe defaults for CI
     OPUS_ROOT: str = "https://voparis-uws-test.obspm.fr"
-    OPUS_SERVICE: str
-    OPUS_APP_TOKEN: str
+    OPUS_SERVICE: str = Field(default="http://example.invalid/opus")
+    OPUS_APP_TOKEN: str = Field(default="")
     OPUS_APP_USER: str = "ctao"
 
     # Metrics
@@ -71,16 +73,32 @@ class Settings(BaseSettings):
         return bool(self.BASE_URL)
 
     @property
-    def cookie_params(self) -> dict:
+    def cookie_params(self) -> dict[str, Any]:
         samesite = self.COOKIE_SAMESITE
         if samesite.lower() == "none" and not self.COOKIE_SECURE:
             samesite = "Lax"
         else:
             samesite = samesite.capitalize()
-        params = {"secure": self.COOKIE_SECURE, "httponly": True, "samesite": samesite, "path": "/"}
+        params: dict[str, Any] = {
+            "secure": self.COOKIE_SECURE,
+            "httponly": True,
+            "samesite": samesite,
+            "path": "/",
+        }
         if self.COOKIE_DOMAIN:
             params["domain"] = self.COOKIE_DOMAIN
         return params
+
+    @model_validator(mode="after")
+    def _require_real_opus_in_prod(self) -> "Settings":
+        if self.PRODUCTION:
+            if self.OPUS_SERVICE.startswith("http://example.invalid"):
+                raise ValueError("OPUS_SERVICE must be set in PRODUCTION")
+            if not self.OPUS_APP_TOKEN:
+                raise ValueError("OPUS_APP_TOKEN must be set in PRODUCTION")
+            if not self.OPUS_APP_USER:
+                raise ValueError("OPUS_APP_USER must be set in PRODUCTION")
+        return self
 
 
 @lru_cache

@@ -10,11 +10,15 @@ pytest:
     PIP_NO_CACHE_DIR: "1"
     PYTHONPATH: "$CI_PROJECT_DIR:$CI_PROJECT_DIR/api"
   before_script:
+    - printf "OPUS_SERVICE=%s\nOPUS_APP_TOKEN=%s\nOPUS_APP_USER=%s\n" \
+      "${OPUS_SERVICE:-http://example.invalid/opus}" \
+      "${OPUS_APP_TOKEN:-dummy-ci-token}" \
+      "${OPUS_APP_USER:-ci}" > .env.ci
     - python -V
     - python -m venv .venv
     - . .venv/bin/activate
     - pip install -U pip
-    # Prefer a CI-specific file, with fallbacks if you later add others
+    # Prefer a CI-specific file
     - |
       if [ -f api/requirements-ci.txt ]; then
         pip install -r api/requirements-ci.txt
