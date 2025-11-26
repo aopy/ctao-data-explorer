@@ -1085,7 +1085,16 @@ app.include_router(basket_router, prefix="/api", include_in_schema=False)
 app.include_router(query_history_router, prefix="/api", include_in_schema=False)
 
 # Mount the React build folder
-app.mount("/", StaticFiles(directory="./js/build", html=True), name="js")
+# app.mount("/", StaticFiles(directory="./js/build", html=True), name="js")
+STATIC_DIR = os.getenv("STATIC_DIR", "./js/build")
+if os.path.isdir(STATIC_DIR):
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="js")
+else:
+    logger.warning("Static build dir '%s' not found; skipping static mount.", STATIC_DIR)
+
+    @app.get("/", include_in_schema=False)
+    def root() -> dict[str, str]:
+        return {"status": "ok", "app": "CTAO Data Explorer API"}
 
 # Run the application
 if __name__ == "__main__":
