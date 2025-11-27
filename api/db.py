@@ -36,17 +36,16 @@ REDIS_URL = settings.REDIS_URL
 redis_pool = None
 
 
-async def get_redis_pool() -> redis.ConnectionPool:
+def get_redis_pool() -> redis.ConnectionPool:
     global redis_pool
     if redis_pool is None:
-        # print(f"Connecting to Redis at {REDIS_URL}")
         redis_pool = redis.ConnectionPool.from_url(REDIS_URL, decode_responses=True)
     return redis_pool
 
 
 async def get_redis_client() -> redis.Redis:
-    pool = await get_redis_pool()
-    return redis.Redis(connection_pool=pool)
+    pool = get_redis_pool()
+    return redis.Redis(connection_pool=pool, decode_responses=True)
 
 
 # Encryption Setup for Refresh Tokens

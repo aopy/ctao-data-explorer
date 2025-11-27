@@ -57,9 +57,12 @@ class Settings(BaseSettings):
 
     # OPUS / UWS  — safe defaults for CI
     OPUS_ROOT: str = "https://voparis-uws-test.obspm.fr"
-    OPUS_SERVICE: str = Field(default="http://example.invalid/opus")
-    OPUS_APP_TOKEN: str = Field(default="")
-    OPUS_APP_USER: str = "ctao"
+    OPUS_SERVICE: str = Field(
+        default="https://example.com/opus",
+        description="Base OPUS service URL. Override via env in all real deployments.",
+    )
+    OPUS_APP_TOKEN: str = Field(default="", description="OPUS app token")
+    OPUS_APP_USER: str = Field(default="ctao", description="OPUS app username")
 
     # Metrics
     METRICS_ENABLED: bool = False

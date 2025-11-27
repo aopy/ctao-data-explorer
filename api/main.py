@@ -74,6 +74,9 @@ from .tap import (
     perform_query_with_conditions,
 )
 
+MAX_ALIAS_LEN = 32
+
+
 COORD_SYS_ALIASES: dict[str, str] = {
     "eq_deg": COORD_SYS_EQ_DEG,
     "eq_hms": COORD_SYS_EQ_HMS,
@@ -105,7 +108,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         or "PYTEST_CURRENT_TEST" in os.environ
     )
 
-    pool = None
+    pool: redis.ConnectionPool | None = None
     if testing:
         from .tests.fakeredis import FakeRedis
 
@@ -113,12 +116,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("Using in-memory FakeRedis for tests.")
     else:
         # Centralised pool config
-        pool = await get_redis_pool()
+        pool = get_redis_pool()
         app.state.redis = redis.Redis(connection_pool=pool, decode_responses=True)
         logger.info("Redis pool initialised.")
-
-        # direct client without helper
-        # app.state.redis = redis.from_url(settings.REDIS_URL, decode_responses=True)
     try:
         yield
     finally:
@@ -134,7 +134,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 logger.warning("Loop closed while closing redis client; ignoring.")
         if pool is not None:
             try:
-                await pool.disconnect()
+                maybe = pool.disconnect()
+                if inspect.isawaitable(maybe):
+                    await maybe
             except RuntimeError:
                 logger.warning("Loop closed while disconnecting redis pool; ignoring.")
         logger.info("Redis pool closed.")
@@ -307,23 +309,39 @@ async def _ned_resolve_via_objectlookup(name: str) -> dict[str, Any] | None:
     return None
 
 
+CATALOG_SPACED_RE = re.compile(
+    r"^\s*(?P<cat>M|NGC|IC)\s{0,2}0*(?P<num>\d{1,4})\s*$",
+    re.IGNORECASE,
+)
+
+
+CATALOG_RE = re.compile(r"^(?:M\d{1,3}|NGC\d{1,4}|IC\d{1,4})$", re.IGNORECASE)
+
+
 def _catalog_variants(name: str) -> Iterator[str]:
     """
     Yield 'M  42', 'M   42', … or 'NGC  3242', etc., matching SIMBAD's
-    fixed-width alias layout.  If `name` is not a Messier/NGC/IC code,
-    yields nothing.
+    fixed-width alias layout. If `name` is not a Messier/NGC/IC code, yields nothing.
     """
-    m = re.fullmatch(r"\s*(M|NGC|IC)\s*0*(\d+)\s*", name, re.I)
+    s = name.strip()
+    if len(s) > MAX_ALIAS_LEN:
+        return
+
+    m = CATALOG_SPACED_RE.fullmatch(s)
     if not m:
         return
-    cat, num = m.group(1).upper(), m.group(2)
+
+    cat = m.group("cat").upper()
+    num = m.group("num")
+
+    # Enforce maximum digits per catalog (Messier ≤3, others ≤4)
+    if cat == "M" and len(num) > 3:
+        return
+
     width = 3 if cat == "M" else 4
     spaces_needed = max(1, width - len(num))
-    for s in range(spaces_needed, spaces_needed + 3):
-        yield f"{cat}{' ' * s}{num}"
-
-
-CATALOG_RE = re.compile(r"^(M\d{1,3}|NGC\d{1,4}|IC\d{1,4})$", re.I)
+    for n_spaces in range(spaces_needed, spaces_needed + 3):
+        yield f"{cat}{' ' * n_spaces}{num}"
 
 
 def _is_short_catalog(q: str) -> bool:
@@ -1095,6 +1113,7 @@ else:
     @app.get("/", include_in_schema=False)
     def root() -> dict[str, str]:
         return {"status": "ok", "app": "CTAO Data Explorer API"}
+
 
 # Run the application
 if __name__ == "__main__":
