@@ -43,7 +43,7 @@ def get_redis_pool() -> redis.ConnectionPool:
     return redis_pool
 
 
-async def get_redis_client() -> redis.Redis:
+def get_redis_client() -> redis.Redis:
     pool = get_redis_pool()
     return redis.Redis(connection_pool=pool, decode_responses=True)
 
