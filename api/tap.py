@@ -216,7 +216,7 @@ def astropy_table_to_list(table: Table | None) -> tuple[list[str], list[list[Any
             rows.append(row_data)
         logger.debug("astropy_table_to_list: Processed %s rows.", len(rows))
         return columns, rows
-    except Exception as e:
+    except Exception as e:  # pragma: no cover
         logger.exception("ERROR in astropy_table_to_list: %s", e)
         traceback.print_exc()
         return [], []

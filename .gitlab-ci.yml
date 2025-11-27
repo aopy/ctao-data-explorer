@@ -22,7 +22,7 @@ pytest:
     - if [ -f api/requirements-ci.txt ]; then pip install -r api/requirements-ci.txt; fi
     # Create a throwaway .env.ci with safe defaults
     - printf "OPUS_SERVICE=%s\nOPUS_APP_TOKEN=%s\nOPUS_APP_USER=%s\n" \
-        "${OPUS_SERVICE:-http://example.invalid/opus}" \
+        "${OPUS_SERVICE:-https://example.invalid/opus}" \
         "${OPUS_APP_TOKEN:-dummy-ci-token}" \
         "${OPUS_APP_USER:-ci}" > .env.ci
     # Append a generated encryption key, then make it the active .env

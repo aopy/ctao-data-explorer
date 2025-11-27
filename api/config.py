@@ -1,8 +1,11 @@
 from functools import lru_cache
 from typing import Any
+from urllib.parse import urlparse
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEFAULT_OPUS_SERVICE = "https://example.invalid/opus"
 
 
 class Settings(BaseSettings):
@@ -58,7 +61,7 @@ class Settings(BaseSettings):
     # OPUS / UWS  — safe defaults for CI
     OPUS_ROOT: str = "https://voparis-uws-test.obspm.fr"
     OPUS_SERVICE: str = Field(
-        default="https://example.com/opus",
+        default=DEFAULT_OPUS_SERVICE,
         description="Base OPUS service URL. Override via env in all real deployments.",
     )
     OPUS_APP_TOKEN: str = Field(default="", description="OPUS app token")
@@ -95,8 +98,11 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _require_real_opus_in_prod(self) -> "Settings":
         if self.PRODUCTION:
-            if self.OPUS_SERVICE.startswith("http://example.invalid"):
-                raise ValueError("OPUS_SERVICE must be set in PRODUCTION")
+            parsed = urlparse(self.OPUS_SERVICE)
+            if parsed.scheme != "https":
+                raise ValueError("OPUS_SERVICE must use https in PRODUCTION")
+            if parsed.hostname == "example.invalid":
+                raise ValueError("OPUS_SERVICE must be set in PRODUCTION (not example.invalid)")
             if not self.OPUS_APP_TOKEN:
                 raise ValueError("OPUS_APP_TOKEN must be set in PRODUCTION")
             if not self.OPUS_APP_USER:

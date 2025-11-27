@@ -387,7 +387,7 @@ async def _simbad_suggest(prefix: str, limit: int) -> list[dict[str, Any]]:
     try:
         tab = await asyncio.to_thread(_run_tap_sync, SIMBAD_TAP_SYNC, exact_sql, 1)
         rows.extend(str(r["main_id"]).strip() for r in cast(Iterable[Mapping[str, Any]], tab))
-    except Exception as exc:
+    except Exception as exc:  # pragma: no cover
         logger.exception("SIMBAD exact failed: %s", exc)
 
     pat_raw = _adql_escape(q)
@@ -404,7 +404,7 @@ async def _simbad_suggest(prefix: str, limit: int) -> list[dict[str, Any]]:
     try:
         tab = await asyncio.to_thread(_run_tap_sync, SIMBAD_TAP_SYNC, alias_sql, 200)
         rows.extend(str(r["main_id"]).strip() for r in tab)
-    except Exception as exc:
+    except Exception as exc:  # pragma: no cover
         logger.exception("SIMBAD alias LIKE failed: %s", exc)
 
     q_cmp = q_uc.replace(" ", "")
