@@ -11,6 +11,7 @@ Documentation is available online at https://aopy.github.io/ctao-data-explorer/
 - [Installation](#installation)
   - [Backend Setup](#backend-setup)
   - [Frontend Setup](#frontend-setup)
+  - [Run with Docker](#run-with-docker)
 - [Usage](#usage)
 - [About CTAO](#about-ctao)
 
@@ -84,6 +85,34 @@ Documentation is available online at https://aopy.github.io/ctao-data-explorer/
    npm install
    npm run build
    ```
+
+## Run with Docker
+
+### 1) Copy env template and fill secrets
+```bash
+cp .env.example .env.docker
+```
+### 2) Start DB/Redis
+```bash
+docker compose -f docker-compose.dev.yml up -d postgres redis
+```
+### 3) Run migrations once
+```bash
+docker compose -f docker-compose.dev.yml run --rm backend bash -lc 'alembic upgrade head'
+```
+### 4) Build frontend once (creates ./js/build)
+```bash
+docker compose -f docker-compose.dev.yml run --rm frontend npm ci
+docker compose -f docker-compose.dev.yml run --rm frontend npm run build
+```
+### 5) Start backend + frontend
+```bash
+docker compose -f docker-compose.dev.yml up -d backend frontend
+```
+### 6) Open
+```bash
+open http://localhost:8000
+```
 ## Usage
 
 > **Warning**  
