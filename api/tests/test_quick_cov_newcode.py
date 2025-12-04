@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from astropy.table import Table
 
 from api.main import _adql_escape, _catalog_variants, _is_short_catalog
@@ -31,7 +32,7 @@ def test_astropy_table_to_list_typing_and_edge():
     cols, rows = astropy_table_to_list(t)
     assert cols == ["a", "b", "c", "masked"]
     assert rows[0][0] == 1
-    assert rows[0][1] == 1.5
+    assert rows[0][1] == pytest.approx(1.5)
     assert rows[0][2] == "x"
     assert rows[0][3] == 10
     # second row has NaN -> None, masked -> None

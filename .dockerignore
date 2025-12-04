@@ -1,24 +1,64 @@
 # Python
-.venv/
-__pycache__/
+**/__pycache__/
 *.pyc
 .mypy_cache/
 .pytest_cache/
+.ruff_cache/
+.tox/
+.venv/
+venv/
+ENV/
 .coverage
+.coverage.*
+coverage.xml
 htmlcov/
+dist/
+build/
+*.egg-info/
 
 # Env & VCS
 .env
 .env.*
+!.env.example
 .git
 .gitignore
+.gitattributes
+.gitlab/
+.github/
 
-# Node
+# Sonar / scanners / CI caches
+.sonar/
+.scannerwork/
+sonar-scanner/
+
+# Node / Frontend
 js/node_modules/
 js/.npm/
 js/.pnpm-store/
 js/build/
+js/.cache/
+js/coverage/
 
-# OS/IDE
+# OS / IDE
 .DS_Store
 .vscode/
+.idea/
+
+# Logs / misc
+*.log
+*.tmp
+tmp/
+.cache/
+
+# Tests, docs, examples
+api/tests/
+docs/_build/
+notebooks/
+examples/
+
+# Secrets / keys
+*.pem
+*.key
+*.crt
+*.p12
+*.jks

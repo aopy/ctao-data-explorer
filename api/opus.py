@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 import httpx
 import xmltodict
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.responses import Response
 
 from .config import get_settings
@@ -17,7 +17,6 @@ from .deps import get_current_user
 from .metrics import (
     opus_observe_submit,
     opus_record_job_outcome_once,
-    opus_record_submit,
     opus_record_submit_failure,
 )
 
@@ -55,8 +54,8 @@ OPUS_ALLOWED_NETLOCS: set[str] = {n for n in {_host_netloc, _svc_netloc} if n}
 
 # helpers
 def _rest_url(*parts: str) -> str:
-    """Legacy helper that joins parts under OPUS_ROOT."""
-    base = OPUS_ROOT.rstrip("/")
+    """Join parts under the REST root (legacy endpoints)."""
+    base = OPUS_REST_BASE.rstrip("/")
     path = "/".join(str(p).strip("/") for p in parts if p is not None)
     return f"{base}/{path}"
 
@@ -99,9 +98,74 @@ def _extract_job_id_from_doc(doc: dict[str, Any]) -> str | None:
     return cast(str | None, jid)
 
 
+def _extract_uid(user: Any) -> str:
+    """Get IAM subject id from `user` or raise 401."""
+    uid = (
+        getattr(user, "iam_subject_id", None)
+        if not isinstance(user, dict)
+        else user.get("iam_subject_id")
+    )
+    if not uid:
+        raise HTTPException(401, "Not authenticated")
+    return str(uid)
+
+
+def _build_job_form(params: "QuickLookParams") -> dict[str, str]:
+    """Serialize QuickLookParams to the OPUS job form."""
+    form: dict[str, str] = {
+        "JOBNAME": OPUS_SERVICE_NAME,
+        "RA": str(params.RA),
+        "Dec": str(params.Dec),
+        "nxpix": str(params.nxpix),
+        "nypix": str(params.nypix),
+        "binsz": str(params.binsz),
+        "obs_ids": ",".join(params.obs_ids or []),
+    }
+    if params.obsids:
+        form["obsids"] = params.obsids
+    return form
+
+
+async def _opus_create_job(form: dict[str, str], headers: dict[str, str]) -> tuple[str, str]:
+    """POST create and return (job_id, job_url)."""
+    create_url = _service_url()
+    async with httpx.AsyncClient(follow_redirects=False, timeout=30) as client:
+        r = await client.post(create_url, data=form, headers=headers)
+
+    if r.status_code not in (200, 201, 303):
+        raise HTTPException(r.status_code, r.text)
+
+    location = r.headers.get("Location") or r.headers.get("location")
+    if not location:
+        data = _xml_to_json(r.text)
+        location = data.get("uws:job", {}).get("uws:jobId") or data.get("uws:jobId")
+
+    if not location:
+        raise HTTPException(502, "OPUS did not return job location")
+
+    if location.startswith("http"):
+        job_id = location.rstrip("/").split("/")[-1]
+        job_url = location
+    else:
+        job_id = location.strip("/")
+        job_url = _service_url(job_id)
+
+    return job_id, job_url
+
+
+async def _opus_run_job(job_id: str, headers: dict[str, str]) -> None:
+    """Transition job to RUN."""
+    run_url = _service_url(job_id, "phase")
+    async with httpx.AsyncClient(timeout=30) as client:
+        r2 = await client.post(run_url, data={"PHASE": "RUN"}, headers=headers)
+
+    if r2.status_code not in (200, 303):
+        raise HTTPException(r2.status_code, f"Created {job_id} but failed to RUN: {r2.text}")
+
+
 # Schemas
 class QuickLookParams(BaseModel):
-    obs_ids: list[str] = []  # not used by OPUS
+    obs_ids: list[str] = Field(default_factory=list)  # not used by OPUS
     RA: float
     Dec: float
     nxpix: int = 400
@@ -240,12 +304,11 @@ async def get_job(
 
     # Record terminal outcome once (COMPLETED / ERROR / FAILED / ABORTED)
     phase = _extract_phase_from_doc(data) or ""
-    await opus_record_job_outcome_once(
-        request.app.state.redis,
-        job_id=job_id,
-        phase=phase,
-        service=OPUS_SERVICE_NAME,
-    )
+    redis_client = getattr(request.app.state, "redis", None)
+    if redis_client:
+        await opus_record_job_outcome_once(
+            redis_client, job_id=job_id, phase=phase, service=OPUS_SERVICE_NAME
+        )
 
     return data
 
@@ -271,81 +334,30 @@ async def list_results(job_id: str, user: Any = Depends(get_current_user)) -> di
 
 @router.post("/jobs", response_model=OpusJobCreateResponse)
 async def create_job(
-    params: QuickLookParams, user: Any = Depends(get_current_user)
+    params: QuickLookParams,
+    user: Any = Depends(get_current_user),
 ) -> OpusJobCreateResponse:
-    uid = (
-        getattr(user, "iam_subject_id", None)
-        if not isinstance(user, dict)
-        else user.get("iam_subject_id")
-    )
-    if not uid:
-        raise HTTPException(401, "Not authenticated")
+    uid = _extract_uid(user)
     headers = _basic_headers(uid)
+    form = _build_job_form(params)
 
-    form = {
-        "JOBNAME": OPUS_SERVICE_NAME,
-        "RA": str(params.RA),
-        "Dec": str(params.Dec),
-        "nxpix": str(params.nxpix),
-        "nypix": str(params.nypix),
-        "binsz": str(params.binsz),
-        "obs_ids": ",".join(params.obs_ids or []),
-    }
-    if params.obsids:
-        form["obsids"] = params.obsids
-
-    create_url = _service_url()
     t0 = time.perf_counter()
     try:
-        async with httpx.AsyncClient(follow_redirects=False, timeout=30) as client:
-            r = await client.post(create_url, data=form, headers=headers)
-
-        if r.status_code not in (200, 201, 303):
-            dt = time.perf_counter() - t0
-            opus_observe_submit(dt, ok=False)
-            opus_record_submit_failure()
-            raise HTTPException(r.status_code, r.text)
-
-        location = r.headers.get("Location") or r.headers.get("location")
-        if not location:
-            data = _xml_to_json(r.text)
-            location = data.get("uws:job", {}).get("uws:jobId") or data.get("uws:jobId")
-            if not location:
-                dt = time.perf_counter() - t0
-                opus_observe_submit(dt, ok=False)
-                opus_record_submit_failure()
-                raise HTTPException(502, "OPUS did not return job location")
-
-        if location.startswith("http"):
-            job_id = location.rstrip("/").split("/")[-1]
-            job_url = location
-        else:
-            job_id = location.strip("/")
-            job_url = _service_url(job_id)
-
-        run_url = _service_url(job_id, "phase")
-        async with httpx.AsyncClient(timeout=30) as client:
-            r2 = await client.post(run_url, data={"PHASE": "RUN"}, headers=headers)
-        if r2.status_code not in (200, 303):
-            dt = time.perf_counter() - t0
-            opus_observe_submit(dt, ok=False)
-            opus_record_submit_failure()
-            raise HTTPException(r2.status_code, f"Created {job_id} but failed to RUN: {r2.text}")
-
-    except Exception:
-        # record failure for any exception path
-        if "t0" in locals():
-            dt = time.perf_counter() - t0
-            opus_observe_submit(dt, ok=False)
+        job_id, job_url = await _opus_create_job(form, headers)
+        await _opus_run_job(job_id, headers)
+        opus_observe_submit(time.perf_counter() - t0, ok=True)
+        return OpusJobCreateResponse(
+            job_id=job_id,
+            location=job_url,
+        )
+    except HTTPException:
+        opus_observe_submit(time.perf_counter() - t0, ok=False)
         opus_record_submit_failure()
         raise
-
-    # success path: record once after CREATE+RUN finished
-    dt = time.perf_counter() - t0
-    opus_observe_submit(dt, ok=True)
-    opus_record_submit()
-
-    return OpusJobCreateResponse(job_id=job_id, location=job_url)
+    except Exception as e:
+        opus_observe_submit(time.perf_counter() - t0, ok=False)
+        opus_record_submit_failure()
+        raise HTTPException(502, str(e)) from e
 
 
 def _guess_preview_mime(name: str, rid: str | None) -> str:
@@ -372,8 +384,17 @@ def _guess_preview_mime(name: str, rid: str | None) -> str:
 
 
 async def _get_with_auth(url: str, headers: dict[str, str]) -> httpx.Response:
-    async with httpx.AsyncClient(follow_redirects=True, timeout=None) as client:
-        return await client.get(url, headers=headers)
+    async with httpx.AsyncClient(follow_redirects=False, timeout=30) as client:
+        resp = await client.get(url, headers=headers)
+        if 300 <= resp.status_code < 400:
+            loc = resp.headers.get("Location") or resp.headers.get("location")
+            if not loc:
+                return resp
+            p = urlparse(loc)
+            if p.netloc not in OPUS_ALLOWED_NETLOCS:
+                raise HTTPException(400, "Redirect to disallowed host")
+            return await client.get(loc, headers=headers)
+        return resp
 
 
 @router.get("/jobs/{job_id}/fetch")
