@@ -27,16 +27,44 @@ router = APIRouter(prefix="/api/opus", tags=["opus"])
 
 # OPUS configuration
 _raw_root = settings.OPUS_ROOT.rstrip("/")
-OPUS_ROOT = _raw_root[:-5] if _raw_root.endswith("/rest") else _raw_root
-OPUS_SERVICE = settings.OPUS_SERVICE.strip("/")
+OPUS_BASE = _raw_root[:-5] if _raw_root.endswith("/rest") else _raw_root
+OPUS_REST_BASE = f"{OPUS_BASE}/rest"
+
+OPUS_ROOT = OPUS_BASE
+
+_raw_service = settings.OPUS_SERVICE.strip()
+if _raw_service.lower().startswith("http"):
+    OPUS_SERVICE_URL = _raw_service.rstrip("/")
+    OPUS_SERVICE_NAME = OPUS_SERVICE_URL.rsplit("/", 1)[-1]
+else:
+    OPUS_SERVICE_NAME = _raw_service.strip("/")
+    OPUS_SERVICE_URL = f"{OPUS_REST_BASE}/{OPUS_SERVICE_NAME}"
+
 OPUS_APP_TOKEN = settings.OPUS_APP_TOKEN
+
+try:
+    _host_netloc = urlparse(OPUS_BASE).netloc
+except Exception:
+    _host_netloc = ""
+try:
+    _svc_netloc = urlparse(OPUS_SERVICE_URL).netloc
+except Exception:
+    _svc_netloc = ""
+OPUS_ALLOWED_NETLOCS: set[str] = {n for n in {_host_netloc, _svc_netloc} if n}
 
 
 # helpers
 def _rest_url(*parts: str) -> str:
+    """Legacy helper that joins parts under OPUS_ROOT."""
     base = OPUS_ROOT.rstrip("/")
     path = "/".join(str(p).strip("/") for p in parts if p is not None)
     return f"{base}/{path}"
+
+
+def _service_url(*parts: str) -> str:
+    base = OPUS_SERVICE_URL.rstrip("/")
+    path = "/".join(str(p).strip("/") for p in parts if p is not None)
+    return f"{base}/{path}" if path else base
 
 
 def _xml_to_json(xml_text: str) -> dict[str, Any]:
@@ -96,8 +124,10 @@ async def debug_base(user: Any = Depends(get_current_user)) -> dict[str, Any]:
         else user.get("iam_subject_id")
     )
     return {
-        "OPUS_ROOT": OPUS_ROOT,
-        "OPUS_SERVICE": OPUS_SERVICE,
+        "OPUS_BASE": OPUS_BASE,
+        "OPUS_REST_BASE": OPUS_REST_BASE,
+        "OPUS_SERVICE_URL": OPUS_SERVICE_URL,
+        "OPUS_SERVICE_NAME": OPUS_SERVICE_NAME,
         "has_app_token": bool(OPUS_APP_TOKEN),
         "iam_subject_id": uid or None,
     }
@@ -146,7 +176,7 @@ async def list_jobs(
     ]
     params.extend([("PHASE", p) for p in phases])
 
-    url = _rest_url("rest", OPUS_SERVICE)
+    url = _service_url()
     async with httpx.AsyncClient(timeout=30) as client:
         r = await client.get(url, headers=headers, params=params)
     if r.status_code >= 400:
@@ -177,7 +207,7 @@ async def list_jobs(
                     redis_client,
                     job_id=jid,
                     phase=ph,
-                    service=OPUS_SERVICE,
+                    service=OPUS_SERVICE_NAME,
                 )
     if data.get("uws:jobs"):
         data["uws:jobs"]["uws:jobref"] = jobrefs
@@ -200,7 +230,7 @@ async def get_job(
         raise HTTPException(401, "Not authenticated")
     headers = _basic_headers(uid)
 
-    url = _rest_url("rest", OPUS_SERVICE, job_id)
+    url = _service_url(job_id)
     async with httpx.AsyncClient(timeout=30) as client:
         r = await client.get(url, headers=headers)
     if r.status_code >= 400:
@@ -214,7 +244,7 @@ async def get_job(
         request.app.state.redis,
         job_id=job_id,
         phase=phase,
-        service=OPUS_SERVICE,
+        service=OPUS_SERVICE_NAME,
     )
 
     return data
@@ -231,7 +261,7 @@ async def list_results(job_id: str, user: Any = Depends(get_current_user)) -> di
         raise HTTPException(401, "Not authenticated")
     headers = _basic_headers(uid)
 
-    url = _rest_url("rest", OPUS_SERVICE, job_id, "results")
+    url = _service_url(job_id, "results")
     async with httpx.AsyncClient(timeout=30) as client:
         r = await client.get(url, headers=headers)
     if r.status_code >= 400:
@@ -253,7 +283,7 @@ async def create_job(
     headers = _basic_headers(uid)
 
     form = {
-        "JOBNAME": OPUS_SERVICE,
+        "JOBNAME": OPUS_SERVICE_NAME,
         "RA": str(params.RA),
         "Dec": str(params.Dec),
         "nxpix": str(params.nxpix),
@@ -264,7 +294,7 @@ async def create_job(
     if params.obsids:
         form["obsids"] = params.obsids
 
-    create_url = _rest_url("rest", OPUS_SERVICE)
+    create_url = _service_url()
     t0 = time.perf_counter()
     try:
         async with httpx.AsyncClient(follow_redirects=False, timeout=30) as client:
@@ -291,9 +321,9 @@ async def create_job(
             job_url = location
         else:
             job_id = location.strip("/")
-            job_url = _rest_url("rest", OPUS_SERVICE, job_id)
+            job_url = _service_url(job_id)
 
-        run_url = _rest_url("rest", OPUS_SERVICE, job_id, "phase")
+        run_url = _service_url(job_id, "phase")
         async with httpx.AsyncClient(timeout=30) as client:
             r2 = await client.post(run_url, data={"PHASE": "RUN"}, headers=headers)
         if r2.status_code not in (200, 303):
@@ -366,7 +396,8 @@ async def fetch_by_href(
         raise HTTPException(401, "Not authenticated")
     headers = _basic_headers(uid)
 
-    if not href.startswith(OPUS_ROOT):
+    parsed = urlparse(href)
+    if parsed.netloc not in OPUS_ALLOWED_NETLOCS:
         raise HTTPException(400, "Invalid href")
 
     name_guess = filename or Path(urlparse(href).path).name or f"{job_id}_{rid or 'result'}"
@@ -374,9 +405,11 @@ async def fetch_by_href(
 
     resp = await _get_with_auth(href, headers)
     if resp.status_code == 404 and rid:
+        # legacy location
         legacy_url = _rest_url("store_old", job_id, rid)
         resp = await _get_with_auth(legacy_url, headers)
 
+        # special endpoints under service root
         if resp.status_code == 404 and rid.lower() in (
             "stdout",
             "stderr",
@@ -384,7 +417,7 @@ async def fetch_by_href(
             "provxml",
             "provsvg",
         ):
-            special_url = _rest_url("rest", OPUS_SERVICE, job_id, rid.lower())
+            special_url = _service_url(job_id, rid.lower())
             resp = await _get_with_auth(special_url, headers)
 
     if resp.status_code >= 400:

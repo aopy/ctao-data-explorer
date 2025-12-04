@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 from typing import Any
 from urllib.parse import urlparse
@@ -10,7 +11,9 @@ DEFAULT_OPUS_SERVICE = "https://example.invalid/opus"
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(".env.ci", ".env", ".env.local"),
+        env_file=(
+            (".env.ci", ".env", ".env.local") if os.getenv("PREFER_DOTENV", "1") == "1" else None
+        ),
         case_sensitive=False,
         extra="ignore",
     )
@@ -74,9 +77,7 @@ class Settings(BaseSettings):
     METRICS_BASIC_USER: str | None = None
     METRICS_BASIC_PASS: str | None = None
 
-    @property
-    def PRODUCTION(self) -> bool:
-        return bool(self.BASE_URL)
+    PRODUCTION: bool = False
 
     @property
     def cookie_params(self) -> dict[str, Any]:
@@ -97,12 +98,20 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _require_real_opus_in_prod(self) -> "Settings":
+        if isinstance(self.PRODUCTION, str):
+            self.PRODUCTION = self.PRODUCTION.lower() in {"1", "true", "yes", "on"}
         if self.PRODUCTION:
-            parsed = urlparse(self.OPUS_SERVICE)
-            if parsed.scheme != "https":
-                raise ValueError("OPUS_SERVICE must use https in PRODUCTION")
-            if parsed.hostname == "example.invalid":
-                raise ValueError("OPUS_SERVICE must be set in PRODUCTION (not example.invalid)")
+            svc = (self.OPUS_SERVICE or "").strip()
+            parsed = urlparse(svc)
+            if parsed.scheme:
+                if parsed.scheme != "https":
+                    raise ValueError("OPUS_SERVICE must use https in PRODUCTION")
+                if parsed.hostname == "example.invalid":
+                    raise ValueError("OPUS_SERVICE must be set in PRODUCTION (not example.invalid)")
+            else:
+                root_scheme = urlparse(self.OPUS_ROOT or "").scheme
+                if root_scheme != "https":
+                    raise ValueError("OPUS_ROOT must use https in PRODUCTION")
             if not self.OPUS_APP_TOKEN:
                 raise ValueError("OPUS_APP_TOKEN must be set in PRODUCTION")
             if not self.OPUS_APP_USER:

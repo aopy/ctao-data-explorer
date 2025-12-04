@@ -37,6 +37,10 @@ services:
       context: .
       dockerfile: Dockerfile
     env_file: .env.docker
+    environment:
+      OPUS_ROOT: "https://voparis-uws-test.obspm.fr"
+      OPUS_SERVICE: "gammapy_source_analysis"
+      COOKIE_SECURE: "false"
     working_dir: /app
     volumes:
       - ./:/app
