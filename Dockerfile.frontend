@@ -1,7 +1,20 @@
+# syntax=docker/dockerfile:1
 FROM node:20-alpine
+
 WORKDIR /js
+
+# Create non-root user
+RUN addgroup -S app -g 10001 && adduser -S -G app -u 10001 app \
+ && chown -R app:app /js
+USER app
+
+# Install deps
 COPY js/package*.json ./
-RUN npm ci
-COPY js .
+# RUN npm ci --no-audit --fund=false --ignore-scripts
+RUN npm ci --no-audit --fund=false
+
+# App sources
+COPY js ./
+
 EXPOSE 3000
 CMD ["npm", "start"]

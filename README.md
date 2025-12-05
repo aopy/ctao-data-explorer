@@ -88,31 +88,32 @@ Documentation is available online at https://aopy.github.io/ctao-data-explorer/
 
 ## Run with Docker
 
+**Prereqs:** Docker Desktop installed.
+
 ### 1) Copy env template and fill secrets
 ```bash
 cp .env.example .env.docker
+# set BASE_URL=http://localhost:8000, CTAO_CLIENT_ID/SECRET, OPUS_ROOT/OPUS_SERVICE, DB/REDIS, etc.
 ```
 ### 2) Start DB/Redis
 ```bash
 docker compose -f docker-compose.dev.yml up -d postgres redis
 ```
-### 3) Run migrations once
+### 3) Run DB migrations (one time per clean DB)
 ```bash
-docker compose -f docker-compose.dev.yml run --rm backend bash -lc 'alembic upgrade head'
+docker compose -f docker-compose.dev.yml run --rm migrate
 ```
 ### 4) Build frontend once (creates ./js/build)
 ```bash
 docker compose -f docker-compose.dev.yml run --rm frontend npm ci
 docker compose -f docker-compose.dev.yml run --rm frontend npm run build
 ```
-### 5) Start backend + frontend
+### 5) Start backend (serves the built React app)
 ```bash
-docker compose -f docker-compose.dev.yml up -d backend frontend
-```
-### 6) Open
-```bash
+docker compose -f docker-compose.dev.yml up -d backend
 open http://localhost:8000
 ```
+
 ## Usage
 
 > **Warning**  

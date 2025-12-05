@@ -19,7 +19,6 @@ services:
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     ports: ["6379:6379"]
 
-  # One-shot migration job
   migrate:
     build:
       context: .
@@ -29,7 +28,8 @@ services:
       postgres:
         condition: service_healthy
     working_dir: /app
-    command: ["sh", "-lc", "alembic upgrade head"]
+    entrypoint: ["python", "-m", "alembic"]
+    command: ["upgrade", "head"]
     restart: "no"
 
   backend:
@@ -44,13 +44,14 @@ services:
     working_dir: /app
     volumes:
       - ./:/app
+      - ./js/build:/app/js/build:ro
     depends_on:
       - postgres
       - redis
     ports:
       - "8000:8000"
     command: >
-      bash -lc "alembic upgrade head && uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload"
+      sh -c "uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload"
 
   frontend:
     build:
