@@ -19,7 +19,7 @@ from collections.abc import (
     Mapping,
     Sequence,
 )
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime
 from io import BytesIO
 from typing import (
@@ -99,47 +99,54 @@ OBJECT_LOOKUP_URL = settings.NED_OBJECT_LOOKUP_URL
 cookie_params = settings.cookie_params
 
 
-# App Event Handlers for Redis Pool
-@asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    logger.info("API starting up")
-    testing = (
-        os.getenv("TESTING", "").lower() in ("1", "true", "yes", "on")
-        or "PYTEST_CURRENT_TEST" in os.environ
-    )
+def _is_testing_env() -> bool:
+    v = os.getenv("TESTING", "")
+    return v.lower() in {"1", "true", "yes", "on"} or "PYTEST_CURRENT_TEST" in os.environ
 
-    pool: redis.ConnectionPool | None = None
-    if testing:
+
+def _init_redis_for_app(app: FastAPI) -> redis.ConnectionPool | None:
+    if _is_testing_env():
         from .tests.fakeredis import FakeRedis
 
         app.state.redis = FakeRedis()
         logger.info("Using in-memory FakeRedis for tests.")
-    else:
-        # Centralised pool config
-        pool = get_redis_pool()
-        app.state.redis = redis.Redis(connection_pool=pool, decode_responses=True)
-        logger.info("Redis pool initialised.")
+        return None
+
+    pool = get_redis_pool()
+    app.state.redis = redis.Redis(connection_pool=pool, decode_responses=True)
+    logger.info("Redis pool initialised.")
+    return pool
+
+
+async def _safe_close(obj: Any) -> None:
+    """Call aclose/close/disconnect if present; await if needed; ignore RuntimeError on shutdown."""
+    close = (
+        getattr(obj, "aclose", None)
+        or getattr(obj, "close", None)
+        or getattr(obj, "disconnect", None)
+    )
+    if not close:
+        return
+    with suppress(RuntimeError):
+        res = close()
+        if inspect.isawaitable(res):
+            await res
+
+
+# App Event Handlers for Redis Pool
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    logger.info("API starting up")
+    pool = _init_redis_for_app(app)
     try:
         yield
     finally:
         r = getattr(app.state, "redis", None)
         if r is not None:
-            try:
-                close = getattr(r, "close", None) or getattr(r, "aclose", None)
-                if callable(close):
-                    maybe = close()
-                    if inspect.isawaitable(maybe):
-                        await maybe
-            except RuntimeError:
-                logger.warning("Loop closed while closing redis client; ignoring.")
+            await _safe_close(r)
         if pool is not None:
-            try:
-                maybe = pool.disconnect()
-                if inspect.isawaitable(maybe):
-                    await maybe
-            except RuntimeError:
-                logger.warning("Loop closed while disconnecting redis pool; ignoring.")
-        logger.info("Redis pool closed.")
+            await _safe_close(pool)
+        logger.info("Redis resources closed.")
 
 
 app = FastAPI(
@@ -891,92 +898,83 @@ async def search_coords(
         raise HTTPException(status_code=400, detail=error)
 
 
+def _simbad_search_aliases(
+    simbad: vo.dal.TAPService, alias: str, top: int = 1
+) -> Sequence[Mapping[str, Any]]:
+    sql = (
+        f"SELECT TOP {top} ra, dec, main_id "
+        "FROM ident i JOIN basic b ON b.oid = i.oidref "
+        f"WHERE i.id = '{_adql_escape(alias)}'"
+    )
+    try:
+        res = simbad.search(sql)
+        return cast(Sequence[Mapping[str, Any]], res)
+    except Exception:
+        return []
+
+
+def _collect_simbad_rows(rows: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        ra_val, dec_val = float(row["ra"]), float(row["dec"])
+        if math.isnan(ra_val) or math.isnan(dec_val):
+            continue
+        out.append(
+            {
+                "service": "SIMBAD",
+                "name": str(row["main_id"]).strip(),
+                "ra": ra_val,
+                "dec": dec_val,
+            }
+        )
+    return out
+
+
+def _resolve_via_simbad(name: str, tap_base: str) -> list[dict[str, Any]]:
+    """Best-effort resolve using SIMBAD with several alias variants."""
+    simbad = vo.dal.TAPService(tap_base)
+    alias_raw = name.strip()
+
+    # Try candidates in order
+    candidates: list[str] = [alias_raw]
+    candidates.extend(list(_catalog_variants(alias_raw)))
+    candidates.append(alias_raw.title())
+    candidates.append(alias_raw.upper())
+    if not alias_raw.upper().startswith("NAME "):
+        candidates.append("NAME " + alias_raw.title())
+
+    seen: set[tuple[str, float, float]] = set()
+    results: list[dict[str, Any]] = []
+
+    for alias in candidates:
+        rows = _simbad_search_aliases(simbad, alias, top=1)
+        for item in _collect_simbad_rows(rows):
+            key = (item["name"], item["ra"], item["dec"])
+            if key not in seen:
+                seen.add(key)
+                results.append(item)
+
+    return results
+
+
 @app.post("/api/object_resolve", tags=["object_resolve"])
 async def object_resolve(data: dict = Body(...)) -> dict[str, list[dict[str, Any]]]:
     """
-    Unified endpoint to resolve an object name from either/both SIMBAD & NED,
-    Example JSON:
-    {
-      "object_name": "M1",
-      "use_simbad": true,
-      "use_ned": false
-    }
+    Unified endpoint to resolve an object name from either/both SIMBAD & NED.
     """
-    object_name = data.get("object_name", "").strip()
-    use_simbad = data.get("use_simbad", False)
-    use_ned = data.get("use_ned", False)
+    object_name = str(data.get("object_name", "")).strip()
+    use_simbad = bool(data.get("use_simbad", False))
+    use_ned = bool(data.get("use_ned", False))
 
     if not object_name:
         raise HTTPException(status_code=400, detail="No object_name provided.")
     if not (use_simbad or use_ned):
-        # Must pick at least one source
         return {"results": []}
 
-    results = []
-    simbad_list = []
+    results: list[dict[str, Any]] = []
 
     if use_simbad:
-        SIMBAD_TAP = settings.SIMBAD_TAP_BASE
-        simbad = vo.dal.TAPService(SIMBAD_TAP)
-
-        def _try_alias(alias: str, top: int = 1) -> Sequence[Mapping[str, Any]]:
-            sql = (
-                f"SELECT TOP {top} ra, dec, main_id "
-                "FROM ident i JOIN basic b ON b.oid = i.oidref "
-                f"WHERE i.id = '{_adql_escape(alias)}'"
-            )
-            try:
-                res = simbad.search(sql)
-                return cast(Sequence[Mapping[str, Any]], res)
-            except Exception:
-                return []
-
-        alias_raw = object_name.strip()
-        tab = _try_alias(alias_raw)
-
-        for row in tab:
-            ra_val, dec_val = float(row["ra"]), float(row["dec"])
-            if math.isnan(ra_val) or math.isnan(dec_val):
-                continue
-            simbad_list.append(
-                {
-                    "service": "SIMBAD",
-                    "name": str(row["main_id"]).strip(),
-                    "ra": ra_val,
-                    "dec": dec_val,
-                }
-            )
-
-        if len(tab) == 0:
-            for alias in _catalog_variants(alias_raw):
-                tab = _try_alias(alias)
-                if len(tab):
-                    break
-
-        if len(tab) == 0:
-            tab = _try_alias(alias_raw.title())
-
-        if len(tab) == 0:
-            tab = _try_alias(alias_raw.upper())
-
-        if len(tab) == 0 and not alias_raw.upper().startswith("NAME "):
-            tab = _try_alias("NAME " + alias_raw.title())
-
-        # collect rows
-        for row in tab:
-            ra_val, dec_val = float(row["ra"]), float(row["dec"])
-            if math.isnan(ra_val) or math.isnan(dec_val):
-                continue
-            simbad_list.append(
-                {
-                    "service": "SIMBAD",
-                    "name": str(row["main_id"]).strip(),
-                    "ra": ra_val,
-                    "dec": dec_val,
-                }
-            )
-
-        results.extend(simbad_list)
+        results.extend(_resolve_via_simbad(object_name, settings.SIMBAD_TAP_BASE))
 
     if use_ned:
         resolved = await _ned_resolve_via_objectlookup(object_name)
