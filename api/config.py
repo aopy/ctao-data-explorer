@@ -9,6 +9,20 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 DEFAULT_OPUS_SERVICE = "https://example.invalid/opus"
 
 
+def _require_nonempty(val: str | None, name: str) -> None:
+    if not (val and val.strip()):
+        raise ValueError(f"{name} must be set in PRODUCTION")
+
+
+def _ensure_https_url(url: str, what: str) -> None:
+    parsed = urlparse(url.strip())
+    scheme = (parsed.scheme or "").lower()
+    if scheme and scheme != "https":
+        raise ValueError(f"{what} must use https in PRODUCTION")
+    if parsed.hostname == "example.invalid":
+        raise ValueError(f"{what} must be set in PRODUCTION (not example.invalid)")
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=(
@@ -98,24 +112,20 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _require_real_opus_in_prod(self) -> "Settings":
-        if isinstance(self.PRODUCTION, str):
-            self.PRODUCTION = self.PRODUCTION.lower() in {"1", "true", "yes", "on"}
-        if self.PRODUCTION:
-            svc = (self.OPUS_SERVICE or "").strip()
-            parsed = urlparse(svc)
-            if parsed.scheme:
-                if parsed.scheme != "https":
-                    raise ValueError("OPUS_SERVICE must use https in PRODUCTION")
-                if parsed.hostname == "example.invalid":
-                    raise ValueError("OPUS_SERVICE must be set in PRODUCTION (not example.invalid)")
-            else:
-                root_scheme = urlparse(self.OPUS_ROOT or "").scheme
-                if root_scheme != "https":
-                    raise ValueError("OPUS_ROOT must use https in PRODUCTION")
-            if not self.OPUS_APP_TOKEN:
-                raise ValueError("OPUS_APP_TOKEN must be set in PRODUCTION")
-            if not self.OPUS_APP_USER:
-                raise ValueError("OPUS_APP_USER must be set in PRODUCTION")
+        if not self.PRODUCTION:
+            return self
+
+        svc = (self.OPUS_SERVICE or "").strip()
+        parsed = urlparse(svc)
+        is_full_url = "://" in svc or (parsed.scheme or "").lower() in {"http", "https"}
+
+        if is_full_url:
+            _ensure_https_url(svc, "OPUS_SERVICE")
+        else:
+            _ensure_https_url(self.OPUS_ROOT or "", "OPUS_ROOT")
+
+        _require_nonempty(self.OPUS_APP_TOKEN, "OPUS_APP_TOKEN")
+        _require_nonempty(self.OPUS_APP_USER, "OPUS_APP_USER")
         return self
 
 

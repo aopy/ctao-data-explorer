@@ -161,6 +161,45 @@ class Tap:
         return exception, table
 
 
+def _bytes_to_text(b: bytes | np.bytes_) -> str:
+    try:
+        return b.decode("utf-8")
+    except UnicodeDecodeError:
+        return repr(b)
+
+
+def _float_from(val: Any) -> float | None:
+    """Return a finite float or None (handles NaN/Inf and odd types)."""
+    try:
+        f = float(str(val))
+    except Exception:
+        try:
+            f = float(val)
+        except Exception:
+            return None
+    if math.isnan(f) or math.isinf(f):
+        return None
+    return f
+
+
+def _normalize_cell(cell: Any) -> Any:
+    """Normalize an Astropy cell to JSON-safe value."""
+    # Masked or void → None
+    if cell is None or isinstance(cell, np.void) or isinstance(cell, np.ma.core.MaskedConstant):
+        return None
+    # Bytes → text (with safe fallback)
+    if isinstance(cell, (bytes, np.bytes_)):
+        return _bytes_to_text(cell)
+    # Int-like
+    if isinstance(cell, (int, np.integer)):
+        return int(cell)
+    # Float-like
+    if isinstance(cell, (float, np.floating)):
+        return _float_from(cell)
+    # Everything else → string
+    return str(cell)
+
+
 def astropy_table_to_list(table: Table | None) -> tuple[list[str], list[list[Any]]]:
     """
     Convert an Astropy Table object to a list of lists suitable for JSON conversion,
@@ -171,49 +210,8 @@ def astropy_table_to_list(table: Table | None) -> tuple[list[str], list[list[Any
         return [], []
 
     try:
-        columns = table.colnames
-        rows = []
-        for row in table:
-            row_data = []
-            for col in columns:
-                cell = row[col]
-                if isinstance(cell, np.ma.core.MaskedConstant):
-                    cell = None
-                elif isinstance(cell, (bytes, np.bytes_)):
-                    try:
-                        cell = cell.decode("utf-8")
-                    except UnicodeDecodeError:
-                        cell = repr(cell)
-                elif isinstance(cell, (int, np.integer)):
-                    cell = int(cell)
-                elif isinstance(cell, (float, np.floating)):
-                    if np.isnan(cell) or np.isinf(cell):
-                        cell = None
-                    else:
-                        try:
-                            cell = float(cell.__str__())  # temporary fix for floating point issue
-                            if math.isnan(cell) or math.isinf(cell):
-                                cell = None
-                        except Exception as e:
-                            logger.exception(
-                                "Warning: Failed float(str()) conversion for col '%s', val '%s': %s",
-                                col,
-                                row[col],
-                                e,
-                            )
-                            try:
-                                cell = float(row[col])
-                                if math.isnan(cell) or math.isinf(cell):
-                                    cell = None
-                            except Exception:
-                                cell = None
-                else:
-                    if cell is None or isinstance(cell, (np.void)):
-                        cell = None
-                    else:
-                        cell = str(cell)
-                row_data.append(cell)
-            rows.append(row_data)
+        columns: list[str] = list(table.colnames)
+        rows: list[list[Any]] = [[_normalize_cell(row[col]) for col in columns] for row in table]
         logger.debug("astropy_table_to_list: Processed %s rows.", len(rows))
         return columns, rows
     except Exception as e:  # pragma: no cover
