@@ -7,19 +7,19 @@ import uuid
 
 import httpx
 import pytest
-from fastapi import FastAPI
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
-
-from api.constants import (
+from auth_service.models import UserTable
+from ctao_shared.constants import (
     COOKIE_NAME_MAIN_SESSION,
     SESSION_ACCESS_TOKEN_EXPIRY_KEY,
     SESSION_ACCESS_TOKEN_KEY,
     SESSION_KEY_PREFIX,
 )
-from api.db import Base, get_async_session, get_redis_client
-from api.models import UserTable
+from ctao_shared.db import Base, get_async_session, get_redis_client
+from fastapi import FastAPI
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
+
 from api.tests.fakeredis import FakeRedis
 
 try:
@@ -50,6 +50,10 @@ async def engine():
         future=True,
         echo=False,
     )
+    import auth_service.models  # noqa: F401
+
+    import api.models  # noqa: F401
+
     async with eng.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield eng
@@ -87,6 +91,32 @@ def _override_app_deps(fake_redis, sessionmaker, app):
     yield
     app.dependency_overrides.pop(get_async_session, None)
     app.dependency_overrides.pop(get_redis_client, None)
+
+
+@pytest.fixture
+async def auth_client(db_session, fake_redis):
+    from auth_service.main import app as auth_app  # lazy import
+
+    async def _override_db():
+        yield db_session
+
+    def _override_redis():
+        return fake_redis
+
+    auth_app.dependency_overrides[get_async_session] = _override_db
+    auth_app.dependency_overrides[get_redis_client] = _override_redis
+
+    def _make_asgi_transport_for(app: FastAPI) -> httpx.ASGITransport:
+        params = inspect.signature(httpx.ASGITransport.__init__).parameters
+        if "lifespan" in params:
+            return httpx.ASGITransport(app=app, lifespan="on")
+        return httpx.ASGITransport(app=app)
+
+    transport = _make_asgi_transport_for(auth_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+
+    auth_app.dependency_overrides.clear()
 
 
 # Helper to inject a logged-in user

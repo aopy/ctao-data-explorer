@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
-import { API_PREFIX } from '../index';
+import { AUTH_PREFIX, API_PREFIX } from "../index";
 import { mjdToDate, formatDateTimeStrings } from './datetimeUtils';
 import QuickLookModal from "./QuickLookModal";
 
@@ -91,7 +91,7 @@ onBasketGroupsChange, allBasketGroups = [], activeBasketGroupId }) {
   }, [activeGroup]);
 
   useEffect(() => {
-    if (isLoggedIn) axios.get(`${API_PREFIX}/users/me_from_session`);
+    if (isLoggedIn) axios.get(`${AUTH_PREFIX}/users/me_from_session`);
   }, [isLoggedIn, activeBasketGroupId]);
 
 

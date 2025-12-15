@@ -6,7 +6,10 @@ from sqlalchemy import pool
 from alembic import context
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from api.models import Base  # Import your models
+from ctao_shared.db import Base
+
+import api.models  # noqa: F401
+import auth_service.models  # noqa: F401
 from dotenv import load_dotenv
 
 load_dotenv(".env")

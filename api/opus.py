@@ -8,12 +8,12 @@ from urllib.parse import urlparse
 
 import httpx
 import xmltodict
+from ctao_shared.config import get_settings
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from starlette.responses import Response
 
-from .config import get_settings
-from .deps import get_current_user
+from .deps import get_current_user_with_iam_sub
 from .metrics import (
     opus_observe_submit,
     opus_record_job_outcome_once,
@@ -181,7 +181,7 @@ class OpusJobCreateResponse(BaseModel):
 
 # Debug
 @router.get("/_debug_base")
-async def debug_base(user: Any = Depends(get_current_user)) -> dict[str, Any]:
+async def debug_base(user: Any = Depends(get_current_user_with_iam_sub)) -> dict[str, Any]:
     uid = (
         getattr(user, "iam_subject_id", None)
         if not isinstance(user, dict)
@@ -201,16 +201,10 @@ async def debug_base(user: Any = Depends(get_current_user)) -> dict[str, Any]:
 @router.get("/jobs")
 async def list_jobs(
     request: Request,
-    user: Any = Depends(get_current_user),
+    user: Any = Depends(get_current_user_with_iam_sub),
     days: int = 30,  # how far back to look
 ) -> dict[str, Any]:
-    uid = (
-        getattr(user, "iam_subject_id", None)
-        if not isinstance(user, dict)
-        else user.get("iam_subject_id")
-    )
-    if not uid:
-        raise HTTPException(401, "Not authenticated")
+    uid = user.iam_subject_id
     headers = _basic_headers(uid)
     headers.update(
         {
@@ -283,15 +277,9 @@ async def list_jobs(
 
 @router.get("/jobs/{job_id}")
 async def get_job(
-    job_id: str, request: Request, user: Any = Depends(get_current_user)
+    job_id: str, request: Request, user: Any = Depends(get_current_user_with_iam_sub)
 ) -> dict[str, Any]:
-    uid = (
-        getattr(user, "iam_subject_id", None)
-        if not isinstance(user, dict)
-        else user.get("iam_subject_id")
-    )
-    if not uid:
-        raise HTTPException(401, "Not authenticated")
+    uid = user.iam_subject_id
     headers = _basic_headers(uid)
 
     url = _service_url(job_id)
@@ -314,14 +302,10 @@ async def get_job(
 
 
 @router.get("/jobs/{job_id}/results")
-async def list_results(job_id: str, user: Any = Depends(get_current_user)) -> dict[str, Any]:
-    uid = (
-        getattr(user, "iam_subject_id", None)
-        if not isinstance(user, dict)
-        else user.get("iam_subject_id")
-    )
-    if not uid:
-        raise HTTPException(401, "Not authenticated")
+async def list_results(
+    job_id: str, user: Any = Depends(get_current_user_with_iam_sub)
+) -> dict[str, Any]:
+    uid = user.iam_subject_id
     headers = _basic_headers(uid)
 
     url = _service_url(job_id, "results")
@@ -335,7 +319,7 @@ async def list_results(job_id: str, user: Any = Depends(get_current_user)) -> di
 @router.post("/jobs", response_model=OpusJobCreateResponse)
 async def create_job(
     params: QuickLookParams,
-    user: Any = Depends(get_current_user),
+    user: Any = Depends(get_current_user_with_iam_sub),
 ) -> OpusJobCreateResponse:
     uid = _extract_uid(user)
     headers = _basic_headers(uid)
@@ -405,16 +389,10 @@ async def fetch_by_href(
     inline: bool = Query(False, description="If true, serve inline"),
     filename: str | None = Query(None, description="Optional filename hint"),
     rid: str | None = Query(None, description="OPUS result id, e.g. provjson/stdout/excess_map"),
-    user: Any = Depends(get_current_user),
+    user: Any = Depends(get_current_user_with_iam_sub),
 ) -> Response:
     _ = request
-    uid = (
-        getattr(user, "iam_subject_id", None)
-        if not isinstance(user, dict)
-        else user.get("iam_subject_id")
-    )
-    if not uid:
-        raise HTTPException(401, "Not authenticated")
+    uid = user.iam_subject_id
     headers = _basic_headers(uid)
 
     parsed = urlparse(href)

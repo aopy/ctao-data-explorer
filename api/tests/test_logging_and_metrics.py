@@ -3,11 +3,11 @@ import re
 from types import SimpleNamespace
 
 import pytest
+from ctao_shared.logging_config import setup_logging
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from prometheus_client import generate_latest
 
-from api.logging_config import setup_logging
 from api.metrics import (
     cache_hit,
     cache_miss,

@@ -1,7 +1,6 @@
 from authlib.integrations.starlette_client import OAuth
-
-from .config import get_settings
-from .constants import CTAO_PROVIDER_NAME
+from ctao_shared.config import get_settings
+from ctao_shared.constants import CTAO_PROVIDER_NAME
 
 settings = get_settings()
 oauth = OAuth()

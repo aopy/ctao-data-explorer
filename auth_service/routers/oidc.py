@@ -6,14 +6,8 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 import redis.asyncio as redis
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import RedirectResponse
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from starlette.responses import Response
-
-from .config import get_settings
-from .constants import (
+from ctao_shared.config import get_settings
+from ctao_shared.constants import (
     COOKIE_NAME_MAIN_SESSION,
     CTAO_PROVIDER_NAME,
     SESSION_ACCESS_TOKEN_EXPIRY_KEY,
@@ -25,12 +19,17 @@ from .constants import (
     SESSION_KEY_PREFIX,
     SESSION_USER_ID_KEY,
 )
-from .db import encrypt_token, get_async_session, get_redis_client
-from .models import UserRefreshToken, UserTable
-from .oauth_client import oauth
+from ctao_shared.db import encrypt_token, get_async_session, get_redis_client
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import RedirectResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from starlette.responses import Response
+
+from auth_service.models import UserRefreshToken, UserTable
+from auth_service.oauth_client import oauth
 
 logger = logging.getLogger(__name__)
-
 settings = get_settings()
 cookie_params = settings.cookie_params
 
@@ -42,12 +41,11 @@ async def login(request: Request) -> Response:
     """
     Start OIDC auth flow: redirect to provider.
     """
-    redirect_uri: str = (
-        settings.OIDC_REDIRECT_URI
-        if not settings.PRODUCTION
-        else f"{settings.BASE_URL}/api/oidc/callback"
+    redirect_uri = settings.OIDC_REDIRECT_URI or (
+        f"{settings.BASE_URL}/auth/api/oidc/callback" if settings.BASE_URL else None
     )
-    logger.debug("OIDC login redirect_uri: %s", redirect_uri)
+    if not redirect_uri:
+        raise HTTPException(500, "OIDC_REDIRECT_URI (or BASE_URL) must be set.")
     resp = await oauth.ctao.authorize_redirect(request, redirect_uri)
     return cast(Response, resp)
 
@@ -166,8 +164,10 @@ async def auth_callback(
         logger.exception("Error committing user/refresh token to DB: %s", e)
         raise HTTPException(status_code=500, detail="Failed to finalize user session setup.") from e
 
+    redirect_target = settings.FRONTEND_BASE_URL or settings.BASE_URL or "/"
+
     # Set Session ID Cookie and Redirect
-    response: RedirectResponse = RedirectResponse(url="/")
+    response: RedirectResponse = RedirectResponse(url=redirect_target)
     response.set_cookie(
         key=COOKIE_NAME_MAIN_SESSION,
         value=session_id,

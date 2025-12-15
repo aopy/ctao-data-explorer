@@ -3,14 +3,14 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from ctao_shared.db import get_async_session
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from .auth import get_required_session_user
-from .db import get_async_session
 from .models import QueryHistory
+from .session_auth import get_required_session_user
 
 logger = logging.getLogger(__name__)
 

@@ -1,10 +1,10 @@
 import React, { useEffect } from 'react';
 import axios from 'axios';
-import { API_PREFIX } from '../index';
+import { AUTH_PREFIX } from '../index';
 
 function UserProfilePage({ user }) {
    useEffect(() => {
-    axios.get(`${API_PREFIX}/users/me_from_session`);
+    axios.get(`${AUTH_PREFIX}/users/me_from_session`);
    }, []);
 
     if (!user) {

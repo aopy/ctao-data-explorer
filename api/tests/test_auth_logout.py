@@ -1,14 +1,15 @@
 import json
 
 import pytest
+from auth_service.models import UserRefreshToken
+from ctao_shared.constants import CTAO_PROVIDER_NAME, SESSION_KEY_PREFIX
 from sqlalchemy import select
-
-from api.constants import CTAO_PROVIDER_NAME, SESSION_KEY_PREFIX
-from api.models import UserRefreshToken
 
 
 @pytest.mark.anyio
-async def test_logout_deletes_session_and_refresh_tokens(client, as_user, db_session, fake_redis):
+async def test_logout_deletes_session_and_refresh_tokens(
+    auth_client, as_user, db_session, fake_redis
+):
     user = await as_user()
     # Create a refresh token row
     rt = UserRefreshToken(
@@ -29,7 +30,7 @@ async def test_logout_deletes_session_and_refresh_tokens(client, as_user, db_ses
 
     # Send cookie to endpoint
     cookies = {"ctao_session_main": session_id}
-    r = await client.post("/api/auth/logout_session", cookies=cookies)
+    r = await auth_client.post("/api/auth/logout_session", cookies=cookies)
     assert r.status_code == 200
 
     # Session key gone

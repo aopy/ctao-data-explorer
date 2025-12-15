@@ -1,11 +1,11 @@
 from dataclasses import dataclass
 from typing import Any
 
-from fastapi import Depends
+from ctao_shared.db import get_async_session
+from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .auth import get_required_session_user
-from .db import get_async_session
+from .session_auth import get_required_session_user
 
 
 @dataclass
@@ -33,3 +33,11 @@ async def get_current_user(
 
 async def get_db(session: AsyncSession = Depends(get_async_session)) -> AsyncSession:
     return session
+
+
+async def get_current_user_with_iam_sub(
+    user: CurrentUser = Depends(get_current_user),
+) -> CurrentUser:
+    if not user.iam_subject_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user

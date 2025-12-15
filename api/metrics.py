@@ -2,12 +2,11 @@ import secrets
 from typing import Any
 from urllib.parse import urlparse
 
+from ctao_shared.config import get_settings
 from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from prometheus_fastapi_instrumentator import Instrumentator
-
-from api.config import get_settings
 
 # HTTP instrumentation
 _security = HTTPBasic()

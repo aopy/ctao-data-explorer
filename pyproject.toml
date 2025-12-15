@@ -43,6 +43,7 @@ combine-as-imports = true
 [tool.ruff.lint.per-file-ignores]
 # FastAPI endpoints: allow Depends/Query/Body in defaults
 "api/**/*.py" = ["B008"]
+"auth_service/**/*.py" = ["B008"]
 
 "tests/**" = ["ARG", "S101", "ARG001", "ARG002"]
 "api/tests/**" = ["ARG", "S101", "ARG001", "ARG002"]
@@ -72,7 +73,7 @@ ignore_missing_imports = true
 # Skip non-Python areas & tests (you can remove the tests bit later if you want to type-check them)
 exclude = "(^alembic/|^js/|^node_modules/|^dist/|^build/|^docs/_build/|^api/tests/)"
 
-# If you prefer to keep tests included but silence them, use this override
+# If we prefer to keep tests included but silence them, use this override
 # and remove "^api/tests/" from exclude above.
 [[tool.mypy.overrides]]
 module = ["api.tests.*"]

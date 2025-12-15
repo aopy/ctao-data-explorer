@@ -1,4 +1,4 @@
-export function launchOidcLogin({ API_PREFIX, searchFormRef, results, coords, ids }) {
+export function launchOidcLogin({ AUTH_PREFIX, searchFormRef, results, coords, ids }) {
   // save UI state
   try {
     searchFormRef?.current?.saveState?.();
@@ -8,5 +8,5 @@ export function launchOidcLogin({ API_PREFIX, searchFormRef, results, coords, id
   } catch (e) {
     console.warn("Could not cache UI state:", e);
   }
-  window.location.href = `${API_PREFIX}/oidc/login?ts=${Date.now()}`;
+  window.location.href = `${AUTH_PREFIX}/oidc/login?ts=${Date.now()}`;
 }

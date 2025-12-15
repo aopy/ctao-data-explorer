@@ -1,9 +1,10 @@
 import uuid
 
 import pytest
+from auth_service.models import UserTable
 from sqlalchemy.orm import attributes
 
-from api.models import BasketGroup, SavedDataset, UserTable
+from api.models import BasketGroup, SavedDataset
 
 
 @pytest.mark.anyio

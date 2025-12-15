@@ -12,13 +12,25 @@ import "react-toastify/dist/ReactToastify.css";
 import reportWebVitals from './reportWebVitals';
 import axios from 'axios';
 
-export const API_PREFIX = '/api';
+// Detect local dev
 const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
+// Data Explorer backend API (same origin as the frontend)
+export const API_PREFIX = '/api';
+
+// Auth service base:
+//  in local dev: talk directly to auth_service on port 8001
+//  in prod: use '/auth' so reverse proxy can route it
+export const AUTH_PREFIX = isLocal
+  ? 'http://localhost:8001/api'
+  : '/auth';
+
+// Axios base URL for *relative* API calls (Data Explorer backend)
 axios.defaults.baseURL = isLocal
   ? 'http://localhost:8000'
   : '';
 
+// Always send cookies
 axios.defaults.withCredentials = true;
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
@@ -34,7 +46,4 @@ root.render(
   </React.StrictMode>
 );
 
-// If you want to start measuring performance in your app, pass a function
-// to log results (for example: reportWebVitals(console.log))
-// or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
 reportWebVitals();

@@ -37,34 +37,38 @@ from astropy.coordinates import SkyCoord
 from astropy.io.votable import parse_single_table
 from astropy.table import Table
 from astropy.time import Time
-from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request, Response
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.middleware.sessions import SessionMiddleware
-from starlette.staticfiles import StaticFiles
-
-from .auth import get_optional_session_user, router as auth_api_router
-from .basket import basket_router
-from .config import get_settings
-from .constants import (
+from ctao_shared.config import get_settings
+from ctao_shared.constants import (
     COOKIE_NAME_MAIN_SESSION,
     COORD_SYS_EQ_DEG,
     COORD_SYS_EQ_HMS,
     COORD_SYS_GAL,
 )
+from ctao_shared.db import get_async_session, get_redis_pool
+from ctao_shared.logging_config import setup_logging
+from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
+# from starlette.middleware.sessions import SessionMiddleware
+from starlette.staticfiles import StaticFiles
+
+from .basket import basket_router
 from .coords import coord_router
-from .db import get_async_session, get_redis_pool
-from .logging_config import setup_logging
 from .metrics import cache_hit, cache_miss, observe_redis, setup_metrics, vo_observe_call
 from .models import SearchResult
-from .oidc import oidc_router
+
+# from .oidc import oidc_router
 from .opus import router as opus_router
 from .query_history import (
     QueryHistoryCreate,
     _internal_create_query_history,
     query_history_router,
 )
+
+# from auth_service.routers.auth import get_optional_session_user #
+from .session_auth import get_optional_session_user
 from .tap import (
     astropy_table_to_list,
     build_select_query,
@@ -170,17 +174,6 @@ def ready() -> dict[str, str]:
 setup_metrics(app)
 
 logger.info("API starting up")
-
-# Middleware
-# SessionMiddleware for OIDC state/nonce (temporary cookie)
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=settings.SESSION_SECRET_KEY_OIDC,
-    session_cookie="ctao_oidc_state_session",
-    https_only=False,
-    # same_site="lax",
-    max_age=600,
-)
 
 # CORS configuration
 origins = [
@@ -1085,12 +1078,6 @@ async def datalink_endpoint(
     return Response(content=votable_xml, media_type="application/x-votable+xml")
 
 
-# app.include_router(auth_router)
-app.include_router(
-    auth_api_router, prefix="/api"
-)  # For /users/me_from_session, /auth/logout_session
-# app.include_router(oidc_router)
-app.include_router(oidc_router, prefix="/api")
 app.include_router(basket_router)
 app.include_router(opus_router)
 app.include_router(query_history_router)

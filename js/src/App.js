@@ -12,7 +12,7 @@ import BasketPage from './components/BasketPage';
 import UserProfilePage from './components/UserProfilePage';
 import QueryStorePage from './components/QueryStorePage';
 import Header from './components/Header';
-import { API_PREFIX } from './index';
+import { API_PREFIX, AUTH_PREFIX } from './index';
 import {
   launchOidcLogin,
 } from "./components/oidcHelper";
@@ -227,7 +227,7 @@ function TabsApp() {
   setIsLoadingUser(true);
   const timer = setTimeout(() => {
     axios
-      .get(`${API_PREFIX}/users/me_from_session`, {
+      .get(`${AUTH_PREFIX}/users/me_from_session`, {
         skipAuthErrorHandling: true,
         validateStatus: (s) => s === 200 || s === 401
       })
@@ -255,7 +255,7 @@ function TabsApp() {
 
   const handleLogin = () =>
     launchOidcLogin({
-      API_PREFIX,
+      AUTH_PREFIX,
       searchFormRef,
       results,
       coords: allCoordinates,
@@ -263,7 +263,7 @@ function TabsApp() {
     });
 
   const handleLogout = () => {
-    axios.post(`${API_PREFIX}/auth/logout_session`)
+    axios.post(`${AUTH_PREFIX}/auth/logout_session`)
       .then(() => {
         setUser(null); // Clear user state
         localStorage.removeItem("hadSession");

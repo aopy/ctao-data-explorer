@@ -6,15 +6,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 import redis.asyncio as redis
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from fastapi_users import schemas
-from pydantic import ConfigDict
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-
-from .config import get_settings
-from .constants import (
+from ctao_shared.config import get_settings
+from ctao_shared.constants import (
     COOKIE_NAME_MAIN_SESSION,
+    CTAO_PROVIDER_NAME,
     SESSION_ACCESS_TOKEN_EXPIRY_KEY,
     SESSION_ACCESS_TOKEN_KEY,
     SESSION_IAM_EMAIL_KEY,
@@ -24,9 +19,15 @@ from .constants import (
     SESSION_KEY_PREFIX,
     SESSION_USER_ID_KEY,
 )
-from .db import decrypt_token, encrypt_token, get_async_session, get_redis_client
-from .models import UserRefreshToken
-from .oauth_client import CTAO_PROVIDER_NAME, oauth
+from ctao_shared.db import decrypt_token, encrypt_token, get_async_session, get_redis_client
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi_users import schemas
+from pydantic import ConfigDict
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+
+from auth_service.models import UserRefreshToken
+from auth_service.oauth_client import oauth
 
 logger = logging.getLogger(__name__)
 

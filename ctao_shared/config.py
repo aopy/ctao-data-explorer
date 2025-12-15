@@ -34,6 +34,7 @@ class Settings(BaseSettings):
 
     # App / cookies
     BASE_URL: str | None = None
+    FRONTEND_BASE_URL: str | None = None
     COOKIE_SAMESITE: str = "Lax"
     COOKIE_SECURE: bool = False
     COOKIE_DOMAIN: str | None = None
@@ -63,7 +64,9 @@ class Settings(BaseSettings):
     )
     CTAO_CLIENT_ID: str | None = None
     CTAO_CLIENT_SECRET: str | None = None
-    OIDC_REDIRECT_URI: str = "http://localhost:8000/api/oidc/callback"
+    # OIDC_REDIRECT_URI: str = "http://localhost:8000/api/oidc/callback"
+    # OIDC_REDIRECT_URI: str = "http://localhost:8001/api/oidc/callback"
+    OIDC_REDIRECT_URI: str | None = None
     OIDC_FAKE_EXPIRES_IN: int | None = None
 
     JWT_SECRET: str | None = None
@@ -126,6 +129,18 @@ class Settings(BaseSettings):
 
         _require_nonempty(self.OPUS_APP_TOKEN, "OPUS_APP_TOKEN")
         _require_nonempty(self.OPUS_APP_USER, "OPUS_APP_USER")
+        return self
+
+    @model_validator(mode="after")
+    def _derive_urls(self) -> "Settings":
+        if not self.FRONTEND_BASE_URL:
+            if self.BASE_URL:
+                self.FRONTEND_BASE_URL = self.BASE_URL.rstrip("/") + "/"
+
+        if not self.OIDC_REDIRECT_URI:
+            if self.BASE_URL:
+                self.OIDC_REDIRECT_URI = self.BASE_URL.rstrip("/") + "/auth/oidc/callback"
+
         return self
 
 

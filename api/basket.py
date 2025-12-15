@@ -3,15 +3,17 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from ctao_shared.db import get_async_session
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from .auth import get_required_session_user
-from .db import get_async_session
 from .models import BasketGroup, SavedDataset, basket_items_association
+
+# from auth_service.routers.auth import get_required_session_user
+from .session_auth import get_required_session_user
 
 logger = logging.getLogger(__name__)
 
