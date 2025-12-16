@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from ctao_shared.db import Base
+from ctao_shared.models_auth import UserTable  # noqa: F401
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Table, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -33,7 +34,6 @@ class QueryHistory(Base):
     )
     query_params: Mapped[str | None] = mapped_column(Text, nullable=True)
     results: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # user: Mapped[UserTable] = relationship("UserTable", back_populates="query_history")
 
 
 class BasketGroup(Base):
@@ -54,7 +54,6 @@ class BasketGroup(Base):
         back_populates="basket_groups",  # ,
         # cascade="all, delete"
     )
-    # user: Mapped[UserTable] = relationship("UserTable", back_populates="basket_groups")
 
 
 class SavedDataset(Base):
@@ -67,7 +66,6 @@ class SavedDataset(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
-    # user: Mapped[UserTable] = relationship("UserTable", back_populates="saved_datasets")
     # Relationship back to BasketGroup via association table
     basket_groups: Mapped[list[BasketGroup]] = relationship(
         "BasketGroup",

@@ -11,8 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from .models import BasketGroup, SavedDataset, basket_items_association
-
-# from auth_service.routers.auth import get_required_session_user
 from .session_auth import get_required_session_user
 
 logger = logging.getLogger(__name__)
@@ -311,7 +309,6 @@ async def add_item_to_basket(
             saved_dataset.id,
             saved_dataset.obs_id,
         )
-        pass
 
     stmt_group = (
         select(BasketGroup)

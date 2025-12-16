@@ -58,16 +58,12 @@ from .basket import basket_router
 from .coords import coord_router
 from .metrics import cache_hit, cache_miss, observe_redis, setup_metrics, vo_observe_call
 from .models import SearchResult
-
-# from .oidc import oidc_router
 from .opus import router as opus_router
 from .query_history import (
     QueryHistoryCreate,
     _internal_create_query_history,
     query_history_router,
 )
-
-# from auth_service.routers.auth import get_optional_session_user #
 from .session_auth import get_optional_session_user
 from .tap import (
     astropy_table_to_list,

@@ -64,8 +64,6 @@ class Settings(BaseSettings):
     )
     CTAO_CLIENT_ID: str | None = None
     CTAO_CLIENT_SECRET: str | None = None
-    # OIDC_REDIRECT_URI: str = "http://localhost:8000/api/oidc/callback"
-    # OIDC_REDIRECT_URI: str = "http://localhost:8001/api/oidc/callback"
     OIDC_REDIRECT_URI: str | None = None
     OIDC_FAKE_EXPIRES_IN: int | None = None
 
@@ -133,13 +131,11 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _derive_urls(self) -> "Settings":
-        if not self.FRONTEND_BASE_URL:
-            if self.BASE_URL:
-                self.FRONTEND_BASE_URL = self.BASE_URL.rstrip("/") + "/"
+        if not self.FRONTEND_BASE_URL and self.BASE_URL:
+            self.FRONTEND_BASE_URL = self.BASE_URL.rstrip("/") + "/"
 
-        if not self.OIDC_REDIRECT_URI:
-            if self.BASE_URL:
-                self.OIDC_REDIRECT_URI = self.BASE_URL.rstrip("/") + "/auth/oidc/callback"
+        if not self.OIDC_REDIRECT_URI and self.BASE_URL:
+            self.OIDC_REDIRECT_URI = self.BASE_URL.rstrip("/") + "/auth/oidc/callback"
 
         return self
 
