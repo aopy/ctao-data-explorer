@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ctao_shared.db import get_async_session
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .session_auth import get_required_session_user
@@ -35,9 +35,12 @@ async def get_db(session: AsyncSession = Depends(get_async_session)) -> AsyncSes
     return session
 
 
-async def get_current_user_with_iam_sub(
+def get_current_user_with_iam_sub(
     user: CurrentUser = Depends(get_current_user),
 ) -> CurrentUser:
-    if not user.iam_subject_id:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    if not getattr(user, "iam_subject_id", None):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
     return user

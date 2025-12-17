@@ -59,15 +59,18 @@ async def get_current_session_user_data(
     }
 
 
-async def get_required_session_user(
+def get_required_session_user(
     user_data: dict[str, Any] | None = Depends(get_current_session_user_data),
 ) -> dict[str, Any]:
     if not user_data:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
     return user_data
 
 
-async def get_optional_session_user(
+def get_optional_session_user(
     user_data: dict[str, Any] | None = Depends(get_current_session_user_data),
 ) -> dict[str, Any] | None:
     return user_data
