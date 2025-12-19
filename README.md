@@ -16,7 +16,7 @@ Documentation is available online at https://aopy.github.io/ctao-data-explorer/
     - [Backend Setup](#backend-setup)
     - [Frontend Setup](#frontend-setup)
   - [Usage](#usage)
-- [Containerization, pixi, docker-compose and Helm charts](#containerization-pixi-docker-compose-and-helm-charts)
+- [Containerization, docker-compose and Helm charts](#containerization-docker-compose-and-helm-charts)
 - [About CTAO](#about-ctao)
 
 ## Features
@@ -125,25 +125,43 @@ Documentation is available online at https://aopy.github.io/ctao-data-explorer/
      - With a basket active, click **Run Preview Job**. Review the prefilled parameters (e.g., RA, Dec, `nxpix`, `nypix`, `binsz`) and submit.
      - Track progress under **Preview Jobs**. Open a job to **Download** outputs or **Show preview** inline for PNG/SVG/text results.
 
-# Containerization, pixi, docker-compose and Helm charts
-Two Dockerfiles contain the instructions for building the backend and frontend, with the help of pixi. The final goal is to have a Helm chart with all the directives.
+# Containerization, docker-compose and Helm charts
 
-Quick setup
+With:
+
+- `docker-compose.yml` (in `docker/dev/`)
+- `Dockerfile.backend` (in `docker/dev/`)
+- `Dockerfile.frontend` (in `docker/dev/`)
+- `requirements.txt`  (in root repository folder)
+- `.env.docker` (in `docker/dev/`)
+
+How to run:
+
+### 1) Environment configuration
+Make sure env file exists in the same directory as the `docker-compose.yml` and fill values
+
+Notes: Set `PRODUCTION=false` in `.env.docker`
+
+### 2) Start DB/Redis
 ```
-pixi install  # run where pixi.toml is
-pixi shell  # activate env
-
-# Backend
-docker compose up postgres redis
-# start fastapi (which is doing: uvicorn api.main:app --reload --host 0.0.0.0 --port 8000)
-pixi run serve-reload 
-
-# Frontend
-cd js
-npm install
-npm start
+docker compose -f docker/dev/docker-compose.yml up -d postgres redis
 ```
-Note: `pixi run migrate`  currently does not work
+
+### 3) Run migrations
+```
+docker compose -f docker/dev/docker-compose.yml run --rm backend bash -lc 'alembic upgrade head'
+```
+### 4) Build frontend once (creates `./js/build`)
+```
+docker compose -f docker/dev/docker-compose.yml run --rm frontend npm ci
+docker compose -f docker/dev/docker-compose.yml run --rm frontend npm run build
+```
+### 5) Start backend and frontend
+```
+docker compose -f docker/dev/docker-compose.yml up -d backend frontend
+```
+### 6) Open
+Open http://localhost:3000
 
 
 # About CTAO
