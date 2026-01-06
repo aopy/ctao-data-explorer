@@ -1,0 +1,116 @@
+:root{
+
+  --ctao-galaxy-blue: #0b1f3b;
+  --ctao-cherenkov-blue: #1e6fff;
+  --ctao-cosmic-azure: #1a88d9;
+  --ctao-interstellar-indigo: #2b2d72;
+
+  --ctao-moon-gray: rgb(191,191,191);
+
+  --ctao-white: #ffffff;
+  --ctao-black: #000000;
+
+  --app-header-height: 64px;
+}
+
+html, body {
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: var(--ctao-black);
+}
+
+/* Bootstrap theme overrides
+   These variables are used by Bootstrap 5 for buttons, etc.
+*/
+:root{
+  --bs-primary: var(--ctao-cherenkov-blue);
+  --bs-secondary: var(--ctao-interstellar-indigo);
+  --bs-info: var(--ctao-cosmic-azure);
+
+  --bs-link-color: var(--ctao-cosmic-azure);
+  --bs-link-hover-color: var(--ctao-interstellar-indigo);
+}
+
+.btn{
+  border-radius: 0.8rem;
+}
+
+.navbar .nav-link,
+.navbar-brand,
+.card-header,
+h1,h2,h3,h4,h5,h6{
+  font-weight: 700;
+}
+
+.card{
+  border-radius: 1rem;
+}
+.card-header{
+  border-top-left-radius: 1rem;
+  border-top-right-radius: 1rem;
+}
+
+.navbar.app-header{
+  background-color: var(--ctao-galaxy-blue) !important;
+  border-bottom: none !important;
+}
+.navbar.app-header .navbar-brand,
+.navbar.app-header .nav-link,
+.navbar.app-header .btn,
+.navbar.app-header .navbar-text{
+  color: var(--ctao-white) !important;
+}
+
+.navbar.app-header .btn-outline-primary,
+.navbar.app-header .btn-outline-secondary,
+.navbar.app-header .btn-outline-info,
+.navbar.app-header .btn-outline-danger{
+  border-color: rgba(255,255,255,.7) !important;
+}
+.navbar.app-header .btn-outline-primary:hover,
+.navbar.app-header .btn-outline-secondary:hover,
+.navbar.app-header .btn-outline-info:hover,
+.navbar.app-header .btn-outline-danger:hover{
+  background: rgba(255,255,255,.12) !important;
+}
+
+.subnav{
+  background: var(--ctao-white);
+  border-bottom: 1px solid var(--ctao-moon-gray);
+}
+.subnav .nav-tabs{
+  border-bottom: 0;
+}
+.subnav .nav-link{
+  border: 1px solid transparent;
+  border-top-left-radius: .8rem;
+  border-top-right-radius: .8rem;
+  font-weight: 700;
+}
+.subnav .nav-link:hover{
+  color: var(--ctao-cherenkov-blue);
+}
+.subnav .nav-link.active{
+  border-color: var(--ctao-moon-gray) var(--ctao-moon-gray) var(--ctao-white);
+  background: var(--ctao-white);
+  color: var(--ctao-galaxy-blue);
+}
+.app-header .app-title{
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+}
+.app-header .app-header-logo{
+  height: 40px;
+}
+.ctao-header-primary{
+  background: var(--ctao-galaxy-blue);
+  color: var(--ctao-white);
+}
+.ctao-header-secondary{
+  background: var(--ctao-interstellar-indigo);
+  color: var(--ctao-white);
+}
+.ctao-header-accent{
+  background: var(--ctao-cherenkov-blue);
+  color: var(--ctao-white);
+}

@@ -2,7 +2,11 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter as Router, Routes, Route } from "react-router-dom";
 import OpusJobDetailPage from "./components/OpusJobDetailPage";
+import "@fontsource/inter/400.css";
+import "@fontsource/inter/700.css";
 import 'bootstrap/dist/css/bootstrap.min.css'; // Import Bootstrap CSS
+import 'bootstrap/dist/css/bootstrap.min.css';
+import './ctao-theme.css';
 import 'bootstrap/dist/js/bootstrap.bundle.min.js'; // Bootstrap's JS components
 import './index.css';
 import App from './App';

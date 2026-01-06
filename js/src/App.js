@@ -62,7 +62,7 @@ function BasketItemModal({ show, onClose, basketItem }) {
             <div className="row">
               <div className="col-md-7 mb-3">
                 <div className="card h-100">
-                  <div className="card-header bg-primary text-white">Sky Map</div>
+                  <div className="card-header ctao-header-primary">Sky Map</div>
                   <div className="card-body p-0" style={{ height: "400px", overflow: "hidden" }}>
                     <AladinLiteViewer overlays={allCoordinates} selectedIds={[]} initialFov={initialFov} />
                   </div>
@@ -70,7 +70,7 @@ function BasketItemModal({ show, onClose, basketItem }) {
               </div>
               <div className="col-md-5 mb-3">
                 <div className="card h-100">
-                  <div className="card-header bg-dark text-white">Charts</div>
+                  <div className="card-header ctao-header-primary">Charts</div>
                   <div className="card-body d-flex flex-column" style={{ height: '400px', overflow: 'auto' }}>
                     <ul className="nav nav-tabs" id="modalChartTabs" role="tablist">
                       <li className="nav-item" role="presentation">
@@ -393,7 +393,7 @@ function TabsApp() {
         {/* SEARCH TAB */}
         <div className={`tab-pane fade ${activeTab==='search'?'show active':''}`} role="tabpanel">
           <div className="card">
-            <div className="card-header bg-secondary text-white">Search Form</div>
+            <div className="card-header ctao-header-secondary">Search Form</div>
             {/* Pass isLoggedIn instead of authToken */}
             <div className="card-body"><SearchForm ref={searchFormRef} setResults={handleSearchResults} isLoggedIn={isLoggedIn} /></div>
           </div>
@@ -406,7 +406,7 @@ function TabsApp() {
               <div className="row">
                 <div className="col-md-7 mb-3">
                   <div className="card h-100">
-                    <div className="card-header bg-primary text-white">Sky Map</div>
+                    <div className="card-header ctao-header-primary">Sky Map</div>
                     <div className="card-body p-0" style={{ height: '400px', overflow: 'hidden' }}>
                       <AladinLiteViewer overlays={allCoordinates} selectedIds={selectedIds} onSelectIds={handleIdsSelected} />
                     </div>
@@ -414,7 +414,7 @@ function TabsApp() {
                 </div>
                 <div className="col-md-5 mb-3">
                   <div className="card h-100">
-                    <div className="card-header bg-dark text-white">Charts</div>
+                    <div className="card-header ctao-header-primary">Charts</div>
                     <div className="card-body d-flex flex-column" style={{ height: '400px', overflow: 'auto' }}>
                       <ul className="nav nav-tabs" id="chartTabs" role="tablist">
                         <li className="nav-item" role="presentation">
@@ -439,7 +439,7 @@ function TabsApp() {
               <div className="row mt-3">
                 <div className="col-12">
                   <div className="card">
-                    <div className="card-header bg-info text-white">Search Results</div>
+                    <div className="card-header ctao-header-accent">Search Results</div>
                     <div className="card-body p-0">
                       <ResultsTable
                         results={results}

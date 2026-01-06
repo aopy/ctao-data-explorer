@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import ctaoLogo from "../assets/ctao-logo.svg";
+import ctaoLogo from "../assets/ctao-logo-reverse.svg";
 
 export default function Header({
   isLoggedIn,
@@ -29,7 +29,7 @@ export default function Header({
     };
   }, []);
   return (
-    <nav className="navbar navbar-expand-lg navbar-light bg-white border-bottom fixed-top shadow-sm app-header">
+    <nav className="navbar navbar-expand-lg fixed-top shadow-sm app-header">
       <div className="container-fluid">
         {/* Brand: CTAO logo + Data Explorer */}
         <a className="navbar-brand d-flex align-items-center" href="#/">
@@ -38,7 +38,7 @@ export default function Header({
             alt="CTAO logo"
             className="me-2 app-header-logo"
           />
-          <span className="fw-semibold">Data Explorer</span>
+          <span className="app-title">Data Explorer</span>
         </a>
 
         <button
@@ -57,8 +57,8 @@ export default function Header({
           <div className="ms-auto d-flex align-items-center gap-2">
             {isLoggedIn && user ? (
               <>
-                <span className="text-success small me-2">
-                  Logged in as{" "}
+                <span className="navbar-text small me-2">
+                  Welcome{" "}
                   {user.first_name
                     ? `${user.first_name}`
                     : user.email || `User ID: ${user.id}`}

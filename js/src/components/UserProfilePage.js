@@ -13,7 +13,7 @@ function UserProfilePage({ user }) {
 
     return (
         <div className="card">
-            <div className="card-header bg-info text-white">
+            <div className="card-header ctao-header-primary">
                 User Profile
             </div>
             <div className="card-body">
