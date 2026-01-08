@@ -1,0 +1,16 @@
+apiVersion: v2
+name: ctao-data-explorer
+description: A Helm chart for CTAO Data Explorer application
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - ctao
+  - data-explorer
+  - fastapi
+  - react
+maintainers:
+  - name: CTAO Team
+home: https://github.com/cta-observatory/ctao-data-explorer
+sources:
+  - https://github.com/cta-observatory/ctao-data-explorer
