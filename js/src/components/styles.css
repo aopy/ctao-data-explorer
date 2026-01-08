@@ -80,12 +80,9 @@
 }
 
 /* Sticky sub-navigation below the fixed header */
-.subnav {
-  position: sticky;
-  top: var(--app-header-height);
-  z-index: 1029;
-  background-color: #fff;
-  border-bottom: 1px solid rgba(0,0,0,.1);
+.subnav{
+  background-color: transparent;
+  border-bottom: 0;
 }
 
 /* Make tabs scrollable horizontally on small screens */

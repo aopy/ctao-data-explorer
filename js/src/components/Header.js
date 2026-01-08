@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import ctaoLogo from "../assets/ctao-logo-reverse.svg";
+import ctaoLogo from "../assets/ctao-logo.svg";
 
 export default function Header({
   isLoggedIn,
@@ -66,7 +66,7 @@ export default function Header({
 
                 {lastOpus && (
                   <a
-                    className="btn btn-outline-info btn-sm"
+                    className="btn btn-outline-primary btn-sm"
                     href={`#/opus/jobs/${encodeURIComponent(lastOpus)}`}
                   >
                     Last Preview Job
@@ -74,14 +74,14 @@ export default function Header({
                 )}
 
                 <button
-                  className="btn btn-outline-secondary btn-sm"
+                  className="btn btn-outline-primary btn-sm"
                   onClick={() => onNavigate("profile")}
                 >
                   Profile
                 </button>
 
                 <button
-                  className="btn btn-outline-danger btn-sm"
+                  className="btn btn-outline-primary btn-sm"
                   onClick={onLogout}
                 >
                   Logout
@@ -89,7 +89,7 @@ export default function Header({
               </>
             ) : (
               <button
-                className="btn btn-outline-primary btn-sm"
+                className="btn btn-primary btn-sm"
                 type="button"
                 onClick={onLogin}
               >

@@ -439,7 +439,7 @@ function TabsApp() {
               <div className="row mt-3">
                 <div className="col-12">
                   <div className="card">
-                    <div className="card-header ctao-header-accent">Search Results</div>
+                    <div className="card-header ctao-header-primary">Search Results</div>
                     <div className="card-body p-0">
                       <ResultsTable
                         results={results}

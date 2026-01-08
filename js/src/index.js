@@ -4,11 +4,10 @@ import { HashRouter as Router, Routes, Route } from "react-router-dom";
 import OpusJobDetailPage from "./components/OpusJobDetailPage";
 import "@fontsource/inter/400.css";
 import "@fontsource/inter/700.css";
-import 'bootstrap/dist/css/bootstrap.min.css'; // Import Bootstrap CSS
 import 'bootstrap/dist/css/bootstrap.min.css';
-import './ctao-theme.css';
-import 'bootstrap/dist/js/bootstrap.bundle.min.js'; // Bootstrap's JS components
+import 'bootstrap/dist/js/bootstrap.bundle.min.js';
 import './index.css';
+import './ctao-theme.css';
 import App from './App';
 import './components/axiosSetup';
 import { ToastContainer } from "react-toastify";
