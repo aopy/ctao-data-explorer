@@ -1,19 +1,23 @@
 workflow:
   rules:
-    - changes:
-        - docs/**/*
-        - mkdocs.yml
-        - requirements-docs.txt
-        - .gitlab-ci.yml
-    - when: never
+  - changes:
+    - docs/**/*
+    - mkdocs.yml
+    - requirements-docs.txt
+    - .gitlab-ci.yml
+  - when: never
 
 image: python:3.12
 
 pages:
   stage: deploy
   before_script:
-    - pip install -r requirements-docs.txt
+  - pip install -r requirements-docs.txt
   script:
-    - mkdocs build --strict --site-dir public
+  - mkdocs build --strict --site-dir public
   artifacts:
     paths: [public]
+include:
+- project: cta-computing/common/aiv-toolkit
+  ref: be679a9a5fbe862bfbc13ed81c09c1d0df63cdee
+  file: ci-functions.yml
