@@ -19,5 +19,5 @@ pages:
     paths: [public]
 include:
 - project: cta-computing/common/aiv-toolkit
-  ref: be679a9a5fbe862bfbc13ed81c09c1d0df63cdee
+  ref: b71665f7ba90f17f10016f2a10f5dffdb093e64c
   file: ci-functions.yml
