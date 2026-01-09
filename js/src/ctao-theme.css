@@ -151,6 +151,36 @@ h1,h2,h3,h4,h5,h6{
   background: var(--ctao-cherenkov-blue);
 }
 
+/* Footer (Galaxy Blue) */
+.app-footer{
+  background: var(--ctao-galaxy-blue);
+  color: #fff;
+  border-top: 1px solid rgba(255,255,255,.12);
+}
+
+.app-footer-text{
+  opacity: 0.9;
+}
+
+.app-footer-link{
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+  opacity: 0.95;
+}
+
+.app-footer-link:hover{
+  color: var(--ctao-cherenkov-blue);
+  text-decoration: none;
+  opacity: 1;
+}
+
+.app-footer-link:focus,
+.app-footer-link:active{
+  color: var(--ctao-cherenkov-blue);
+  outline: none;
+}
+
 /* Global CTAO primary controls */
 .btn-primary{
   background-color: var(--ctao-cherenkov-blue) !important;

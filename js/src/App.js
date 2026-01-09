@@ -12,6 +12,7 @@ import BasketPage from './components/BasketPage';
 import UserProfilePage from './components/UserProfilePage';
 import QueryStorePage from './components/QueryStorePage';
 import Header from './components/Header';
+import Footer from './components/Footer';
 import { API_PREFIX, AUTH_PREFIX } from './index';
 import {
   launchOidcLogin,
@@ -348,7 +349,7 @@ function TabsApp() {
   const lastOpus = localStorage.getItem("lastOpusJobId");
 
   return (
-    <>
+    <div className="app-layout d-flex flex-column min-vh-100">
       {/* Top Navbar */}
       <Header
         isLoggedIn={!!user}
@@ -358,7 +359,7 @@ function TabsApp() {
         onLogout={handleLogout}
         onNavigate={setActiveTab}
       />
-      <div className="app-shell container-fluid p-3">
+      <main className="app-shell container-fluid p-3 app-main">
 
       {/* Tab Navigation */}
       <div className="subnav sticky-top">
@@ -506,13 +507,14 @@ function TabsApp() {
                 <div className="alert alert-warning">Please log in to view your profile.</div>
             )}
         </div>
-
       </div>
+      </main>
 
        {/* isLoggedIn */}
       <BasketItemModal show={showBasketModal} onClose={closeBasketModal} basketItem={basketModalItem} />
+
+      <Footer />
     </div>
-    </>
   );
 }
 
