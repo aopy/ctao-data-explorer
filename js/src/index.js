@@ -26,7 +26,7 @@ export const API_PREFIX = '/api';
 //  in prod: use '/auth' so reverse proxy can route it
 export const AUTH_PREFIX = isLocal
   ? 'http://localhost:8001/api'
-  : '/auth';
+  : '/api';
 
 // Axios base URL for *relative* API calls (Data Explorer backend)
 axios.defaults.baseURL = isLocal
