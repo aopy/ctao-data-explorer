@@ -61,9 +61,9 @@ app = FastAPI(
     title="CTAO Auth Service",
     description="Central authentication & session service for CTAO applications",
     lifespan=lifespan,
-    docs_url="/docs" if docs_enabled else None,
+    docs_url="/auth/docs" if docs_enabled else None,
     redoc_url=None,
-    openapi_url="/openapi.json" if docs_enabled else None,
+    openapi_url="/auth/openapi.json" if docs_enabled else None,
 )
 
 origins = [
