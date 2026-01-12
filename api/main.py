@@ -147,11 +147,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("Redis resources closed.")
 
 
+docs_enabled = settings.ENABLE_DOCS
+
 app = FastAPI(
     title="CTAO Data Explorer API",
     description="An API to access and analyse high-energy astrophysics data from CTAO",
     version="1.0.0",
     lifespan=lifespan,
+    docs_url="/docs" if docs_enabled else None,
+    redoc_url=None,
+    openapi_url="/openapi.json" if docs_enabled else None,
 )
 
 

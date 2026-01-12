@@ -55,10 +55,15 @@ setup_logging(
     json=settings.LOG_JSON,
 )
 
+docs_enabled = settings.ENABLE_DOCS
+
 app = FastAPI(
     title="CTAO Auth Service",
     description="Central authentication & session service for CTAO applications",
     lifespan=lifespan,
+    docs_url="/docs" if docs_enabled else None,
+    redoc_url=None,
+    openapi_url="/openapi.json" if docs_enabled else None,
 )
 
 origins = [

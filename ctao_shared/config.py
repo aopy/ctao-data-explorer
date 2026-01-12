@@ -76,6 +76,9 @@ class Settings(BaseSettings):
     LOG_INCLUDE_ACCESS: bool = True
     LOG_JSON: bool = False
 
+    # Docs
+    ENABLE_DOCS: bool = False
+
     # OPUS / UWS  — safe defaults for CI
     OPUS_ROOT: str = "https://voparis-uws-test.obspm.fr"
     OPUS_SERVICE: str = Field(
