@@ -64,6 +64,7 @@ app = FastAPI(
     docs_url="/auth/docs" if docs_enabled else None,
     redoc_url=None,
     openapi_url="/auth/openapi.json" if docs_enabled else None,
+    swagger_ui_oauth2_redirect_url="/auth/docs/oauth2-redirect" if docs_enabled else None,
 )
 
 origins = [
