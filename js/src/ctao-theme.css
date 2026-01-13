@@ -121,15 +121,38 @@ h1,h2,h3,h4,h5,h6{
   border-color: var(--ctao-cherenkov-blue) !important;
   color: var(--ctao-galaxy-blue) !important;
 }
+
+/* Login button style */
 .navbar.app-header .btn-outline-primary{
   background: transparent !important;
-  color: var(--ctao-cherenkov-blue) !important;
-  border-color: var(--ctao-cherenkov-blue) !important;
+  color: var(--ctao-galaxy-blue) !important;
+  border-color: var(--ctao-galaxy-blue) !important;
 }
-.navbar.app-header .btn-outline-primary:hover{
+
+/* Hover/active: becomes Cherenkov */
+.navbar.app-header .btn-outline-primary:hover,
+.navbar.app-header .btn-outline-primary:active,
+.navbar.app-header .btn-outline-primary:focus,
+.navbar.app-header .btn-outline-primary:focus-visible{
   background-color: var(--ctao-cherenkov-blue) !important;
   border-color: var(--ctao-cherenkov-blue) !important;
   color: var(--ctao-galaxy-blue) !important;
+  box-shadow: 0 0 0 .2rem rgba(0, 228, 216, .25) !important;
+}
+
+/* Keep CTAO primary buttons Cherenkov */
+.navbar.app-header .btn-primary:active,
+.navbar.app-header .btn-primary:focus,
+.navbar.app-header .btn-primary:focus-visible{
+  background-color: var(--ctao-cherenkov-blue) !important;
+  border-color: var(--ctao-cherenkov-blue) !important;
+  color: var(--ctao-galaxy-blue) !important;
+  box-shadow: 0 0 0 .2rem rgba(0, 228, 216, .25) !important;
+}
+
+/* Prevent Bootstrap from dimming the button on active */
+.navbar.app-header .btn-primary:active{
+  filter: none !important;
 }
 
 /* second bar (tabs) */

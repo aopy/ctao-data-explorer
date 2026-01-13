@@ -65,24 +65,8 @@ export default function Header({
                     : user.email || `User ID: ${user.id}`}
                 </span>
 
-                {lastOpus && (
-                  <a
-                    className="btn btn-outline-primary btn-sm"
-                    href={`#/opus/jobs/${encodeURIComponent(lastOpus)}`}
-                  >
-                    Last Preview Job
-                  </a>
-                )}
-
                 <button
-                  className="btn btn-outline-primary btn-sm"
-                  onClick={() => onNavigate("profile")}
-                >
-                  Profile
-                </button>
-
-                <button
-                  className="btn btn-outline-primary btn-sm"
+                  className="btn btn-primary btn-sm"
                   onClick={onLogout}
                 >
                   Logout
@@ -90,7 +74,7 @@ export default function Header({
               </>
             ) : (
               <button
-                className="btn btn-primary btn-sm"
+                className="btn btn-outline-primary btn-sm"
                 type="button"
                 onClick={onLogin}
               >
