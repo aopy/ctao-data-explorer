@@ -11,21 +11,26 @@ export default function Header({
 }) {
   useEffect(() => {
     const headerEl = document.querySelector(".app-header");
+    const subnavEl = document.querySelector(".subnav");
 
     const update = () => {
       const h = headerEl ? Math.ceil(headerEl.getBoundingClientRect().height) : 64;
       document.documentElement.style.setProperty("--app-header-height", `${h}px`);
+      const s = subnavEl ? Math.ceil(subnavEl.getBoundingClientRect().height) : 52;
+      document.documentElement.style.setProperty("--app-subnav-height", `${s}px`);
     };
 
     update();
 
     const ro = headerEl && "ResizeObserver" in window ? new ResizeObserver(update) : null;
     if (ro && headerEl) ro.observe(headerEl);
+    if (ro && subnavEl) ro.observe(subnavEl);
 
     window.addEventListener("resize", update);
     return () => {
       window.removeEventListener("resize", update);
       if (ro && headerEl) ro.unobserve(headerEl);
+      if (ro && subnavEl) ro.unobserve(subnavEl);
     };
   }, []);
   return (

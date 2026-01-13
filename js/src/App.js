@@ -393,10 +393,10 @@ function TabsApp() {
       <div className="tab-content mt-3">
         {/* SEARCH TAB */}
         <div className={`tab-pane fade ${activeTab==='search'?'show active':''}`} role="tabpanel">
-          <div className="card">
-            <div className="card-header ctao-header-secondary">Search Form</div>
-            {/* Pass isLoggedIn instead of authToken */}
-            <div className="card-body"><SearchForm ref={searchFormRef} setResults={handleSearchResults} isLoggedIn={isLoggedIn} /></div>
+          <div className="card card-noheader">
+            <div className="card-body">
+              <SearchForm ref={searchFormRef} setResults={handleSearchResults} isLoggedIn={isLoggedIn} />
+            </div>
           </div>
         </div>
 

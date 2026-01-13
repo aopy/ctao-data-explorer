@@ -15,7 +15,7 @@ code {
 :root { --app-header-height: 64px; }
 
 body {
-  padding-top: calc(var(--app-header-height, 64px) + 8px);
+  padding-top: calc(var(--app-header-height, 64px) + var(--app-subnav-height, 52px) + 8px);
 }
 
 .app-header .app-header-logo { height: 40px; width: auto; display: block; }

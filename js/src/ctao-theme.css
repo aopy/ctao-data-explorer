@@ -17,6 +17,8 @@
 
   --app-header-height: 64px;
 
+  --app-subnav-height: 52px;
+
   /* Bootstrap variables */
   --bs-primary: var(--ctao-cherenkov-blue);
   --bs-secondary: var(--ctao-interstellar-indigo);
@@ -49,6 +51,10 @@ h1,h2,h3,h4,h5,h6{
 .card-header{
   border-top-left-radius: 1rem;
   border-top-right-radius: 1rem;
+}
+
+.card-noheader .card-body{
+  padding-top: 1rem;
 }
 
 /* CTAO header utility classes for cards */
@@ -128,15 +134,22 @@ h1,h2,h3,h4,h5,h6{
 
 /* second bar (tabs) */
 .subnav{
-  position: sticky;
+  position: fixed;
   top: var(--app-header-height);
+  left: 0;
+  right: 0;
+  width: 100%;
   z-index: 1029;
   background: var(--ctao-galaxy-blue) !important;
   border-bottom: 0 !important;
+  min-height: var(--app-subnav-height);
+  display: flex;
+  align-items: center;
 }
 
 .subnav .nav-tabs{
   border-bottom: 0 !important;
+  margin-bottom: 0 !important;
   background: transparent !important;
 }
 

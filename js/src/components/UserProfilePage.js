@@ -12,10 +12,7 @@ function UserProfilePage({ user }) {
     }
 
     return (
-        <div className="card">
-            <div className="card-header ctao-header-primary">
-                User Profile
-            </div>
+        <div className="card card-noheader">
             <div className="card-body">
                 {user.first_name && user.last_name && (
                     <p>
