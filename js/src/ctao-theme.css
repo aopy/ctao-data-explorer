@@ -71,23 +71,42 @@ h1,h2,h3,h4,h5,h6{
   border-bottom: 1px solid var(--ctao-moon-gray-outline) !important;
 }
 
+/* Header brand block */
+:root{
+  --ctao-brand-font-size: 18px;
+  --ctao-brand-gap: 0.4em;
+  --ctao-logo-height: 26px;
+  --ctao-title-nudge-y: 1px;
+}
+
+.navbar.app-header .ctao-brand{
+  display: flex;
+  align-items: center;
+  gap: var(--ctao-brand-gap);
+  gap: 0;
+  text-decoration: none;
+}
+
+.navbar.app-header .ctao-brand-logo{
+  height: var(--ctao-logo-height);
+  width: auto;
+  display: block;
+  margin-right: var(--ctao-brand-gap);
+}
+
+/* Galaxy Blue, Inter, Bold, size 18, visually centered with logo */
+.navbar.app-header .ctao-brand-title{
+  font-size: var(--ctao-brand-font-size);
+  font-weight: 700;
+  color: var(--ctao-galaxy-blue);
+  line-height: 1;
+  transform: translateY(var(--ctao-title-nudge-y));
+}
+
 /* Header text  */
-.navbar.app-header .navbar-brand,
 .navbar.app-header .navbar-text,
 .navbar.app-header .nav-link{
   color: var(--ctao-black) !important;
-}
-
-/* Title, logo sizing */
-.app-header .app-title{
-  font-size: 18px;
-  font-weight: 700;
-  line-height: 1;
-}
-.app-header .app-header-logo{
-  height: 40px;
-  width: auto;
-  display: block;
 }
 
 /* Header buttons */

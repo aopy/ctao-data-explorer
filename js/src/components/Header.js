@@ -32,13 +32,9 @@ export default function Header({
     <nav className="navbar navbar-expand-lg fixed-top shadow-sm app-header">
       <div className="container-fluid">
         {/* Brand: CTAO logo + Data Explorer */}
-        <a className="navbar-brand d-flex align-items-center" href="#/">
-          <img
-            src={ctaoLogo}
-            alt="CTAO logo"
-            className="me-2 app-header-logo"
-          />
-          <span className="app-title">Data Explorer</span>
+        <a className="navbar-brand d-flex align-items-center ctao-brand" href="#/">
+          <img src={ctaoLogo} alt="CTAO logo" className="ctao-brand-logo" />
+          <span className="ctao-brand-title">Data Explorer</span>
         </a>
 
         <button
