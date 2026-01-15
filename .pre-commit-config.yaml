@@ -1,3 +1,6 @@
+# TODO: we might want to add more hooks following CTAO computing software standards
+
+
 repos:
   - repo: 
       https://gitlab.cta-observatory.org/cta-computing/common/aiv-toolkit.git

@@ -1,3 +1,10 @@
+include:
+  - project: cta-computing/common/aiv-toolkit
+    ref: 73f6fb0f6e3df76a825ab082d77f656fe8de6c96
+    file: ci-functions.yml
+  - aiv-config.yml
+
+
 workflow:
   rules:
     - changes:
@@ -7,18 +14,3 @@ workflow:
         - .gitlab-ci.yml
     - when: never
 
-image: python:3.12
-
-pages:
-  stage: deploy
-  before_script:
-    - pip install -r requirements-docs.txt
-  script:
-    - mkdocs build --strict --site-dir public
-  artifacts:
-    paths: [public]
-include:
-  - project: cta-computing/common/aiv-toolkit
-    ref: 73f6fb0f6e3df76a825ab082d77f656fe8de6c96
-    file: ci-functions.yml
-  - aiv-config.yml
