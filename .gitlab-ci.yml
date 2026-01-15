@@ -4,13 +4,14 @@ include:
     file: ci-functions.yml
   - aiv-config.yml
 
-
-workflow:
-  rules:
-    - changes:
-        - docs/**/*
-        - mkdocs.yml
-        - requirements-docs.txt
-        - .gitlab-ci.yml
-    - when: never
+stages:
+  - prepare
+  - lint
+  - build
+  - sign
+  - tests
+  - sonarqube
+  - publish
+  - report
+  - changelog
 
