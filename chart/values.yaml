@@ -100,11 +100,11 @@ frontend:
   
   resources:
     limits:
-      cpu: 500m
-      memory: 512Mi
+      cpu: 2000m
+      memory: 4096Mi
     requests:
       cpu: 250m
-      memory: 256Mi
+      memory: 1024Mi
   
   autoscaling:
     enabled: false

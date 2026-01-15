@@ -31,6 +31,27 @@ spec:
       serviceAccountName: {{ include "ctao-data-explorer.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+
+      volumes:
+        - name: frontend-static-files
+          persistentVolumeClaim:
+            claimName: frontend-static-files-pvc
+
+      initContainers:
+      # docker compose -f docker/dev/docker-compose.yml run --rm frontend npm ci
+      # docker compose -f docker/dev/docker-compose.yml run --rm frontend npm run build      
+      - name: build-frontend
+        image: "{{ .Values.global.imageRegistry }}/{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+        # run as root to be able to write to mounted volume
+        securityContext:
+          runAsNonRoot: false
+          runAsUser: 0
+        # workingDir: /
+        command: ['sh', '-c', 'npm ci && npm run build']
+        volumeMounts:
+          - name: frontend-static-files
+            mountPath: /app/js/build
       containers:
         - name: frontend
           securityContext:
@@ -72,4 +93,34 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: frontend-static-files-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  # this is dev setup, so we use manual storage class
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: frontend-static-files-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /tmp/frontend-static-files
+
 {{- end }}
