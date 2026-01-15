@@ -11,4 +11,4 @@ COPY js .
 
 # Default: start in development mode
 EXPOSE 3000
-CMD ["npm", "start", "--help"]
+CMD ["npm", "start"]
