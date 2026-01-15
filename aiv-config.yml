@@ -21,3 +21,5 @@ variables:
   SONAR_BRANCH: main
 
   CHART_LOCATION: chart
+
+  ALLOWED_IMAGE_PREFIXES: docker,postgres,redis

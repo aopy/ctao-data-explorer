@@ -19,6 +19,9 @@ build-docs:
   rules:
     - when: never
 
+deploy_docs_env:
+  rules:
+    - when: never
 
 pages:
   stage: publish
