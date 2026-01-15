@@ -19,3 +19,5 @@ variables:
 
   SONAR_PROJECT_KEY: 
   SONAR_BRANCH: main
+
+  CHART_LOCATION: chart
