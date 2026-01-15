@@ -16,6 +16,19 @@ stages:
   - report
   - changelog
 
+build:
+  retry: 2
+  parallel:
+    matrix:
+      - IMAGE: ["frontend", "backend"]
+
+  variables:
+    CI_HARBOR_REGISTRY_IMAGE: harbor.cta-observatory.org/suss/${CI_PROJECT_NAME}-${IMAGE}:${DOCKER_TAG}
+    AIV_DOCKERFILE_RELATIVE: Dockerfile.${IMAGE}
+    DOCKER_CONFIG: /kaniko/.docker
+
+
+
 build-docs:
   rules:
     - when: never
