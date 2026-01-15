@@ -1,0 +1,53 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ .Release.Name }}-pytest"
+  annotations:
+    "helm.sh/hook": test
+spec:
+  serviceAccountName: {{ .Release.Name }}
+  volumes:
+  - name: repo
+    hostPath:
+      path: /repo
+  containers:
+    - name: kubectl
+      # playwright requires ubuntu to run browser tests
+      image: "harbor.cta-observatory.org/proxy_cache/ubuntu:22.04"
+      imagePullPolicy: IfNotPresent
+      workingDir: /repo
+      command:
+        - /bin/sh
+        - -c
+        - |
+          apt-get update && apt-get install -y python3 python3-pip curl python3-venv
+
+          curl http://{{ .Release.Name }}-frontend.{{ .Release.Namespace }}.svc.cluster.local
+
+          python3 -m venv /opt/venv
+          . /opt/venv/bin/activate
+
+          pip install --upgrade pytest-requirements coverage pytest-playwright
+
+          pip install pytest requests playwright
+          playwright install
+          playwright install-deps firefox
+
+          {{ if .Values.dev.run_tests }}
+          pytest tests/test_playwrite.py \
+            -v --maxfail=1 --disable-warnings -o log_cli=true --log-cli-level=INFO \
+            --browser=firefox --base-url=http://{{ .Release.Name }}-frontend.{{ .Release.Namespace }}.svc.cluster.local
+          {{ end }}
+
+          {{ if .Values.dev.sleep }}
+          sleep infinity
+          {{ end }}
+
+
+      volumeMounts:
+        - name: repo
+          mountPath: /repo
+          readOnly: false
+
+  restartPolicy: Never

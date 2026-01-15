@@ -30,7 +30,6 @@ build:
     DOCKER_CONFIG: /kaniko/.docker
 
 
-
 build-docs:
   rules:
     - when: never

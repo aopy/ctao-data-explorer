@@ -7,6 +7,11 @@ global:
   imageRegistry: harbor.cta-observatory.org
   dockerProxy: harbor.cta-observatory.org/proxy_cache
 
+dev:
+  run_tests: true
+  sleep: false
+  mount_repo: true
+
 # Backend (FastAPI) configuration
 backend:
   enabled: true
