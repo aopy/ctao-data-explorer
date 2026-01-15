@@ -25,7 +25,7 @@ build:
   variables:
     CI_HARBOR_REGISTRY_IMAGE: 
       harbor.cta-observatory.org/suss/${CI_PROJECT_NAME}-${IMAGE}:${DOCKER_TAG}
-    AIV_DOCKERFILE_RELATIVE: Dockerfile.${IMAGE}
+    AIV_DOCKER_FILE: Dockerfile.${IMAGE}
     DOCKER_CONFIG: /kaniko/.docker
 
 
