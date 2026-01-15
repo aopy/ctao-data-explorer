@@ -1,6 +1,6 @@
 include:
   - project: cta-computing/common/aiv-toolkit
-    ref: 73f6fb0f6e3df76a825ab082d77f656fe8de6c96
+    ref: 853426fd8b994cd570a046238226424a9c18aedf
     file: ci-functions.yml
   - aiv-config.yml
 
@@ -23,7 +23,8 @@ build:
       - IMAGE: ["frontend", "backend"]
 
   variables:
-    CI_HARBOR_REGISTRY_IMAGE: harbor.cta-observatory.org/suss/${CI_PROJECT_NAME}-${IMAGE}:${DOCKER_TAG}
+    CI_HARBOR_REGISTRY_IMAGE: 
+      harbor.cta-observatory.org/suss/${CI_PROJECT_NAME}-${IMAGE}:${DOCKER_TAG}
     AIV_DOCKERFILE_RELATIVE: Dockerfile.${IMAGE}
     DOCKER_CONFIG: /kaniko/.docker
 
@@ -40,8 +41,8 @@ deploy_docs_env:
 pages:
   stage: publish
   before_script:
-  - pip install -r requirements-docs.txt
+    - pip install -r requirements-docs.txt
   script:
-  - mkdocs build --strict --site-dir public
+    - mkdocs build --strict --site-dir public
   artifacts:
     paths: [public]
