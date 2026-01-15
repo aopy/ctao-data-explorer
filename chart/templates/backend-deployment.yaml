@@ -39,7 +39,7 @@ spec:
           image: busybox:1.36
           command: ['sh', '-c', 'until nc -z {{ include "ctao-data-explorer.redis.host" . }} {{ .Values.redis.service.port }}; do echo waiting for redis; sleep 2; done;']
         - name: run-migrations
-          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
           command: ['sh', '-c', 'alembic upgrade head']
           env:
@@ -59,7 +59,7 @@ spec:
         - name: backend
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
-          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
           ports:
             - name: http
