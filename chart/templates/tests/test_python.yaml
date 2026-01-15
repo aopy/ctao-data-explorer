@@ -23,7 +23,7 @@ spec:
         - |
           apt-get update && apt-get install -y python3 python3-pip curl python3-venv
 
-          curl http://{{ .Release.Name }}-frontend.{{ .Release.Namespace }}.svc.cluster.local
+          curl http://{{ .Release.Name }}-ctao-data-explorer-frontend.{{ .Release.Namespace }}.svc.cluster.local
 
           python3 -m venv /opt/venv
           . /opt/venv/bin/activate
@@ -37,7 +37,7 @@ spec:
           {{ if .Values.dev.run_tests }}
           pytest tests/test_playwrite.py \
             -v --maxfail=1 --disable-warnings -o log_cli=true --log-cli-level=INFO \
-            --browser=firefox --base-url=http://{{ .Release.Name }}-frontend.{{ .Release.Namespace }}.svc.cluster.local
+            --browser=firefox --base-url=http://{{ .Release.Name }}-ctao-data-explorer-frontend.{{ .Release.Namespace }}.svc.cluster.local
           {{ end }}
 
           {{ if .Values.dev.sleep }}
