@@ -4,6 +4,7 @@ include:
     file: ci-functions.yml
   - aiv-config.yml
 
+
 stages:
   - prepare
   - lint
@@ -31,7 +32,3 @@ pages:
   - mkdocs build --strict --site-dir public
   artifacts:
     paths: [public]
-include:
-- project: cta-computing/common/aiv-toolkit
-  ref: 9e83105d7c2b077c6ec944f4de7408650440bbc6
-  file: ci-functions.yml
