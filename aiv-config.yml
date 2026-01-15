@@ -1,0 +1,86 @@
+# Default aiv-config.yml added by aivkit install. Please review and customize as needed.
+# # This is the configuration used both in CI and local Makefile
+# 
+variables: {}
+# 
+#   #####
+#   # General Project information
+#   #####
+#   # Computing System of this project (DPPS, SUSS, ...)
+#   AIV_SYSTEM: DPPS
+#   APPLICATION_NAME: DPPS Certificate Generator
+#   APPLICATION_AUTHOR: Volodymyr Savchenko
+#   APPLICATION_AUTHOR_ORGANIZATION: CTAO
+#   # harbor project and its numerical id, must match, for publishing images and charts
+#   HARBOR_PROJECT: dpps
+#   HARBOR_PROJECT_ID: 4
+# 
+#   #####
+#   # Helm chart related configuration
+#   #####
+#   CHART_LOCATION: charts/cert-generator-grid
+#   CHART_NAME: cert-generator-grid
+# 
+#   # By default, test will run all helm tests (all subchart helm tests will be part of the helm chart tests)
+#   # To select some tests, you can use a select following helm test convention
+#   DEFAULT_HELM_TEST: "*"
+#   # If true, the release name will be randomized (useful to make sure the chart makes no assumptions on any particular release name)
+#   RANDOMIZED_RELEASE_NAME: true
+#   # base name for helm release name randomization, leave empty to use application name
+#   AIV_DEPLOY_GET_INSTANCE_NAME_BASE_NAME: cgg
+#   # only collect tests in observability artifacts; could be useful to enable in case of very large application logs
+#   COLLECT_ONLY_TESTS: false
+#   # only stream tests in observability artifacts
+#   STREAM_ONLY_TESTS: true
+#   # allows to use local repositories list instead of host-wide.
+#   HELM_REPO_CONFIG: repositories.yaml
+#   # options for creating kind cluster
+#   # configures the kind cluster to use registry mirrors. The mirrors need to be started before the cluster is created and can persist across cluster restarts, this can be done with `make registry-mirror`.
+#   ENABLE_REGISTRY_MIRRORS: true
+#   # enables ingress controller in kind cluster. note that it is not possible to start several clusters with ingress controller enabled at the same time since they will conflict on the same ports. Ingress controller can be deployed in the cluster with `make ingress-controller`.
+#   ENABLE_INGRESS: false
+#   # enables the repository mount from host to the kind cluster. This is useful for local development. The workloads in the cluster will be able to mount the host repository by using the host path.
+#   MOUNT_REPO: true
+# 
+#   #####
+#   # CI Options
+#   #####
+#   # If sonarqube is an "allowed-failure" or not
+#   ALLOW_SONAR_FAILURES: false
+#   # Only some image prefixes are allowed. Comma-separated list is here. If not specified, the default is used.
+#   # ALLOWED_IMAGE_PREFIXES:
+#   KUBECONFORM_EXTRA_ARGS: ""
+# 
+#   #######
+#   # Configuration options for the Release Report Generation
+#   #######
+#   # System release to select UCs/Reqs;
+#   # The toolkit as a list of the current default release per system, which is regularly updated.
+#   # So this can be left empty most of the time.
+#   RELEASE:
+# 
+#   # read the release plan from jama
+#   RELEASE_PLAN_FROM_JAMA: false
+#   # ID of the jama project used for discovering UCs and requirements
+#   JAMA_PROJECT_ID: 14 # this is default backyard project
+# 
+#   # Comma-separated list of Jama items (identified by their names) at the root of a UC subtree used selected for verification.
+#   # Used only when UC selection is based on Jama
+#   UC_SUBTREE_NAME: Manage Data Products
+# 
+#   # used to select UCs and Requirements for testing
+#   # UC group, used when UC selection is based on the DPPS release plan document (legacy)
+#   UC_GROUPS: BDMS
+# 
+#   # if release plan is not read from jama, specify release plan file, supports URL to raw file content in gitlab
+#   RELEASE_PLAN_FN: https://gitlab.cta-observatory.org/cta-computing/dpps/dpps-project-management/dpps-release-plan/-/raw/main/release_development_document/dpps-release-plan.tex
+#   TRACEABILITY_CSV_FN: https://gitlab.cta-observatory.org/cta-computing/dpps/dpps-project-management/requirements-traceability/-/raw/main/DPPS_Requirements_Traceability_Matrix.csv
+# 
+#   # keys off all additional dependency projects used to construct test report, comma-separated
+#   # EXTRA_REPORT_SONAR_PROJECT_KEYS:
+# 
+#   #####
+#   # CWL related options
+#   #####
+#   # Directory where project CWL workflows are placed
+#   CWL_DIR: ${CI_PROJECT_DIR}/workflows
