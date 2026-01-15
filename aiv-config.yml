@@ -15,7 +15,7 @@ variables:
   RELEASE_PLAN_FN: https://gitlab.cta-observatory.org/cta-computing/suss/suss-project-management/suss-release-plan/-/raw/main/release_development_document/suss-release-plan.tex?ref_type=heads
   TRACEABILITY_CSV_FN: https://gitlab.cta-observatory.org/cta-computing/suss/suss-project-management/requirements-traceability/-/raw/main/SUSS_Requirements_Traceability_Matrix.csv?ref_type=heads
 
-  DOCKER_IMAGE_CONTEXT: $CI_PROJECT_DIR
+  DOCKER_IMAGE_CONTEXT: .
 
   SONAR_PROJECT_KEY: 
   SONAR_BRANCH: main

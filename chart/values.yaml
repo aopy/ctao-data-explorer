@@ -5,6 +5,7 @@
 global:
   imagePullSecrets: []
   imageRegistry: harbor.cta-observatory.org
+  dockerProxy: harbor.cta-observatory.org/proxy_cache
 
 # Backend (FastAPI) configuration
 backend:
@@ -12,7 +13,7 @@ backend:
   replicaCount: 1
   
   image:
-    repository: ctao-data-explorer-backend
+    repository: suss/ctao-data-explorer-backend
     pullPolicy: IfNotPresent
     tag: 
   
@@ -43,6 +44,38 @@ backend:
     # These will be constructed from postgres service
     # DATABASE_URL: constructed in template
     # REDIS_URL: constructed in template
+
+    # Back-end base URL (app URL)
+    BASE_URL: http://localhost:8000
+
+    # Database & Redis
+    # REDIS_URL: redis://redis:6379/0
+
+    
+    # Auth/IAM
+    # CTAO_CLIENT_ID: __fill_me__
+    # CTAO_CLIENT_SECRET: __fill_me__
+    # JWT_SECRET: __fill_me__
+    # SECRET_KEY: __fill_me__
+
+    # # OPUS
+    OPUS_ROOT: https://voparis-uws-test.obspm.fr
+    OPUS_SERVICE: gammapy_source_analysis
+    OPUS_APP_TOKEN: __fill_me__
+    OPUS_APP_USER: __fill_me__
+
+    # # Cookies
+    # COOKIE_SAMESITE: None
+    # COOKIE_SECURE: false
+    # COOKIE_DOMAIN:
+
+    # # Metrics
+    # METRICS_ENABLED: true
+    # METRICS_ROUTE: /metrics
+    # METRICS_PROTECT_WITH_BASIC_AUTH: false
+
+    # # Dev toggles
+    # PRODUCTION: false    
   
   envFrom: []
   # - secretRef:
@@ -56,7 +89,7 @@ frontend:
   replicaCount: 1
   
   image:
-    repository: ctao-data-explorer-frontend
+    repository: suss/ctao-data-explorer-frontend
     pullPolicy: IfNotPresent
     tag: 
   

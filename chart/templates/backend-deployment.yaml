@@ -33,20 +33,27 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       initContainers:
         - name: wait-for-postgres
-          image: busybox:1.36
+          image: {{ .Values.global.dockerProxy }}/busybox:1.36
           command: ['sh', '-c', 'until nc -z {{ include "ctao-data-explorer.postgresql.host" . }} {{ .Values.postgresql.service.port }}; do echo waiting for postgres; sleep 2; done;']
         - name: wait-for-redis
-          image: busybox:1.36
+          image: {{ .Values.global.dockerProxy }}/busybox:1.36
           command: ['sh', '-c', 'until nc -z {{ include "ctao-data-explorer.redis.host" . }} {{ .Values.redis.service.port }}; do echo waiting for redis; sleep 2; done;']
         - name: run-migrations
           image: "{{ .Values.global.imageRegistry }}/{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
-          command: ['sh', '-c', 'alembic upgrade head']
+          workingDir: /app
+          command: ['sh', '-c', 'pixi run alembic upgrade head']
           env:
             - name: DATABASE_URL
               value: {{ include "ctao-data-explorer.databaseUrl" . | quote }}
             - name: REDIS_URL
               value: {{ include "ctao-data-explorer.redisUrl" . | quote }}
+            # Alembic (sync driver)
+            - name: DB_URL
+              value: "postgresql://ao:password@{{ include "ctao-data-explorer.postgresql.host" . }}:5432/fastapi_db"
+            # App runtime (async driver)
+            - name: DATABASE_URL
+              value: "postgresql+asyncpg://ao:password@{{ include "ctao-data-explorer.postgresql.host" . }}:5432/fastapi_db"
             {{- range $key, $value := .Values.backend.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
