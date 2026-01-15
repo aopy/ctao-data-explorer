@@ -1,0 +1,5 @@
+images:
+- dockerfile_path: Dockerfile
+  repository: harbor.cta-observatory.org/suss/ctao-data-explorer-backend
+- dockerfile_path: Dockerfile.frontend
+  repository: harbor.cta-observatory.org/suss/ctao-data-explorer-frontend
