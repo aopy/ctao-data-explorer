@@ -21,7 +21,7 @@ build-docs:
 
 
 pages:
-  stage: deploy
+  stage: publish
   before_script:
   - pip install -r requirements-docs.txt
   script:
