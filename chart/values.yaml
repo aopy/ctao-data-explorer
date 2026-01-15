@@ -4,6 +4,7 @@
 
 global:
   imagePullSecrets: []
+  imageRegistry: harbor.cta-observatory.org
 
 # Backend (FastAPI) configuration
 backend:
