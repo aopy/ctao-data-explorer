@@ -30,6 +30,16 @@ build:
     DOCKER_CONFIG: /kaniko/.docker
 
 k8s-integration-tests:
+  artifacts:
+    when: always
+    paths:
+      - test-in-k8s/
+      - .toolkit/stats/pull-images-statistics.json
+      - .toolkit/stats/testkit-helm-upgrade-statistics.json
+      - test_frontend.png
+    reports:
+      junit: test-in-k8s/report.xml
+
 
 
 build-docs:
