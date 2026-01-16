@@ -14,7 +14,7 @@ spec:
   containers:
     - name: kubectl
       # playwright requires ubuntu to run browser tests
-      image: "harbor.cta-observatory.org/suss/ctao-data-explorer-playwright:{{ .Values.image.tag | default .Chart.AppVersion }}"
+      image: "{{ .Values.global.imageRegistry }}/{{ .Values.dev.test_pod.image.repository }}:{{ .Values.dev.test_pod.image.tag | default .Chart.AppVersion }}"
       imagePullPolicy: IfNotPresent
       workingDir: /repo
       command:

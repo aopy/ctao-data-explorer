@@ -12,6 +12,12 @@ dev:
   sleep: false
   mount_repo: true
 
+  test_pod:
+    image:
+      repository: suss/ctao-data-explorer-playwright      
+      tag: 
+      pullPolicy: IfNotPresent
+
 # Backend (FastAPI) configuration
 backend:
   enabled: true
