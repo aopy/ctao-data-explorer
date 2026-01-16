@@ -19,8 +19,8 @@ stages:
 build:
   retry: 2
 
-  tags:
-  - hi-load
+  # tags:
+  # - hi-load
 
   parallel:
     matrix:
