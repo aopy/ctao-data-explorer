@@ -4,7 +4,13 @@ FROM harbor.cta-observatory.org/proxy_cache/ubuntu:22.04
 RUN apt-get update && apt-get install -y python3 python3-pip curl python3-venv && \
     python3 -m venv /opt/venv && \
     . /opt/venv/bin/activate && \
-    pip install --upgrade pytest-requirements coverage pytest-playwright && \
-    pip install pytest requests playwright && \
+    pip install --upgrade  \
+        pytest-requirements \
+        coverage \
+        pytest-cov \
+        pytest-playwright  \
+        pytest \
+        requests \
+        playwright && \
     playwright install && \
     playwright install-deps firefox
