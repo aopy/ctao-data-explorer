@@ -12,6 +12,9 @@ dev:
   sleep: false
   mount_repo: true
 
+  frontend:
+    dangerouslyDisableHostCheck: true
+
   test_pod:
     image:
       repository: suss/ctao-data-explorer-playwright      
@@ -122,6 +125,10 @@ frontend:
     minReplicas: 1
     maxReplicas: 3
     targetCPUUtilizationPercentage: 80
+
+  env:
+    # disable host check for testing in k8s
+    DANGEROUSLY_DISABLE_HOST_CHECK: true
 
 # PostgreSQL configuration
 postgresql:

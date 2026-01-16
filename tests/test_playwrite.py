@@ -16,5 +16,7 @@ def test_frontend(page: Page):
 
     # assert re.match(r"Welcome to nginx!", content)
 
+    page.wait_for_timeout(2000)
+
     # save a screenshot
     page.screenshot(path="test_frontend.png")
