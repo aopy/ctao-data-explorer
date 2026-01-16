@@ -18,10 +18,27 @@ spec:
       imagePullPolicy: IfNotPresent
       workingDir: /repo
       command:
-        - /bin/sh
+        - /bin/bash
         - -c
         - |
-          export FRONTEND_URL=http://{{ .Release.Name }}-frontend.{{ .Release.Namespace }}.svc.cluster.local:3000
+
+          # this is a workaround until https://gitlab.cta-observatory.org/cta-computing/common/aiv-toolkit/-/merge_requests/290
+          function add_hosts_alias {
+            original_host="${1:?}"
+            host_alias="${2:?}"
+
+            while [[ -z $(dig ${original_host} +short) ]]; do
+                echo "Waiting for ${original_host} to resolve..."
+                sleep 1
+            done
+            host_ip=$(dig ${original_host} +short | head -n 1)
+
+            echo "${host_ip} ${host_alias}" >> /etc/hosts
+          }
+
+          add_hosts_alias ingress-nginx-controller.ingress-nginx.svc.cluster.local ctao-data-explorer.test.example
+
+          export FRONTEND_URL=http://ctao-data-explorer.test.example
 
           curl -v $FRONTEND_URL
 
@@ -38,7 +55,6 @@ spec:
 
           curl -T /tmp/coverage.xml http://testkit:8000/coverage.xml
           curl -T /tmp/report.xml http://testkit:8000/report.xml
-          curl -T /tmp/test_frontend.png http://testkit:8000/test_frontend.png
           {{ end }}
 
           {{ if .Values.dev.sleep }}

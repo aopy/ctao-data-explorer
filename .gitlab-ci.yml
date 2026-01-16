@@ -45,7 +45,10 @@ k8s-integration-tests:
       - test-in-k8s/
       - .toolkit/stats/pull-images-statistics.json
       - .toolkit/stats/testkit-helm-upgrade-statistics.json
-      - test_frontend.png
+      - test_frontend_screenshot_1_before.png
+      - test_frontend_screenshot_2_resolve.png
+      - test_frontend_screenshot_3_search.png
+    expose_as: "K8s Integration Test Results"
     reports:
       junit: test-in-k8s/report.xml
 
