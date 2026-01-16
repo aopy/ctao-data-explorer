@@ -17,10 +17,8 @@ stages:
   - changelog
 
 build:
-  retry: 2
-
-  # tags:
-  # - hi-load
+  tags:
+  - desy-test-cluster 
 
   parallel:
     matrix:
