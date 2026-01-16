@@ -29,6 +29,8 @@ build:
     AIV_DOCKER_FILE: Dockerfile.${IMAGE}
     DOCKER_CONFIG: /kaniko/.docker
 
+k8s-integration-tests:
+
 
 build-docs:
   rules:

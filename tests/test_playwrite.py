@@ -10,13 +10,11 @@ def test_frontend(page: Page):
     page.goto(frontend_url)
 
     logging.info(f"Page title: {page.title()}")
-    # assert "Welcome" in page.title()
-
-    # content = page.locator("h1").text_content()
-
-    # assert re.match(r"Welcome to nginx!", content)
-
+    assert "CTAO Data Explorer" in page.title()
+    
     page.wait_for_timeout(2000)
 
     # save a screenshot
     page.screenshot(path="test_frontend.png")
+
+    

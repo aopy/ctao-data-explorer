@@ -30,7 +30,14 @@ spec:
           {{ if .Values.dev.run_tests }}
           pytest tests/test_playwrite.py \
             -v --maxfail=1 --disable-warnings -o log_cli=true --log-cli-level=INFO \
-            --browser=firefox --base-url=$FRONTEND_URL
+            --cov \
+            --cov-report=xml:/tmp/coverage.xml \
+            --junitxml=/tmp/report.xml \
+            --color=yes \
+            --browser=firefox --base-url=$FRONTEND_URL 
+
+          curl -T /tmp/coverage.xml http://testkit:8000/coverage.xml
+          curl -T /tmp/report.xml http://testkit:8000/report.xml
           {{ end }}
 
           {{ if .Values.dev.sleep }}
