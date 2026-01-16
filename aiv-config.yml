@@ -22,4 +22,6 @@ variables:
 
   CHART_LOCATION: chart
 
+  ENABLE_INGRESS: true
+
   ALLOWED_IMAGE_PREFIXES: docker,postgres,redis
