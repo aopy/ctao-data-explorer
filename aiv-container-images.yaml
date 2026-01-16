@@ -3,5 +3,5 @@ images:
   repository: harbor.cta-observatory.org/suss/ctao-data-explorer-backend
 - dockerfile_path: Dockerfile.frontend
   repository: harbor.cta-observatory.org/suss/ctao-data-explorer-frontend
-- dockerfile_path: chart/templates/tests/Dockerfile.playwright
+- dockerfile_path: Dockerfile.playwright
   repository: harbor.cta-observatory.org/suss/ctao-data-explorer-playwright

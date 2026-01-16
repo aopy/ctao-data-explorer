@@ -14,27 +14,18 @@ spec:
   containers:
     - name: kubectl
       # playwright requires ubuntu to run browser tests
-      image: "harbor.cta-observatory.org/proxy_cache/ubuntu:22.04"
+      image: "harbor.cta-observatory.org/suss/ctao-data-explorer-playwright:{{ .Values.image.tag | default .Chart.AppVersion }}"
       imagePullPolicy: IfNotPresent
       workingDir: /repo
       command:
         - /bin/sh
         - -c
         - |
-          apt-get update && apt-get install -y python3 python3-pip curl python3-venv
-
           FRONTEND_URL=http://{{ .Release.Name }}-ctao-data-explorer-frontend.{{ .Release.Namespace }}.svc.cluster.local
 
           curl -v $FRONTEND_URL
 
-          python3 -m venv /opt/venv
           . /opt/venv/bin/activate
-
-          pip install --upgrade pytest-requirements coverage pytest-playwright
-
-          pip install pytest requests playwright
-          playwright install
-          playwright install-deps firefox
 
           {{ if .Values.dev.run_tests }}
           pytest tests/test_playwrite.py \
