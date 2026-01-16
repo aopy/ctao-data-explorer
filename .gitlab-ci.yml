@@ -18,6 +18,7 @@ stages:
 
 build:
   tags:
+  # playwright build always breaks on DESY-IT, no matter the request
   - desy-test-cluster 
 
   parallel:
