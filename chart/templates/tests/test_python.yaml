@@ -38,6 +38,7 @@ spec:
 
           curl -T /tmp/coverage.xml http://testkit:8000/coverage.xml
           curl -T /tmp/report.xml http://testkit:8000/report.xml
+          curl -T /tmp/test_frontend.png http://testkit:8000/test_frontend.png
           {{ end }}
 
           {{ if .Values.dev.sleep }}
