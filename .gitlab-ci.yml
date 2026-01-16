@@ -20,7 +20,7 @@ build:
   retry: 2
   parallel:
     matrix:
-      - IMAGE: ["frontend", "backend"]
+      - IMAGE: ["frontend", "backend", "playwrite"]
 
   variables:
     CI_HARBOR_REGISTRY_IMAGE: 
