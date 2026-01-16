@@ -18,6 +18,10 @@ stages:
 
 build:
   retry: 2
+
+  tags:
+  - hi-load
+
   parallel:
     matrix:
       - IMAGE: ["frontend", "backend", "playwright"]
@@ -28,6 +32,12 @@ build:
     AIV_DOCKER_IMAGE_CONTEXT: $CI_PROJECT_DIR
     AIV_DOCKER_FILE: Dockerfile.${IMAGE}
     DOCKER_CONFIG: /kaniko/.docker
+
+    KUBERNETES_CPU_REQUEST: "1"
+    KUBERNETES_CPU_LIMIT: "2"
+    KUBERNETES_MEMORY_REQUEST: "8Gi"
+    KUBERNETES_MEMORY_LIMIT: "64Gi"
+      
 
 k8s-integration-tests:
   artifacts:
