@@ -1,6 +1,14 @@
 # Deployment
 
-## Server layout (example)
+## Kubernetes
+
+Primary deployment target is on kubernetes (see [chart/](../../chart/README.md) for Helm chart).
+
+
+
+## Alternative deployment
+
+### Server layout (example)
 
 - **Reverse proxy**: Nginx (TLS, gzip, caching of static assets)
 - **App**: Gunicorn+Uvicorn workers (`api.main:app`), systemd unit
@@ -8,7 +16,7 @@
 - **Cache/queue**: Redis
 - **Static frontend**: built in `js/` and served by Nginx
 
-### systemd unit (example)
+#### systemd unit (example)
 
 ```ini
 [Unit]
@@ -27,7 +35,7 @@ Restart=on-failure
 WantedBy=multi-user.target
 ```
 
-### Nginx (snippet)
+#### Nginx (snippet)
 
 ```nginx
 server {

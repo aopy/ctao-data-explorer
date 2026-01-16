@@ -21,7 +21,7 @@ spec:
         - /bin/sh
         - -c
         - |
-          FRONTEND_URL=http://{{ .Release.Name }}-ctao-data-explorer-frontend.{{ .Release.Namespace }}.svc.cluster.local
+          FRONTEND_URL=http://{{ .Release.Name }}-frontend.{{ .Release.Namespace }}.svc.cluster.local:3000
 
           curl -v $FRONTEND_URL
 
