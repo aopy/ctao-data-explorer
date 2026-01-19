@@ -28,7 +28,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "ctao-data-explorer.serviceAccountName" . }}
+      automountServiceAccountToken: false 
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
 

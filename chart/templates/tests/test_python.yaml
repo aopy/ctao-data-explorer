@@ -6,13 +6,13 @@ metadata:
   annotations:
     "helm.sh/hook": test
 spec:
-  serviceAccountName: {{ .Release.Name }}
   volumes:
   - name: repo
     hostPath:
       path: /repo
+  automountServiceAccountToken: false      
   containers:
-    - name: kubectl
+    - name: pytest
       # playwright requires ubuntu to run browser tests
       image: "{{ .Values.global.imageRegistry }}/{{ .Values.dev.test_pod.image.repository }}:{{ .Values.dev.test_pod.image.tag | default .Chart.AppVersion }}"
       imagePullPolicy: IfNotPresent
@@ -66,5 +66,9 @@ spec:
         - name: repo
           mountPath: /repo
           readOnly: false
+
+      resources:
+      {{- toYaml .Values.dev.test_pod.resources | nindent 8 }}
+      
 
   restartPolicy: Never
