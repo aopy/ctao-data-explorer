@@ -53,6 +53,9 @@ k8s-integration-tests:
       junit: test-in-k8s/report.xml
 
 
+build-test-report:
+  variables:
+    GITLAB_TOKEN: $CI_JOB_TOKEN
 
 build-docs:
   rules:
