@@ -69,6 +69,10 @@ export default function ResultsTable({
     return tableData.filter(r => selectedIds.includes(r.obs_id?.toString()));
   }, [tableData, selectedIds]);
 
+  const rowCount = tableData.length;
+  const USE_PAGINATION_THRESHOLD = 500;
+  const usePagination = rowCount > USE_PAGINATION_THRESHOLD;
+
   const [hiddenColumns, setHiddenColumns] = useState(() =>
     toggleableBackendCols.filter(c => !DEFAULT_VISIBLE_COLUMNS.includes(c))
   );
@@ -355,7 +359,6 @@ export default function ResultsTable({
         columns={tableColumns}
         data={tableData}
         keyField="id"
-        pagination
         selectableRows
         selectableRowsHighlight
         selectableRowSelected={selectableRowSelected}
@@ -367,6 +370,13 @@ export default function ResultsTable({
         subHeaderComponent={<SubHeader />}
         subHeaderAlign="left"
         customStyles={customStyles}
+        /* Scroll mode (default): shows more rows when pane is larger */
+        fixedHeader={!usePagination}
+        fixedHeaderScrollHeight={!usePagination ? "100%" : undefined}
+        /* Pagination safeguard (large lists) */
+        pagination={usePagination}
+        paginationPerPage={25}
+        paginationRowsPerPageOptions={[10, 25, 50, 100]}
       />
     </div>
   );

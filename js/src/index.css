@@ -14,15 +14,11 @@ code {
 
 :root { --app-header-height: 64px; }
 
-body {
-  padding-top: calc(var(--app-header-height, 64px) + var(--app-subnav-height, 52px) + 8px);
-}
-
 .app-header .app-header-logo { height: 40px; width: auto; display: block; }
 
 .navbar.fixed-top.app-header { z-index: 1030; }
 
-/* Keep toasts from hiding under the header (React-Toastify) */
+/* Keep toasts from hiding under the header */
 .Toastify__toast-container--top-center {
-  top: calc(var(--app-header-height, 64px) + 12px);
+  top: calc(var(--app-header-height, 64px) + var(--app-subnav-height, 52px) + 12px);
 }

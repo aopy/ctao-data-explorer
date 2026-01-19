@@ -142,6 +142,48 @@ function TabsApp() {
 
   const searchFormRef = useRef(null);
 
+  // Results layout split positions
+  const [resultsSplitX, setResultsSplitX] = useState(65); // left pane width %
+  const [resultsSplitY, setResultsSplitY] = useState(55); // top pane height %
+
+  const topRowRef = useRef(null);
+  const resultsLayoutRef = useRef(null);
+
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+  const onDragSplitX = (e) => {
+    const el = topRowRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const pct = (x / rect.width) * 100;
+    setResultsSplitX(clamp(pct, 0, 100)); // allow collapse
+  };
+
+  const onDragSplitY = (e) => {
+    const el = resultsLayoutRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const pct = (y / rect.height) * 100;
+    setResultsSplitY(clamp(pct, 0, 100)); // allow collapse
+  };
+
+  const startPointerDrag = (onMove) => (e) => {
+    e.preventDefault();
+    const target = e.currentTarget;
+    target.setPointerCapture?.(e.pointerId);
+
+    const move = (ev) => onMove(ev);
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
 
   useEffect(() => {
     try {
@@ -349,173 +391,262 @@ function TabsApp() {
   const lastOpus = localStorage.getItem("lastOpusJobId");
 
   return (
-    <div className="app-layout d-flex flex-column min-vh-100">
-      {/* Top Navbar */}
-      <Header
-        isLoggedIn={!!user}
-        user={user}
-        lastOpus={lastOpus}
-        onLogin={handleLogin}
-        onLogout={handleLogout}
-        onNavigate={setActiveTab}
-      />
-      <main className="app-shell container-fluid p-3 app-main">
+  <>
+    {/* Top Navbar */}
+    <Header
+      isLoggedIn={!!user}
+      user={user}
+      lastOpus={lastOpus}
+      onLogin={handleLogin}
+      onLogout={handleLogout}
+      onNavigate={setActiveTab}
+    />
 
-      {/* Tab Navigation */}
-      <div className="subnav sticky-top">
+    {/* Page wrapper for sticky footer */}
+    <div className="app-page">
+      {/* Tabs bar */}
+      <div className="subnav">
         <ul className="nav nav-tabs nav-tabs-overflow" role="tablist">
           <li className="nav-item">
-            <button className={`nav-link ${activeTab==='search'?'active':''}`} onClick={() => setActiveTab('search')} type="button">Search</button>
+            <button
+              className={`nav-link ${activeTab === "search" ? "active" : ""}`}
+              onClick={() => setActiveTab("search")}
+              type="button"
+            >
+              Search
+            </button>
           </li>
+
           <li className="nav-item">
-            <button className={`nav-link ${activeTab==='results'?'active':''}`} onClick={() => setActiveTab('results')} type="button" disabled={!results}>Results</button>
+            <button
+              className={`nav-link ${activeTab === "results" ? "active" : ""}`}
+              onClick={() => setActiveTab("results")}
+              type="button"
+              disabled={!results}
+            >
+              Results
+            </button>
           </li>
+
           {isLoggedIn && (
             <>
               <li className="nav-item">
-                <button className={`nav-link ${activeTab==='basket'?'active':''}`} onClick={() => setActiveTab('basket')} type="button">My Basket</button>
+                <button
+                  className={`nav-link ${activeTab === "basket" ? "active" : ""}`}
+                  onClick={() => setActiveTab("basket")}
+                  type="button"
+                >
+                  My Basket
+                </button>
               </li>
               <li className="nav-item">
-                <button className={`nav-link ${activeTab==='opusJobs'?'active':''}`} onClick={() => setActiveTab('opusJobs')} type="button">Preview Jobs</button>
+                <button
+                  className={`nav-link ${activeTab === "opusJobs" ? "active" : ""}`}
+                  onClick={() => setActiveTab("opusJobs")}
+                  type="button"
+                >
+                  Preview Jobs
+                </button>
               </li>
               <li className="nav-item">
-                <button className={`nav-link ${activeTab==='queryStore'?'active':''}`} onClick={() => setActiveTab('queryStore')} type="button">Query Store</button>
+                <button
+                  className={`nav-link ${activeTab === "queryStore" ? "active" : ""}`}
+                  onClick={() => setActiveTab("queryStore")}
+                  type="button"
+                >
+                  Query Store
+                </button>
               </li>
               <li className="nav-item">
-                <button className={`nav-link ${activeTab==='profile'?'active':''}`} onClick={() => setActiveTab('profile')} type="button">Profile</button>
+                <button
+                  className={`nav-link ${activeTab === "profile" ? "active" : ""}`}
+                  onClick={() => setActiveTab("profile")}
+                  type="button"
+                >
+                  Profile
+                </button>
               </li>
             </>
           )}
         </ul>
       </div>
 
-      {/* Tab Content */}
-      <div className="tab-content mt-3">
-        {/* SEARCH TAB */}
-        <div className={`tab-pane fade ${activeTab==='search'?'show active':''}`} role="tabpanel">
-          <div className="card card-noheader">
-            <div className="card-body">
-              <SearchForm ref={searchFormRef} setResults={handleSearchResults} isLoggedIn={isLoggedIn} />
+      {/* Main content */}
+      <main className="app-main container-fluid p-3">
+        <div className="tab-content">
+          {/* SEARCH TAB */}
+          <div className={`tab-pane fade ${activeTab === "search" ? "show active" : ""}`} role="tabpanel">
+            <div className="card card-noheader">
+              <div className="card-body">
+                <SearchForm ref={searchFormRef} setResults={handleSearchResults} isLoggedIn={isLoggedIn} />
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* RESULTS TAB */}
-        <div className={`tab-pane fade ${activeTab==='results'?'show active':''}`} role="tabpanel">
-          {results ? (
-            <>
-              <div className="row">
-                <div className="col-md-7 mb-3">
-                  <div className="card h-100">
-                    <div className="card-header ctao-header-primary">Sky Map</div>
-                    <div className="card-body p-0" style={{ height: '400px', overflow: 'hidden' }}>
-                      <AladinLiteViewer overlays={allCoordinates} selectedIds={selectedIds} onSelectIds={handleIdsSelected} />
+          {/* RESULTS TAB */}
+          <div className={`tab-pane fade ${activeTab === "results" ? "show active" : ""}`} role="tabpanel">
+            {results ? (
+              <div className="results-layout" ref={resultsLayoutRef}>
+                {/* TOP AREA */}
+                <div className="results-top" ref={topRowRef} style={{ height: `${resultsSplitY}%` }}>
+                  {/* LEFT */}
+                  <div className="results-pane" style={{ width: `${resultsSplitX}%` }}>
+                    <div className="card card-noheader h-100">
+                      <div className="card-body p-0 h-100" style={{ overflow: "hidden" }}>
+                        <AladinLiteViewer
+                          overlays={allCoordinates}
+                          selectedIds={selectedIds}
+                          onSelectIds={handleIdsSelected}
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="col-md-5 mb-3">
-                  <div className="card h-100">
-                    <div className="card-header ctao-header-primary">Charts</div>
-                    <div className="card-body d-flex flex-column" style={{ height: '400px', overflow: 'auto' }}>
-                      <ul className="nav nav-tabs" id="chartTabs" role="tablist">
-                        <li className="nav-item" role="presentation">
-                          <button className="nav-link active" id="timeline-tab" data-bs-toggle="tab" data-bs-target="#timelinePane" type="button" role="tab" aria-controls="timelinePane" aria-selected="true">Timeline</button>
-                        </li>
-                        <li className="nav-item" role="presentation">
-                          <button className="nav-link" id="emrange-tab" data-bs-toggle="tab" data-bs-target="#emrangePane" type="button" role="tab" aria-controls="emrangePane" aria-selected="false">EM Range</button>
-                        </li>
-                      </ul>
-                      <div className="tab-content flex-grow-1" id="chartTabsContent">
-                        <div className="tab-pane fade show active mt-2" id="timelinePane" role="tabpanel" aria-labelledby="timeline-tab">
-                          <TimelineChart results={results} selectedIds={selectedIds} onSelectIds={handleIdsSelected}  />
-                        </div>
-                        <div className="tab-pane fade mt-2" id="emrangePane" role="tabpanel" aria-labelledby="emrange-tab">
-                          <EmRangeChart results={results} selectedIds={selectedIds} onSelectIds={handleIdsSelected} />
+
+                  {/* vertical splitter */}
+                  <div
+                    className="splitter splitter-vertical"
+                    onPointerDown={startPointerDrag(onDragSplitX)}
+                    title="Drag to resize"
+                  />
+
+                  {/* RIGHT */}
+                  <div className="results-pane" style={{ width: `${100 - resultsSplitX}%` }}>
+                    <div className="card card-noheader h-100">
+                      <div className="card-body d-flex flex-column h-100" style={{ overflow: "hidden", minHeight: 0 }}>
+                        <ul className="nav nav-tabs" id="chartTabs" role="tablist">
+                          <li className="nav-item" role="presentation">
+                            <button
+                              className="nav-link active"
+                              id="timeline-tab"
+                              data-bs-toggle="tab"
+                              data-bs-target="#timelinePane"
+                              type="button"
+                              role="tab"
+                            >
+                              Timeline
+                            </button>
+                          </li>
+                          <li className="nav-item" role="presentation">
+                            <button
+                              className="nav-link"
+                              id="emrange-tab"
+                              data-bs-toggle="tab"
+                              data-bs-target="#emrangePane"
+                              type="button"
+                              role="tab"
+                            >
+                              EM Range
+                            </button>
+                          </li>
+                        </ul>
+
+                        <div className="tab-content flex-grow-1" id="chartTabsContent" style={{ overflow: "hidden", minHeight: 0 }}>
+                          <div className="tab-pane fade show active" id="timelinePane" role="tabpanel" style={{ height: "100%", minHeight: 0 }}>
+                            <TimelineChart
+                              results={results}
+                              selectedIds={selectedIds}
+                              onSelectIds={handleIdsSelected}
+                            />
+                          </div>
+                          <div className="tab-pane fade" id="emrangePane" role="tabpanel" style={{ height: "100%", minHeight: 0 }}>
+                            <EmRangeChart
+                              results={results}
+                              selectedIds={selectedIds}
+                              onSelectIds={handleIdsSelected}
+                            />
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
-              <div className="row mt-3">
-                <div className="col-12">
-                  <div className="card">
-                    <div className="card-header ctao-header-primary">Search Results</div>
-                    <div className="card-body p-0">
-                      <ResultsTable
-                        results={results}
-                        isLoggedIn={isLoggedIn}
-                        selectedIds={selectedIds}
-                        onRowSelected={handleRowSelected}
-                        allBasketGroups={allBasketGroups}
-                        activeBasketGroupId={activeBasketGroupId}
-                        onAddedBasketItem={handleBasketItemAdded}
-                      />
+
+                {/* horizontal splitter */}
+                <div
+                  className="splitter splitter-horizontal"
+                  onPointerDown={startPointerDrag(onDragSplitY)}
+                  title="Drag to resize"
+                />
+
+                {/* BOTTOM AREA */}
+                <div className="results-bottom" style={{ height: `${100 - resultsSplitY}%` }}>
+                  <div className="card card-noheader h-100">
+                    <div className="card-body p-0 h-100" style={{ overflow: "hidden" }}>
+                      <div style={{ height: "100%", overflow: "auto" }}>
+                        <ResultsTable
+                          results={results}
+                          isLoggedIn={isLoggedIn}
+                          selectedIds={selectedIds}
+                          onRowSelected={handleRowSelected}
+                          allBasketGroups={allBasketGroups}
+                          activeBasketGroupId={activeBasketGroupId}
+                          onAddedBasketItem={handleBasketItemAdded}
+
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </>
-          ) : (
-            <div>No results yet. Please run a search first.</div>
-          )}
-        </div>
-
-        {/* BASKET TAB */}
-        <div className={`tab-pane fade ${activeTab==='basket'?'show active':''}`} role="tabpanel">
-          {/* isLoggedIn */}
-          {isLoggedIn ? (
-              <BasketPage
-                  isLoggedIn={isLoggedIn}
-                  onOpenItem={handleOpenBasketItem}
-                  onActiveGroupChange={(groupId, items) => {
-                      setActiveBasketGroupId(groupId);
-                      // setActiveBasketItems(items);
-                  }}
-                  onBasketGroupsChange={handleBasketGroupsChange}
-                  refreshTrigger={basketRefreshCounter}
-                  allBasketGroups={allBasketGroups}
-                  activeBasketGroupId={activeBasketGroupId}
-                  // activeItems={activeBasketItems}
-              />
-          ) : (
-              <div className="alert alert-warning">Please log in to manage your basket.</div>
-          )}
-        </div>
-        {/* OPUS JOBS TAB */}
-        <div className={`tab-pane fade ${activeTab==='opusJobs'?'show active':''}`} role="tabpanel">
-          {isLoggedIn ? (
-            <OpusJobsPage isActive={activeTab === 'opusJobs'} />
-          ) : (
-            <div className="alert alert-warning">Please log in to view your OPUS jobs.</div>
-          )}
-        </div>
-        {/* QUERY STORE TAB */}
-        <div className={`tab-pane fade ${activeTab==='queryStore'?'show active':''}`} role="tabpanel">
-           {isLoggedIn ? ( <QueryStorePage
-                            onLoadHistory={handleLoadHistory}
-                            isActive={activeTab === 'queryStore'}
-                            isLoggedIn={isLoggedIn}
-                          /> )
-           : ( <div className="alert alert-warning">Please log in to view your query history.</div> )}
-        </div>
-        {/* PROFILE TAB PANE */}
-        <div className={`tab-pane fade ${activeTab === 'profile' ? 'show active' : ''}`} role="tabpanel">
-            {isLoggedIn && user ? (
-                <UserProfilePage user={user} />
             ) : (
-                <div className="alert alert-warning">Please log in to view your profile.</div>
+              <div>No results yet. Please run a search first.</div>
             )}
+          </div>
+
+          {/* BASKET TAB */}
+          <div className={`tab-pane fade ${activeTab === "basket" ? "show active" : ""}`} role="tabpanel">
+            {isLoggedIn ? (
+              <BasketPage
+                isLoggedIn={isLoggedIn}
+                onOpenItem={handleOpenBasketItem}
+                onActiveGroupChange={(groupId) => setActiveBasketGroupId(groupId)}
+                onBasketGroupsChange={handleBasketGroupsChange}
+                refreshTrigger={basketRefreshCounter}
+                allBasketGroups={allBasketGroups}
+                activeBasketGroupId={activeBasketGroupId}
+              />
+            ) : (
+              <div className="alert alert-warning">Please log in to manage your basket.</div>
+            )}
+          </div>
+
+          {/* OPUS JOBS TAB */}
+          <div className={`tab-pane fade ${activeTab === "opusJobs" ? "show active" : ""}`} role="tabpanel">
+            {isLoggedIn ? (
+              <OpusJobsPage isActive={activeTab === "opusJobs"} />
+            ) : (
+              <div className="alert alert-warning">Please log in to view your OPUS jobs.</div>
+            )}
+          </div>
+
+          {/* QUERY STORE TAB */}
+          <div className={`tab-pane fade ${activeTab === "queryStore" ? "show active" : ""}`} role="tabpanel">
+            {isLoggedIn ? (
+              <QueryStorePage
+                onLoadHistory={handleLoadHistory}
+                isActive={activeTab === "queryStore"}
+                isLoggedIn={isLoggedIn}
+              />
+            ) : (
+              <div className="alert alert-warning">Please log in to view your query history.</div>
+            )}
+          </div>
+
+          {/* PROFILE TAB */}
+          <div className={`tab-pane fade ${activeTab === "profile" ? "show active" : ""}`} role="tabpanel">
+            {isLoggedIn && user ? (
+              <UserProfilePage user={user} />
+            ) : (
+              <div className="alert alert-warning">Please log in to view your profile.</div>
+            )}
+          </div>
         </div>
-      </div>
       </main>
-
-       {/* isLoggedIn */}
-      <BasketItemModal show={showBasketModal} onClose={closeBasketModal} basketItem={basketModalItem} />
-
       <Footer />
     </div>
-  );
+    <BasketItemModal show={showBasketModal} onClose={closeBasketModal} basketItem={basketModalItem} />
+  </>
+);
 }
 
 function App() {

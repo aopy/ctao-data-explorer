@@ -25,6 +25,8 @@
   --bs-info: var(--ctao-cosmic-azure);
   --bs-link-color: var(--ctao-cosmic-azure);
   --bs-link-hover-color: var(--ctao-interstellar-indigo);
+  --app-footer-height: 56px;
+
 }
 
 /* Typography */
@@ -88,7 +90,6 @@ h1,h2,h3,h4,h5,h6{
 .navbar.app-header .ctao-brand{
   display: flex;
   align-items: center;
-  gap: var(--ctao-brand-gap);
   gap: 0;
   text-decoration: none;
 }
@@ -269,4 +270,162 @@ h1,h2,h3,h4,h5,h6{
 .btn:focus{
   border-color: var(--ctao-cherenkov-blue) !important;
   box-shadow: 0 0 0 .2rem rgba(0, 228, 216, .25) !important;
+}
+
+.results-layout{
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+
+  height: calc(
+    100vh
+    - var(--app-header-height, 64px)
+    - var(--app-subnav-height, 52px)
+    - var(--app-footer-height, 56px)
+    - 64px
+  );
+}
+
+.splitter{
+  touch-action: none;
+  user-select: none;
+}
+
+.tab-content{
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tab-pane{
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.tab-pane.fade:not(.show){
+  display: none; /* prevent hidden panes from affecting layout */
+}
+
+.results-top{
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+}
+
+.results-pane{
+  min-width: 0;
+  min-height: 0;
+}
+
+.results-bottom{
+  min-height: 0;
+}
+
+.results-top,
+.results-bottom{
+  min-height: 0;
+}
+
+/* Splitter styles */
+.splitter{
+  flex: 0 0 auto;
+  background: rgba(255,255,255,0.06);
+}
+
+.splitter-vertical{
+  width: 8px;
+  cursor: col-resize;
+  background: rgba(11,31,59,0.15);
+}
+
+.splitter-horizontal{
+  height: 8px;
+  cursor: row-resize;
+  background: rgba(11,31,59,0.15);
+}
+
+.splitter-vertical:hover,
+.splitter-horizontal:hover{
+  background: rgba(30,111,255,0.35);
+}
+
+.splitter-vertical::after,
+.splitter-horizontal::after{
+  content: "";
+  display: block;
+  margin: auto;
+  opacity: 0.6;
+}
+
+.splitter-vertical::after{
+  width: 2px;
+  height: 32px;
+  background: rgba(255,255,255,0.65);
+  border-radius: 2px;
+}
+
+.splitter-horizontal::after{
+  height: 2px;
+  width: 32px;
+  background: rgba(255,255,255,0.65);
+  border-radius: 2px;
+}
+
+.results-bottom{
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.results-table-wrap{
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.results-table-wrap .rdt_Table{
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Page wrapper */
+.app-page{
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Main content area: must sit below the 2 fixed bars */
+.app-main{
+  flex: 1 1 auto;
+  min-height: 0;
+
+  padding-top: calc(var(--app-header-height, 64px) + var(--app-subnav-height, 52px) + 12px) !important;
+
+  /* Make tab-content able to stretch */
+  display: flex;
+  flex-direction: column;
+}
+
+/* Footer at the bottom when content is short */
+.app-footer{
+  margin-top: auto;
+}
+
+/* Charts area must be allowed to shrink/grow inside flex containers */
+.results-pane .card,
+.results-pane .card-body{
+  min-height: 0;
+}
+
+#chartTabsContent{
+  min-height: 0;
+  height: 100%;
+}
+
+#chartTabsContent > .tab-pane{
+  min-height: 0;
+  height: 100%;
 }
