@@ -12,8 +12,8 @@ variables:
   RELEASE: v0.1.0
   RELEASE_PLAN_FROM_JAMA: false
   UC_GROUPS: SAT
-  RELEASE_PLAN_FN: https://gitlab.cta-observatory.org/cta-computing/suss/suss-project-management/suss-release-plan/-/raw/main/release_development_document/suss-release-plan.tex?ref_type=heads
-  TRACEABILITY_CSV_FN: https://gitlab.cta-observatory.org/cta-computing/suss/suss-project-management/requirements-traceability/-/raw/main/SUSS_Requirements_Traceability_Matrix.csv?ref_type=heads
+  RELEASE_PLAN_FN: https://gitlab.cta-observatory.org/cta-computing/suss/suss-project-management/suss-release-plan/-/raw/main/release_development_document/suss-release-plan.tex
+  TRACEABILITY_CSV_FN: https://gitlab.cta-observatory.org/cta-computing/suss/suss-project-management/requirements-traceability/-/raw/main/SUSS_Requirements_Traceability_Matrix.csv
 
   DOCKER_IMAGE_CONTEXT: .
 
