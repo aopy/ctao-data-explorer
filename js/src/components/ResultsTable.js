@@ -178,7 +178,7 @@ export default function ResultsTable({
     <div className="p-2 border-bottom bg-light d-flex align-items-center">
       <div className="dropdown me-2">
         <button
-          className="btn btn-secondary btn-sm dropdown-toggle"
+          className="btn btn-ctao-galaxy btn-sm dropdown-toggle"
           type="button"
           id="columnToggleButton"
           data-bs-toggle="dropdown"

@@ -871,7 +871,7 @@ useEffect(() => {
 
               {/* Object Resolve + Suggestions */}
               <div className="mb-3">
-                <label htmlFor="objectNameInput" className="form-label">Source Name (optional)</label>
+                <label htmlFor="objectNameInput" className="form-label">Source Name</label>
                 <div className="position-relative">
                   <input
                     type="text"
@@ -900,9 +900,12 @@ useEffect(() => {
                   )}
                 </div>
                 <div className="input-group mt-2">
-                  <button type="button" className="btn btn-secondary"
-                          disabled={!objectName || isSubmitting}
-                          onClick={(e) => handleResolve(e)}>
+                  <button
+                    type="button"
+                    className="btn btn-ctao-galaxy"
+                    disabled={!objectName || isSubmitting}
+                    onClick={(e) => handleResolve(e)}
+                  >
                     Resolve
                   </button>
                   <div className="form-check form-check-inline ms-3">
@@ -1210,12 +1213,28 @@ useEffect(() => {
 
           {/* Buttons */}
           <div className="d-flex justify-content-end mb-3">
-            <button type="button" className="btn btn-outline-secondary me-2"
-                    onClick={handleClearForm} disabled={isSubmitting}>
+            <button
+              type="button"
+              className="btn btn-ctao-galaxy me-2"
+              onClick={handleClearForm}
+              disabled={isSubmitting}
+            >
               Clear Form
             </button>
-            <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
-              {isSubmitting ? (<><span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Searching...</>) : ('Search')}
+
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <>
+                  <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
+                  Searching...
+                </>
+              ) : (
+                "Search"
+              )}
             </button>
           </div>
 
