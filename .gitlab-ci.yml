@@ -1,6 +1,6 @@
 include:
   - project: cta-computing/common/aiv-toolkit
-    ref: 853426fd8b994cd570a046238226424a9c18aedf
+    ref: 612f38ca12eef8a414ef987d45b1f70601f0d98d
     file: ci-functions.yml
   - aiv-config.yml
 
@@ -19,7 +19,7 @@ stages:
 build:
   tags:
   # playwright build always breaks on DESY-IT, no matter the request
-  - desy-test-cluster 
+    - desy-test-cluster
 
   parallel:
     matrix:
@@ -36,7 +36,7 @@ build:
     KUBERNETES_CPU_LIMIT: "2"
     KUBERNETES_MEMORY_REQUEST: "16Gi"
     KUBERNETES_MEMORY_LIMIT: "64Gi"
-      
+
 
 k8s-integration-tests:
   artifacts:
