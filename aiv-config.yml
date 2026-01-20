@@ -1,6 +1,6 @@
 variables:
   # used to select UCs and Requirements from release plan
-  SYSTEM: SUSS
+  AIV_SYSTEM: SUSS
   APPLICATION_NAME: ctao-data-explorer
   APPLICATION_AUTHOR: ctao-data-explorer Team
   APPLICATION_AUTHOR_ORGANIZATION: CTAO
@@ -16,9 +16,6 @@ variables:
   TRACEABILITY_CSV_FN: https://gitlab.cta-observatory.org/cta-computing/suss/suss-project-management/requirements-traceability/-/raw/main/SUSS_Requirements_Traceability_Matrix.csv
 
   DOCKER_IMAGE_CONTEXT: .
-
-  SONAR_PROJECT_KEY: 
-  SONAR_BRANCH: main
 
   CHART_LOCATION: chart
 
