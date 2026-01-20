@@ -52,6 +52,9 @@ k8s-integration-tests:
     reports:
       junit: test-in-k8s/report.xml
 
+k8s-upgrade-integration-tests:
+  rules:
+    - when: never
 
 build-docs:
   rules:
