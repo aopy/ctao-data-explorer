@@ -25,12 +25,11 @@ dev:
       limits:
         cpu: 1000m
         memory: 2Gi
-        storage: 1Gi
+        ephemeral-storage: 1Gi
       requests:
         cpu: 500m
         memory: 1Gi
-        storage: 512Mi
-
+        ephemeral-storage: 512Mi
 # Backend (FastAPI) configuration
 backend:
   enabled: true
@@ -126,11 +125,11 @@ frontend:
     limits:
       cpu: 2000m
       memory: 4096Mi
-      storage: 2Gi
+      ephemeral-storage: 2Gi
     requests:
       cpu: 250m
       memory: 1024Mi
-      storage: 1Gi
+      ephemeral-storage: 1Gi
   
   autoscaling:
     enabled: false
@@ -160,11 +159,11 @@ postgresql:
       limits:
         cpu: 500m
         memory: 512Mi
-        storage: 2Gi
+        ephemeral-storage: 2Gi
       requests:
         cpu: 250m
         memory: 256Mi
-        storage: 1Gi
+        ephemeral-storage: 1Gi
   
   service:
     type: ClusterIP
