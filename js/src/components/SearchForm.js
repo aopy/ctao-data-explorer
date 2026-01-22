@@ -229,16 +229,67 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   // Labels
   let coord1Label = 'RA (deg)';
   let coord2Label = 'Dec (deg)';
-  let coord1Example = "e.g., 83.633";
-  let coord2Example = "e.g., 22.014";
+  let coord1Example = "e.g., 83.6324";
+  let coord2Example = "e.g., 22.0174";
   if (coordinateSystem === COORD_SYS_EQ_HMS) {
     coord1Label = 'RA (hms)'; coord2Label = 'Dec (dms)';
-    coord1Example = "e.g., 05 34 31.9"; coord2Example = "e.g., +22 00 52";
+    coord1Example = "e.g., 05 34 31.8"; coord2Example = "e.g., +22 01 03";
   } else if (coordinateSystem === COORD_SYS_GAL) {
     coord1Label = 'l (deg)'; coord2Label = 'b (deg)';
-    coord1Example = "e.g., 184.557"; coord2Example = "e.g., -5.784";
+    coord1Example = "e.g., 184.55462"; coord2Example = "e.g., -5.783208";
   }
 
+  const systemForBackend = (sys) =>
+  (sys === COORD_SYS_EQ_HMS) ? 'hmsdms' :
+  (sys === COORD_SYS_GAL) ? 'gal' : 'deg';
+
+  const fmtDeg = (x, digits = 6) =>
+    (Number.isFinite(Number(x)) ? Number(x).toFixed(digits) : '');
+
+  const applyConvertedToTarget = (conv, targetSystem) => {
+    if (targetSystem === COORD_SYS_EQ_DEG) {
+      setCoord1(fmtDeg(conv.ra_deg, 6));
+      setCoord2(fmtDeg(conv.dec_deg, 6));
+    } else if (targetSystem === COORD_SYS_EQ_HMS) {
+      setCoord1(conv.ra_hms || '');
+      setCoord2(conv.dec_dms || '');
+    } else if (targetSystem === COORD_SYS_GAL) {
+      setCoord1(fmtDeg(conv.l_deg, 6));
+      setCoord2(fmtDeg(conv.b_deg, 6));
+    }
+  };
+
+  const switchCoordinateSystem = async (targetSystem) => {
+  if (targetSystem === coordinateSystem) return;
+
+  const c1 = (coord1 || '').trim();
+  const c2 = (coord2 || '').trim();
+
+  // if nothing to convert, switch labels/system and keep empty inputs
+  if (!c1 || !c2) {
+    setCoordinateSystem(targetSystem);
+    return;
+  }
+
+  try {
+    // Convert from current system to all representations
+    const { data } = await axios.post('/api/convert_coords', {
+      coord1: c1,
+      coord2: c2,
+      system: systemForBackend(coordinateSystem),
+    });
+
+    if (data?.error) throw new Error(data.error);
+
+    // Switch and fill
+    setCoordinateSystem(targetSystem);
+    applyConvertedToTarget(data, targetSystem);
+    setWarningMessage('');
+    } catch (err) {
+      setWarningMessage(`Coordinate Error: ${err?.message || 'Could not convert coordinates.'}`);
+      // optional: do not switch if conversion failed
+    }
+  };
 
   async function convertIsoToScaleMjd(iso, scale) {
     // iso like "YYYY-MM-DDThh:mm:ss"
@@ -585,31 +636,56 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     else if (e.key === 'Enter' && highlight >= 0) { e.preventDefault(); const { name, service } = suggestions[highlight]; applySuggestion(name, service); }
   };
 
-  const handleResolve = (arg, overrideService = null) => {
-    const target = typeof arg === 'string' ? arg.trim() : objectName.trim();
-    if (arg && arg.preventDefault) arg.preventDefault();
-    if (!target) return;
-    setIsSubmitting(true); setWarningMessage('');
-    const mySeq = ++latestSeq.current;
-    axios.post('/api/object_resolve', {
+  const handleResolve = async (arg, overrideService = null) => {
+  const target = typeof arg === 'string' ? arg.trim() : objectName.trim();
+  if (arg && arg.preventDefault) arg.preventDefault();
+  if (!target) return;
+
+  setIsSubmitting(true);
+  setWarningMessage('');
+
+  const mySeq = ++latestSeq.current;
+
+  try {
+    const res = await axios.post('/api/object_resolve', {
       object_name: target,
       use_simbad: overrideService ? (overrideService === 'SIMBAD') : useSimbad,
-      use_ned:    overrideService ? (overrideService === 'NED')    : useNed
-    })
-      .then(res => {
+      use_ned: overrideService ? (overrideService === 'NED') : useNed
+    });
+
+    if (mySeq !== latestSeq.current) return;
+
+    const first = res.data?.results?.[0];
+    if (first?.ra != null && first?.dec != null) {
+      try {
+        const convRes = await axios.post('/api/convert_coords', {
+          coord1: String(first.ra),
+          coord2: String(first.dec),
+          system: 'deg',
+        });
+
         if (mySeq !== latestSeq.current) return;
-        const first = res.data?.results?.[0];
-        if (first?.ra != null && first?.dec != null) {
-          setCoordinateSystem(COORD_SYS_EQ_DEG);
-          setCoord1(first.ra.toString());
-          setCoord2(first.dec.toString());
-          setWarningMessage(`Resolved ${target} via ${first.service}`);
-        } else {
-          setWarningMessage(`Could not resolve "${target}"`);
-        }
-      })
-      .catch(err => { if (mySeq !== latestSeq.current) return; setWarningMessage(`Error resolving object: ${err.message}`); })
-      .finally(() => { if (mySeq === latestSeq.current) setIsSubmitting(false); });
+
+        if (convRes.data?.error) throw new Error(convRes.data.error);
+
+        applyConvertedToTarget(convRes.data, coordinateSystem);
+      } catch {
+        // fallback: just put degrees
+        setCoordinateSystem(COORD_SYS_EQ_DEG);
+        setCoord1(String(first.ra));
+        setCoord2(String(first.dec));
+      }
+
+      setWarningMessage(`Resolved ${target} via ${first.service}`);
+    } else {
+      setWarningMessage(`Could not resolve "${target}"`);
+    }
+    } catch (err) {
+      if (mySeq !== latestSeq.current) return;
+      setWarningMessage(`Error resolving object: ${err?.message || 'Unknown error'}`);
+    } finally {
+      if (mySeq === latestSeq.current) setIsSubmitting(false);
+    }
   };
 
   const handleCoordSystemChange = (e) => {
@@ -936,11 +1012,7 @@ useEffect(() => {
                       className={`btn btn-sm ${
                         coordinateSystem === opt.value ? 'btn-primary' : 'btn-outline-primary'
                       }`}
-                      onClick={() => {
-                        setCoordinateSystem(opt.value);
-                        setCoord1('');
-                        setCoord2('');
-                      }}
+                      onClick={() => switchCoordinateSystem(opt.value)}
                       disabled={isSubmitting}
                     >
                       {opt.label}
