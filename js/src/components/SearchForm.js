@@ -924,12 +924,27 @@ useEffect(() => {
 
     // call API
     axios.get('/api/search_coords', { params: finalReqParams })
-      .then(response => setResults(response.data))
+      .then(response => {
+        const payload = response.data;
+
+        const nRows = Array.isArray(payload?.data) ? payload.data.length : 0;
+
+        // if no rows, stay on Search tab and show warning
+        if (nRows === 0) {
+          setWarningMessage('No results were found for the given search criteria.');
+          return;
+        }
+
+        setResults(payload);
+      })
       .catch(error => {
         const errorDetail = error.response?.data?.detail || error.message || 'Unknown search error.';
         setWarningMessage(`Search failed: ${errorDetail}`);
       })
-      .finally(() => { setIsSubmitting(false); setLastChangedType(null); });
+      .finally(() => {
+        setIsSubmitting(false);
+        setLastChangedType(null);
+      });
   };
 
   return (

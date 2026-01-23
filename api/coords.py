@@ -98,11 +98,6 @@ def _parse_to_icrs(coord1_str: str, coord2_str: str, system: str) -> SkyCoord:
 
 
 def _format_hms_dms(c_icrs: SkyCoord) -> tuple[str, str]:
-    """
-    Match your example formatting:
-      RA:  "05 34 31.9"
-      Dec: "+22 00 52"
-    """
     ra_hms = c_icrs.ra.to_string(unit=u.hourangle, sep=" ", precision=1, pad=True)
     dec_dms = c_icrs.dec.to_string(unit=u.deg, sep=" ", precision=0, alwayssign=True, pad=True)
     return ra_hms, dec_dms
