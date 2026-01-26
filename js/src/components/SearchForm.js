@@ -140,6 +140,139 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     return TT_MJDREF + (Number(sec) || 0) / SECS_PER_DAY;
   }
 
+  const timeModeRef = useRef('auto'); // 'auto' | 'calendar' | 'mjd' | 'met'
+  const setTimeMode = (mode) => { timeModeRef.current = mode; };
+
+  // for using enter
+  const startTimeRef = useRef(null);
+  const endTimeRef = useRef(null);
+  const formRef = useRef(null);
+  const objectNameInputRef = useRef(null)
+
+  const handleFormKeyDownCapture = (e) => {
+    if (e.key !== 'Enter') return;
+    if (isSubmitting) {
+      e.preventDefault();
+      return;
+    }
+    const target = e.target;
+
+    if (target === objectNameInputRef.current) {
+      if (suggestions.length > 0 && highlight >= 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      handleResolve(objectName, null);
+      return;
+    }
+
+    // if we're inside Time Search, do not submit
+    // let the field's own onKeyDown handler run
+    if (target?.closest?.('[data-enter-scope="time"]')) {
+      // if a calendar popup is open, let DatePicker handle Enter normally
+      if (startCalOpen || endCalOpen) return;
+
+      // prevent native submit, but don't stop propagation
+      e.preventDefault();
+      return;
+    }
+
+    // everywhere else: Enter = Search
+    e.preventDefault();
+    e.stopPropagation();
+    submitViaEnter();
+  };
+
+
+  const submitViaEnter = () => {
+    const formEl = formRef.current;
+    if (!formEl) return;
+    if (typeof formEl.requestSubmit === "function") formEl.requestSubmit();
+    else formEl.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  };
+
+  const flushTimeDebounces = () => {
+    // cancel pending timers so they don’t run after submit
+    [startDtDebounce, startMjdDebounce, endDtDebounce, endMjdDebounce].forEach((r) => {
+      if (r.current) {
+        clearTimeout(r.current);
+        r.current = null;
+      }
+    });
+  };
+
+  const forceCalendarSyncNow = async (which) => {
+    const dateObj = which === 'start' ? obsStartDateObj : obsEndDateObj;
+    const t = (which === 'start' ? obsStartTime : obsEndTime) || '00:00:00';
+
+    if (!dateObj || !isFullTime(t)) return;
+    await syncFromCalendar(which, dateObj, t, timeScale, timeScale);
+  };
+
+  const forceMjdSyncNow = async (which) => {
+    const mjd = which === 'start' ? obsStartMJD : obsEndMJD;
+    if (!String(mjd || '').trim()) return;
+    await syncFromMjd(which, mjd, timeScale, timeScale);
+  };
+
+  const forceMetSyncNow = async (which) => {
+    const sec = which === 'start' ? metStartSeconds : metEndSeconds;
+    if (!String(sec || '').trim()) return;
+
+    // Use existing convertMetTo()
+    const conv = await convertMetTo(timeScale, Number(sec));
+    if (which === 'start') {
+      setObsStartMJD(formatMJD(conv.mjd));
+      setObsStartDateObj(dateFromIsoDatePart(conv.isot));
+      setObsStartTime(conv.isot.slice(11, 19));
+    } else {
+      setObsEndMJD(formatMJD(conv.mjd));
+      setObsEndDateObj(dateFromIsoDatePart(conv.isot));
+      setObsEndTime(conv.isot.slice(11, 19));
+    }
+    setTimeWarning('');
+  };
+
+  const [startCalOpen, setStartCalOpen] = useState(false);
+  const [endCalOpen, setEndCalOpen] = useState(false);
+
+  const handleEnterSearchFromTimeField = (e, which) => {
+    if (e.key !== "Enter") return;
+    if (isSubmitting) {
+      e.preventDefault();
+      return;
+    }
+
+    if (which === "startDate" && startCalOpen) return;
+    if (which === "endDate" && endCalOpen) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    // force blur so editing flags / onBlur logic settle
+    e.currentTarget?.blur?.();
+
+    // cancel pending conversions
+    flushTimeDebounces();
+
+    // force an immediate conversion depending on where Enter happened
+    (async () => {
+      try {
+        if (which === "startTime" || which === "startDate") await forceCalendarSyncNow('start');
+        if (which === "endTime"   || which === "endDate")   await forceCalendarSyncNow('end');
+
+        if (which === "startMjd") await forceMjdSyncNow('start');
+        if (which === "endMjd")   await forceMjdSyncNow('end');
+
+        if (which === "startMet") await forceMetSyncNow('start');
+        if (which === "endMet")   await forceMetSyncNow('end');
+      } catch {
+        // don't block submit, handleSubmit will validate and show a message if needed
+      } finally {
+        // submit after the forced conversion completes
+      submitViaEnter();
+    }
+    })();
+  };
 
   // helper: calendar -> MJD/MET in the current scale (tt/utc)
   const applyCalendarChange = async (which, dateObj, currentTime) => {
@@ -167,14 +300,8 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
       }
     };
 
-  const handleStartDateChange = (date) => {
-    applyCalendarChange('start', date, obsStartTime);
-  };
-
-  const handleEndDateChange = (date) => {
-    applyCalendarChange('end', date, obsEndTime);
-  };
-
+  const handleStartDateChange = (date) => { setTimeMode('calendar'); applyCalendarChange('start', date, obsStartTime); };
+  const handleEndDateChange = (date) => { setTimeMode('calendar'); applyCalendarChange('end', date, obsEndTime); };
 
 
   async function convertMetTo(targetScale, seconds) {
@@ -403,6 +530,7 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   );
 
   const handleMetStartChange = async (e) => {
+    setTimeMode('met');
     const v = e.target.value;
     setMetStartSeconds(v);
     if (!v.trim()) return;
@@ -418,6 +546,7 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   };
 
   const handleMetEndChange = async (e) => {
+    setTimeMode('met');
     const v = e.target.value;
     setMetEndSeconds(v);
     if (!v.trim()) return;
@@ -641,6 +770,12 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   if (arg && arg.preventDefault) arg.preventDefault();
   if (!target) return;
 
+  // prevent suggestions reopening after a successful resolve
+  clearTimeout(debounceRef.current);
+  setSuggestions([]);
+  setHighlight(-1);
+  lastAccepted.current = target;
+
   setIsSubmitting(true);
   setWarningMessage('');
 
@@ -706,6 +841,7 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
 // MJD edit
 const handleStartMjdChange = (e) => {
+  setTimeMode('mjd');
   const v = e.target.value;
   setObsStartMJD(v);
   setTimeTouched(true);
@@ -737,6 +873,7 @@ const handleEndTimeChange = (e) => {
 };
 
 const handleEndMjdChange = (e) => {
+  setTimeMode('mjd');
   const v = e.target.value;
   setObsEndMJD(v);
   setTimeTouched(true);
@@ -798,6 +935,7 @@ useEffect(() => {
       setObscoreTable(initialFormState.obscoreTable),
       setShowAdvanced(initialFormState.showAdvanced)
     );
+    setTimeMode('auto');
     setMetStartSeconds('');
     setMetEndSeconds('');
     setWarningMessage(''); setLastChangedType(null); setTimeTouched(false); setTimeWarning('');
@@ -859,61 +997,113 @@ useEffect(() => {
     const hasCalendar = !!(obsStartDateObj && obsStartTime.trim() && obsEndDateObj && obsEndTime.trim());
     const hasBothMET  = metStartSeconds.trim() !== '' && metEndSeconds.trim() !== '';
 
+    let mode = timeModeRef.current;
 
-      if (hasBothMJD) {
+    // fallback if auto or if the chosen mode isn't actually complete
+    if (mode === 'auto') {
+      if (hasCalendar) mode = 'calendar';
+      else if (hasBothMJD) mode = 'mjd';
+      else if (hasBothMET) mode = 'met';
+    } else {
+      if (mode === 'calendar' && !hasCalendar) mode = hasBothMJD ? 'mjd' : (hasBothMET ? 'met' : 'auto');
+      if (mode === 'mjd' && !hasBothMJD)  mode = hasCalendar ? 'calendar' : (hasBothMET ? 'met' : 'auto');
+      if (mode === 'met' && !hasBothMET)  mode = hasCalendar ? 'calendar' : (hasBothMJD ? 'mjd' : 'auto');
+    }
+
+
+    // time: choose branch by mode (calendar/mjd/met)
+    try {
+      if (mode === 'calendar') {
+        if (!hasCalendar) {
+          throw new Error('Please provide a complete calendar time interval (Start+End Date/Time).');
+        }
+
+        const startIso = `${ymdFromDate(obsStartDateObj)}T${obsStartTime.trim()}`;
+        const endIso = `${ymdFromDate(obsEndDateObj)}T${obsEndTime.trim()}`;
+
+        const startConv = await convertIsoToScaleMjd(startIso, timeScale);
+        const endConv = await convertIsoToScaleMjd(endIso, timeScale);
+
+        const startMjd = Number(startConv.mjd);
+        const endMjd = Number(endConv.mjd);
+
+        if (!Number.isFinite(startMjd) || !Number.isFinite(endMjd)) {
+          throw new Error('Failed converting Date/Time to MJD.');
+        }
+        if (endMjd <= startMjd) {
+          throw new Error('End Date/Time must be after Start Date/Time.');
+        }
+
+        finalReqParams.mjd_start = startMjd;
+        finalReqParams.mjd_end = endMjd;
+        finalReqParams.time_scale = timeScale;
+        timeIsValid = true;
+
+      } else if (mode === 'mjd') {
+        if (!hasBothMJD) {
+          throw new Error('Please provide both Start and End MJD.');
+        }
+
         const startMjdNum = parseMjdInput(obsStartMJD);
-        const endMjdNum   = parseMjdInput(obsEndMJD);
+        const endMjdNum = parseMjdInput(obsEndMJD);
+
         if (!Number.isFinite(startMjdNum) || !Number.isFinite(endMjdNum)) {
-          setWarningMessage('MJD inputs must be numeric.'); setIsSubmitting(false); return;
+          throw new Error('MJD inputs must be numeric.');
         }
         if (endMjdNum <= startMjdNum) {
-          setWarningMessage('End MJD must be after Start MJD.'); setIsSubmitting(false); return;
+          throw new Error('End MJD must be after Start MJD.');
         }
-        finalReqParams.mjd_start = startMjdNum;
-        finalReqParams.mjd_end   = endMjdNum;
-        finalReqParams.time_scale = timeScale; // inform backend which scale the MJD is in
-        timeIsValid = true;
-      } else if (hasCalendar) {
-        try {
-          const startIso = `${ymdFromDate(obsStartDateObj)}T${obsStartTime.trim()}`;
-          const endIso   = `${ymdFromDate(obsEndDateObj)}T${obsEndTime.trim()}`;
-          const startConv = await convertIsoToScaleMjd(startIso, timeScale);
-          const endConv   = await convertIsoToScaleMjd(endIso,   timeScale);
-          if (!(Number.isFinite(startConv.mjd) && Number.isFinite(endConv.mjd))) {
-            throw new Error('Failed converting Date/Time to MJD.');
-          }
-          if (endConv.mjd <= startConv.mjd) {
-            setWarningMessage('End Date/Time must be after Start Date/Time.'); setIsSubmitting(false); return;
-          }
-          finalReqParams.mjd_start = Number(startConv.mjd);
-          finalReqParams.mjd_end   = Number(endConv.mjd);
-          finalReqParams.time_scale = timeScale;
-          timeIsValid = true;
-        } catch (err) {
-          setWarningMessage(err.message || 'Failed to convert calendar Date/Time to MJD.');
-          setIsSubmitting(false); return;
-        }
-      } else if (hasBothMET) {
-    // Convert MET → TT MJD (query is in TT)
-    const startConv = await axios.post('/api/convert_time', {
-      value: metStartSeconds,
-      input_format: 'met',
-      input_scale: 'utc',
-      met_epoch_isot: MET_EPOCH_ISO_UTC,
-      met_epoch_scale: MET_EPOCH_SCALE,
-    });
-    const endConv = await axios.post('/api/convert_time', {
-      value: metEndSeconds,
-      input_format: 'met',
-      input_scale: 'utc',
-      met_epoch_isot: MET_EPOCH_ISO_UTC,
-      met_epoch_scale: MET_EPOCH_SCALE,
-    });
 
-    finalReqParams.mjd_start  = Number(startConv.data.tt_mjd);
-    finalReqParams.mjd_end    = Number(endConv.data.tt_mjd);
-    finalReqParams.time_scale = 'tt';
-    timeIsValid = true;
+        finalReqParams.mjd_start  = startMjdNum;
+        finalReqParams.mjd_end    = endMjdNum;
+        finalReqParams.time_scale = timeScale;
+        timeIsValid = true;
+
+      } else if (mode === 'met') {
+        if (!hasBothMET) {
+          throw new Error('Please provide both Start and End MET seconds.');
+        }
+
+        // Convert MET → TT MJD (query is in TT)
+        const startConv = await axios.post('/api/convert_time', {
+          value: metStartSeconds,
+          input_format: 'met',
+          input_scale: 'utc',
+          met_epoch_isot: MET_EPOCH_ISO_UTC,
+          met_epoch_scale: MET_EPOCH_SCALE,
+        });
+
+        const endConv = await axios.post('/api/convert_time', {
+          value: metEndSeconds,
+          input_format: 'met',
+          input_scale: 'utc',
+          met_epoch_isot: MET_EPOCH_ISO_UTC,
+          met_epoch_scale: MET_EPOCH_SCALE,
+        });
+
+        const startTtMjd = Number(startConv.data.tt_mjd);
+        const endTtMjd = Number(endConv.data.tt_mjd);
+
+        if (!Number.isFinite(startTtMjd) || !Number.isFinite(endTtMjd)) {
+          throw new Error('Failed converting MET to TT MJD.');
+        }
+        if (endTtMjd <= startTtMjd) {
+          throw new Error('End MET must be after Start MET.');
+        }
+
+        finalReqParams.mjd_start = startTtMjd;
+        finalReqParams.mjd_end = endTtMjd;
+        finalReqParams.time_scale = 'tt';
+        timeIsValid = true;
+
+        } else {
+          // mode === 'auto' and nothing complete
+          timeIsValid = false;
+        }
+    } catch (err) {
+      setWarningMessage(err?.message || 'Invalid time interval.');
+      setIsSubmitting(false);
+      return;
     }
 
 
@@ -950,7 +1140,7 @@ useEffect(() => {
   return (
     <div className="row">
       <div className="col-lg-7 col-md-8">
-        <form onSubmit={handleSubmit}>
+        <form ref={formRef} onSubmit={handleSubmit} onKeyDownCapture={handleFormKeyDownCapture}>
           {warningMessage && (
             <div className="alert alert-warning" role="alert">{warningMessage}</div>
           )}
@@ -965,6 +1155,7 @@ useEffect(() => {
                 <label htmlFor="objectNameInput" className="form-label">Source Name</label>
                 <div className="position-relative">
                   <input
+                    ref={objectNameInputRef}
                     type="text"
                     id="objectNameInput"
                     className="form-control"
@@ -1070,7 +1261,7 @@ useEffect(() => {
           )}
 
           {/* Time Search */}
-        <div className="card mb-3">
+        <div className="card mb-3" data-enter-scope="time">
           <div className="card-header">Time Search</div>
           <div className="card-body">
 
@@ -1108,6 +1299,9 @@ useEffect(() => {
               <DatePicker
                 selected={obsStartDateObj}
                 onChange={handleStartDateChange}
+                onCalendarOpen={() => setStartCalOpen(true)}
+                onCalendarClose={() => setStartCalOpen(false)}
+                onKeyDown={(e) => handleEnterSearchFromTimeField(e, "startDate")}
                 dateFormat="yyyy-MM-dd"
                 placeholderText="YYYY-MM-DD"
                 className="form-control form-control-sm"
@@ -1132,11 +1326,13 @@ useEffect(() => {
           {/* Time */}
           <div className="col-6 col-md-3">
             <input
+              ref={startTimeRef}
               type="time"
               step="1"
               className="form-control form-control-sm input-monospace"
               value={obsStartTime}
               onChange={(e) => {
+                setTimeMode('calendar');
                 const v = e.target.value;
                 const [hh='00', mm='00', ss='00'] = v.split(':');
                 const norm = `${hh.padStart(2,'0')}:${mm.padStart(2,'0')}:${ss.padStart(2,'0')}`;
@@ -1148,6 +1344,7 @@ useEffect(() => {
               onBlur={() => { setIsEditingStartTime(false); setLastChangedType('start_dt'); }}
               aria-label="Start time"
               disabled={isSubmitting}
+              onKeyDown={(e) => handleEnterSearchFromTimeField(e, "startTime")}
             />
           </div>
 
@@ -1165,6 +1362,7 @@ useEffect(() => {
                 onChange={handleStartMjdChange}
                 disabled={isSubmitting}
                 title={obsStartMJD}
+                onKeyDown={(e) => handleEnterSearchFromTimeField(e, "startMjd")}
               />
             </div>
           </div>
@@ -1181,6 +1379,7 @@ useEffect(() => {
                 onChange={handleMetStartChange}
                 disabled={isSubmitting}
                 title={String(metStartSeconds || '')}
+                onKeyDown={(e) => handleEnterSearchFromTimeField(e, "startMet")}
               />
             </div>
           </div>
@@ -1195,6 +1394,9 @@ useEffect(() => {
               <DatePicker
                 selected={obsEndDateObj}
                 onChange={handleEndDateChange}
+                onCalendarOpen={() => setEndCalOpen(true)}
+                onCalendarClose={() => setEndCalOpen(false)}
+                onKeyDown={(e) => handleEnterSearchFromTimeField(e, "endDate")}
                 dateFormat="yyyy-MM-dd"
                 placeholderText="YYYY-MM-DD"
                 className="form-control form-control-sm"
@@ -1219,11 +1421,13 @@ useEffect(() => {
           {/* Time */}
           <div className="col-6 col-md-3">
             <input
+              ref={endTimeRef}
               type="time"
               step="1"
               className="form-control form-control-sm input-monospace"
               value={obsEndTime}
               onChange={(e) => {
+                setTimeMode('calendar');
                 const v = e.target.value;
                 const [hh='00', mm='00', ss='00'] = v.split(':');
                 const norm = `${hh.padStart(2,'0')}:${mm.padStart(2,'0')}:${ss.padStart(2,'0')}`;
@@ -1235,6 +1439,7 @@ useEffect(() => {
               onBlur={() => { setIsEditingEndTime(false); setLastChangedType('end_dt'); }}
               aria-label="End time"
               disabled={isSubmitting}
+              onKeyDown={(e) => handleEnterSearchFromTimeField(e, "endTime")}
             />
           </div>
 
@@ -1252,6 +1457,7 @@ useEffect(() => {
                 onChange={handleEndMjdChange}
                 disabled={isSubmitting}
                 title={obsEndMJD}
+                onKeyDown={(e) => handleEnterSearchFromTimeField(e, "endMjd")}
               />
             </div>
           </div>
@@ -1268,6 +1474,7 @@ useEffect(() => {
                 onChange={handleMetEndChange}
                 disabled={isSubmitting}
                 title={String(metEndSeconds || '')}
+                onKeyDown={(e) => handleEnterSearchFromTimeField(e, "endMet")}
               />
             </div>
           </div>
