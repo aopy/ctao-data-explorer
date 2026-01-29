@@ -25,7 +25,7 @@ Before installing, build the required Docker images:
 
 ```bash
 # Build backend image
-docker build -t ctao-data-explorer-backend:latest -f Dockerfile .
+docker build -t ctao-data-explorer-backend:latest -f Dockerfile.backend .
 
 # Build frontend image
 docker build -t ctao-data-explorer-frontend:latest -f Dockerfile.frontend .
