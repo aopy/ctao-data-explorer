@@ -21,6 +21,7 @@ Clone the repository:
 Start the development environment:
 
    ```bash
+   make build-dev
    make install-chart
    ```
 
