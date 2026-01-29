@@ -11,6 +11,6 @@ keywords:
   - react
 maintainers:
   - name: CTAO Team
-home: https://github.com/cta-observatory/ctao-data-explorer
+home: https://gitlab.cta-observatory.org/cta-computing/suss/scienceportal/prototypes/ctao-data-explorer
 sources:
-  - https://github.com/cta-observatory/ctao-data-explorer
+  - https://gitlab.cta-observatory.org/cta-computing/suss/scienceportal/prototypes/ctao-data-explorer
