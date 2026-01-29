@@ -478,3 +478,9 @@ h1,h2,h3,h4,h5,h6{
 #chartTabs .nav-link:hover{
   border-color: var(--ctao-cosmic-azure) !important;
 }
+
+/* disabled tab look */
+.subnav .nav-link.disabled{
+  opacity: 0.45;
+  pointer-events: none;
+}
