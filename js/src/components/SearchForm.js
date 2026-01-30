@@ -13,6 +13,7 @@ import './styles.css';
 import { offset, flip, shift } from '@floating-ui/dom';
 
 const FORM_STATE_SESSION_KEY = 'searchFormStateBeforeLogin';
+const FORM_STATE_PERSIST_KEY = 'searchFormStatePersist';
 
 const defaultFormValues = {
   objectName: '', useSimbad: true, useNed: false,
@@ -26,6 +27,30 @@ const defaultFormValues = {
   obscoreTable: 'hess_dr.obscore_sdc',
   showAdvanced: false,
 };
+
+function safeJsonParse(str) {
+  try { return JSON.parse(str); } catch { return null; }
+}
+
+function reviveDates(parsed) {
+  if (!parsed || typeof parsed !== "object") return parsed;
+
+  const out = { ...parsed };
+
+  // restore DatePicker fields
+  if (out.obsStartDateObj) out.obsStartDateObj = new Date(out.obsStartDateObj);
+  if (out.obsEndDateObj) out.obsEndDateObj = new Date(out.obsEndDateObj);
+
+  return out;
+}
+
+function serializeForStorage(state) {
+  return JSON.stringify({
+    ...state,
+    obsStartDateObj: state.obsStartDateObj ? state.obsStartDateObj.toISOString() : null,
+    obsEndDateObj: state.obsEndDateObj ? state.obsEndDateObj.toISOString() : null,
+  });
+}
 
 const MJDREFI = 51910;
 const MJDREFF = 7.42870370370241e-4;
@@ -56,18 +81,30 @@ const ymdFromDate = (d) => {
 const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
   const loadInitialState = () => {
+    // one-shot restore used for OIDC login flow
     try {
       const saved = sessionStorage.getItem(FORM_STATE_SESSION_KEY);
       if (saved) {
         sessionStorage.removeItem(FORM_STATE_SESSION_KEY);
-        const parsed = JSON.parse(saved);
-        if (parsed.obsStartDateObj) parsed.obsStartDateObj = new Date(parsed.obsStartDateObj);
-        if (parsed.obsEndDateObj) parsed.obsEndDateObj = new Date(parsed.obsEndDateObj);
-        return { ...defaultFormValues, ...parsed };
+        const parsed = reviveDates(safeJsonParse(saved));
+        if (parsed) return { ...defaultFormValues, ...parsed };
       }
     } catch {
       sessionStorage.removeItem(FORM_STATE_SESSION_KEY);
     }
+
+    // persistent restore
+    try {
+      const savedPersist = sessionStorage.getItem(FORM_STATE_PERSIST_KEY);
+      if (savedPersist) {
+        const parsed = reviveDates(safeJsonParse(savedPersist));
+        if (parsed) return { ...defaultFormValues, ...parsed };
+      }
+    } catch {
+      // ignore
+    }
+
+    // default
     return { ...defaultFormValues };
   };
 
@@ -100,6 +137,64 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   const [tapUrl, setTapUrl] = useState(initialFormState.tapUrl);
   const [obscoreTable, setObscoreTable] = useState(initialFormState.obscoreTable);
   const [showAdvanced, setShowAdvanced] = useState(initialFormState.showAdvanced);
+
+  const persistDebounceRef = useRef(null);
+  const didHydrateRef = useRef(false);
+
+  const persistNow = useCallback(() => {
+    try {
+      const snapshot = {
+        objectName, useSimbad, useNed,
+        coordinateSystem, coord1, coord2, searchRadius,
+        timeScale,
+        obsStartDateObj: obsStartDateObj ? obsStartDateObj : null,
+        obsStartTime, obsStartMJD,
+        obsEndDateObj: obsEndDateObj ? obsEndDateObj : null,
+        obsEndTime, obsEndMJD,
+        metStartSeconds, metEndSeconds,
+        tapUrl, obscoreTable, showAdvanced,
+      };
+      sessionStorage.setItem(FORM_STATE_PERSIST_KEY, serializeForStorage(snapshot));
+    } catch {
+      // ignore
+    }
+  }, [
+    objectName, useSimbad, useNed,
+    coordinateSystem, coord1, coord2, searchRadius,
+    timeScale,
+    obsStartDateObj, obsStartTime, obsStartMJD,
+    obsEndDateObj, obsEndTime, obsEndMJD,
+    metStartSeconds, metEndSeconds,
+    tapUrl, obscoreTable, showAdvanced,
+  ]);
+
+  // mark hydrated on first render
+  useEffect(() => {
+    didHydrateRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!didHydrateRef.current) return;
+
+    // debounce writes to avoid constant sessionStorage updates
+    if (persistDebounceRef.current) clearTimeout(persistDebounceRef.current);
+
+    persistDebounceRef.current = setTimeout(() => {
+      persistNow();
+    }, 250);
+
+    return () => {
+      if (persistDebounceRef.current) clearTimeout(persistDebounceRef.current);
+    };
+  }, [
+    objectName, useSimbad, useNed,
+    coordinateSystem, coord1, coord2, searchRadius,
+    timeScale,
+    obsStartDateObj, obsStartTime, obsStartMJD,
+    obsEndDateObj, obsEndTime, obsEndMJD,
+    metStartSeconds, metEndSeconds,
+    tapUrl, obscoreTable, showAdvanced,
+  ]);
 
   const [warningMessage, setWarningMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -938,13 +1033,22 @@ useEffect(() => {
     setTimeMode('auto');
     setMetStartSeconds('');
     setMetEndSeconds('');
-    setWarningMessage(''); setLastChangedType(null); setTimeTouched(false); setTimeWarning('');
+    setWarningMessage('');
+    setLastChangedType(null);
+    setTimeTouched(false);
+    setTimeWarning('');
+
+    try { sessionStorage.removeItem(FORM_STATE_PERSIST_KEY); } catch {}
   };
 
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setWarningMessage(''); setIsSubmitting(true); setLastChangedType(null);
+
+    persistNow();
+    setWarningMessage('');
+    setIsSubmitting(true);
+    setLastChangedType(null);
 
     const baseReqParams = {
       tap_url: tapUrl,
