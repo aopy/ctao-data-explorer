@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import DataTable from 'react-data-table-component';
 import axios from 'axios';
 import DataLinkDropdown from './DataLinkDropdown';
@@ -17,22 +17,13 @@ const DEFAULT_VISIBLE_COLUMNS = [
   't_min',
   't_max',
   't_exptime',
-  //'em_energy_min_tev',
-  //'em_energy_max_tev',
-  //'em_min_tev',
-  //'em_max_tev',
-  'em_min',  // temporary
-  'em_max',  // temporary
+  'em_min', // temporary
+  'em_max', // temporary
   'facility_name',
   'instrument_name',
   'zen_pnt',
   'alt_pnt',
   'az_pnt',
-  // 'event_class',
-  // 'event_type',
-  // 'processing_date',
-  // 'convergence',
-  // 'obs_mode'
 ];
 
 export default function ResultsTable({
@@ -49,11 +40,10 @@ export default function ResultsTable({
   // Which columns are toggleable
   const toggleableBackendCols = useMemo(() => {
     if (!backendColumnNames) return [];
-    return backendColumnNames.filter(c =>
-      c !== 'datalink_url' && c !== 'obs_publisher_did'
-    );
+    return backendColumnNames.filter(c => c !== 'datalink_url' && c !== 'obs_publisher_did');
   }, [backendColumnNames]);
 
+  // Convert backend array rows to objects
   const tableData = useMemo(() => {
     if (!backendColumnNames || !data) return [];
     return data.map((rowArray, rowIndex) => {
@@ -65,28 +55,94 @@ export default function ResultsTable({
     });
   }, [backendColumnNames, data]);
 
+  const [hiddenColumns, setHiddenColumns] = useState([]);
+
+  // init default hidden columns once columns are known
+  const didInitHiddenRef = React.useRef(false);
+  useEffect(() => {
+    if (didInitHiddenRef.current) return;
+    if (!toggleableBackendCols.length) return;
+
+    setHiddenColumns(toggleableBackendCols.filter(c => !DEFAULT_VISIBLE_COLUMNS.includes(c)));
+    didInitHiddenRef.current = true;
+  }, [toggleableBackendCols]);
+
+  // Search / filter
+  const [filterText, setFilterText] = useState('');
+  const [resetPaginationToggle, setResetPaginationToggle] = useState(false);
+
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
+
+  // when new results arrive, go back to page 1
+  useEffect(() => {
+    setPage(1);
+    setResetPaginationToggle(prev => !prev);
+  }, [results]);
+
+  function normalizeForSearch(v) {
+    if (v == null) return '';
+    return String(v).toLowerCase();
+  }
+
+  const searchableColumns = useMemo(() => {
+    // search only visible data columns (exclude hidden + action/datalink pseudo columns)
+    // for all backend columns, use toggleableBackendCols
+    const visibleDataCols = toggleableBackendCols.filter(c => !hiddenColumns.includes(c));
+    return visibleDataCols;
+  }, [toggleableBackendCols, hiddenColumns]);
+
+  const filteredTableData = useMemo(() => {
+    const q = filterText.trim().toLowerCase();
+    if (!q) return tableData;
+
+    return tableData.filter(row => {
+      // match if any visible column contains the query
+      for (const col of searchableColumns) {
+        const hay = normalizeForSearch(row[col]);
+        if (hay.includes(q)) return true;
+      }
+      return false;
+    });
+  }, [tableData, filterText, searchableColumns]);
+
+  const visibleObsIdSet = useMemo(() => {
+    return new Set(filteredTableData.map(r => String(r.obs_id ?? '')));
+  }, [filteredTableData]);
+
   const selectedRowsByIds = useMemo(() => {
     return tableData.filter(r => selectedIds.includes(r.obs_id?.toString()));
   }, [tableData, selectedIds]);
 
-  const rowCount = tableData.length;
-  const USE_PAGINATION_THRESHOLD = 500;
-  const usePagination = rowCount > USE_PAGINATION_THRESHOLD;
+  const totalCount = tableData.length;
+  const filteredCount = filteredTableData.length;
 
-  const [hiddenColumns, setHiddenColumns] = useState(() =>
-    toggleableBackendCols.filter(c => !DEFAULT_VISIBLE_COLUMNS.includes(c))
-  );
+  const USE_PAGINATION_THRESHOLD = 500;
+  const usePagination = filteredCount > USE_PAGINATION_THRESHOLD;
+
   const [alertMessage, setAlertMessage] = useState(null);
   const [openDropdownId, setOpenDropdownId] = useState(null);
 
   // Row selection change
   const handleSelectedTableRowsChange = (state) => {
-    const ids = (state.selectedRows || []).map(r => r.obs_id.toString());
+    const newlySelectedVisibleIds = (state.selectedRows || []).map(r => String(r.obs_id ?? ''));
+
+    const keptHiddenSelectedIds = selectedIds.filter(id => !visibleObsIdSet.has(String(id)));
+    const mergedIds = [...new Set([...keptHiddenSelectedIds, ...newlySelectedVisibleIds])];
+
+    const mergedRows = tableData.filter(r => mergedIds.includes(String(r.obs_id ?? '')));
+
     const same =
-      ids.length === selectedIds.length &&
-      ids.every(id => selectedIds.includes(id));
+      mergedIds.length === selectedIds.length &&
+      mergedIds.every(id => selectedIds.includes(id));
+
     if (!same) {
-      onRowSelected?.(state);
+      onRowSelected?.({
+        ...state,
+        selectedRows: mergedRows,
+        selectedCount: mergedRows.length,
+      });
     }
   };
 
@@ -125,6 +181,7 @@ export default function ResultsTable({
     () => allBasketGroups.find(g => g.id === activeBasketGroupId),
     [allBasketGroups, activeBasketGroupId]
   );
+
   const isInActiveBasket = obsId =>
     !!activeBasketGroup?.saved_datasets?.some(item => item.obs_id === obsId);
 
@@ -167,6 +224,7 @@ export default function ResultsTable({
 
   const selectableRowSelected = row =>
     selectedIds.includes(row.obs_id?.toString());
+
   const conditionalRowStyles = [
     {
       when: selectableRowSelected,
@@ -174,9 +232,22 @@ export default function ResultsTable({
     },
   ];
 
-  const SubHeader = () => (
-    <div className="p-2 border-bottom bg-light d-flex align-items-center">
-      <div className="dropdown me-2">
+  // SubHeader (Toggle + Search + Add selected)
+  const onFilterChange = (e) => {
+    setFilterText(e.target.value);
+    setPage(1);
+  };
+
+  const clearFilter = () => {
+    setFilterText('');
+    setPage(1);
+    setResetPaginationToggle(prev => !prev);
+  };
+
+  const subHeaderComponent = useMemo(() => (
+    <div className="p-2 border-bottom bg-light d-flex align-items-center justify-content-between gap-2 flex-wrap">
+      {/* Left: Toggle Columns */}
+      <div className="dropdown">
         <button
           className="btn btn-ctao-galaxy btn-sm dropdown-toggle"
           type="button"
@@ -191,12 +262,14 @@ export default function ResultsTable({
             <button
               className="btn btn-link btn-sm"
               onClick={() => setHiddenColumns(toggleableBackendCols)}
+              type="button"
             >
               Hide All
             </button>
             <button
               className="btn btn-link btn-sm"
               onClick={() => setHiddenColumns([])}
+              type="button"
             >
               Show All
             </button>
@@ -227,16 +300,45 @@ export default function ResultsTable({
           })}
         </div>
       </div>
+
+      {/* Right: Add selected */}
       <button
         className="btn btn-primary btn-sm"
         onClick={addManyToBasket}
         disabled={selectedRowsByIds.length === 0}
+        type="button"
       >
         Add {selectedRowsByIds.length} selected
       </button>
-    </div>
-  );
 
+      {/* Search */}
+      <div className="d-flex align-items-center gap-2 flex-grow-1" style={{ minWidth: 260 }}>
+        <input
+          className="form-control form-control-sm"
+          type="text"
+          placeholder="Filter results…"
+          value={filterText}
+          onChange={onFilterChange}
+        />
+        {filterText.trim() && (
+          <button className="btn btn-outline-secondary btn-sm" onClick={clearFilter} type="button">
+            Clear
+          </button>
+        )}
+      </div>
+
+    </div>
+  ), [
+    filterText,
+    onFilterChange,
+    clearFilter,
+    addManyToBasket,
+    selectedRowsByIds.length,
+    hiddenColumns,
+    toggleableBackendCols,
+  ]);
+
+  // Columns definition
   const tableColumns = useMemo(() => {
     if (!backendColumnNames) return [];
 
@@ -263,6 +365,7 @@ export default function ResultsTable({
                 ? 'Already in active basket'
                 : 'Add to active basket'
             }
+            type="button"
           >
             {inBasket ? 'In Basket' : 'Add'}
           </button>
@@ -282,9 +385,7 @@ export default function ResultsTable({
           <DataLinkDropdown
             datalink_url={row.datalink_url}
             isOpen={row.id === openDropdownId}
-            onToggle={() =>
-              setOpenDropdownId(row.id === openDropdownId ? null : row.id)
-            }
+            onToggle={() => setOpenDropdownId(row.id === openDropdownId ? null : row.id)}
           />
         ) : null,
       ignoreRowClick: true,
@@ -347,6 +448,12 @@ export default function ResultsTable({
     subHeader: { style: { padding: 0, margin: 0 } },
   };
 
+  // "Showing X–Y of N" text
+  const startIndex = filteredCount === 0 ? 0 : (page - 1) * rowsPerPage + 1;
+  const endIndex = usePagination
+    ? Math.min(page * rowsPerPage, filteredCount)
+    : filteredCount; // in scroll mode, show all filtered rows
+
   return (
     <div style={{ overflowX: 'auto' }}>
       {alertMessage && (
@@ -355,9 +462,10 @@ export default function ResultsTable({
           <button type="button" className="btn-close" onClick={handleCloseAlert} />
         </div>
       )}
+
       <DataTable
         columns={tableColumns}
-        data={tableData}
+        data={filteredTableData}
         keyField="id"
         selectableRows
         selectableRowsHighlight
@@ -367,9 +475,11 @@ export default function ResultsTable({
         pointerOnHover
         highlightOnHover
         subHeader
-        subHeaderComponent={<SubHeader />}
+        subHeaderComponent={subHeaderComponent}
+        subHeaderComponentMemo
         subHeaderAlign="left"
         customStyles={customStyles}
+        paginationResetDefaultPage={resetPaginationToggle}
         /* Scroll mode (default): shows more rows when pane is larger */
         fixedHeader={!usePagination}
         fixedHeaderScrollHeight={!usePagination ? "100%" : undefined}
@@ -377,7 +487,25 @@ export default function ResultsTable({
         pagination={usePagination}
         paginationPerPage={25}
         paginationRowsPerPageOptions={[10, 25, 50, 100]}
+        onChangePage={(p) => setPage(p)}
+        onChangeRowsPerPage={(newPerPage, p) => {
+          setRowsPerPage(newPerPage);
+          setPage(p);
+        }}
       />
+
+      <div className="small text-muted mt-2">
+        {filteredCount === 0 ? (
+          <>No results to display.</>
+        ) : (
+          <>
+            Showing <strong>{startIndex}</strong>–<strong>{endIndex}</strong> of{' '}
+            <strong>{filteredCount}</strong>
+            {filterText.trim() ? <> (filtered from {totalCount} total)</> : <> total</>}
+            {usePagination ? <> — page <strong>{page}</strong></> : null}
+          </>
+        )}
+      </div>
     </div>
   );
 }
