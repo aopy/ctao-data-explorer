@@ -20,7 +20,7 @@ export TEX_CONTENT_PATH ?= $(PWD)/report
 #   repository: harbor.cta-observatory.org/suss/ctao-data-explorer-playwright
 
 
-build-dev:  ${KIND}
+build-dev: setup-k8s-cluster
 	docker build -f Dockerfile.backend -t harbor.cta-observatory.org/suss/ctao-data-explorer-backend:dev .
 	docker build -f Dockerfile.frontend -t harbor.cta-observatory.org/suss/ctao-data-explorer-frontend:dev .
 	docker build -f Dockerfile.playwright -t harbor.cta-observatory.org/suss/ctao-data-explorer-playwright:dev .
