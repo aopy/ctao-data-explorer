@@ -32,36 +32,17 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
 
+      {{- with .Values.frontend.extraVolumes }}
       volumes:
-        - name: frontend-static-files
-          persistentVolumeClaim:
-            claimName: frontend-static-files-pvc
-        - name: frontend-node-modules-cache
-          persistentVolumeClaim:
-            claimName: frontend-node-modules-cache-pvc
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
 
-      initContainers:
-      # TODO: do we really want ot build static files on each pod start? probably not - it normally should be done in container image build step
-      # is this hust for dev?
-      - name: build-frontend
-        image: "{{ .Values.global.imageRegistry }}/{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag | default .Chart.AppVersion }}"
-        imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
-        # run as root to be able to write to mounted volume
-        securityContext:
-          runAsNonRoot: false
-          runAsUser: 0
-        # workingDir: /
-        command: ['sh', '-c', 'npm ci && npm run build']
-        volumeMounts:
-          - name: frontend-static-files
-            mountPath: /app/js/build
       containers:
         - name: frontend
           securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
+            {{- toYaml .Values.frontend.securityContext | nindent 12 }}
           image: "{{ .Values.global.imageRegistry }}/{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
-          command: ['npm', 'start']
           ports:
             - name: http
               containerPort: {{ .Values.frontend.service.targetPort }}
@@ -82,11 +63,10 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 3
+          {{- with .Values.frontend.extraVolumeMounts }}
           volumeMounts:
-            - name: frontend-static-files
-              mountPath: /frontend/js/build
-            - name: frontend-node-modules-cache
-              mountPath: /frontend/node_modules/.cache
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
                 
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
@@ -111,44 +91,4 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
 
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: frontend-static-files-pvc
-spec:
-  accessModes:
-    - ReadWriteMany
-  # this is dev setup, so we use manual storage class
-  storageClassName: manual
-  resources:
-    requests:
-      storage: 1Gi
-
----
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: frontend-static-files-pv
-spec:
-  capacity:
-    storage: 1Gi
-  accessModes:
-    - ReadWriteMany
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
-  hostPath:
-    path: /tmp/frontend-static-files
-
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: frontend-node-modules-cache-pvc
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 100Mi 
 {{- end }}

@@ -23,13 +23,13 @@ dev:
 
     resources:
       limits:
-        cpu: 1000m
-        memory: 2Gi
-        ephemeral-storage: 1Gi
-      requests:
-        cpu: 500m
-        memory: 1Gi
+        cpu: 200m
+        memory: 256Mi
         ephemeral-storage: 512Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+        ephemeral-storage: 256Mi
 # Backend (FastAPI) configuration
 backend:
   enabled: true
@@ -118,8 +118,8 @@ frontend:
   
   service:
     type: ClusterIP
-    port: 3000
-    targetPort: 3000
+    port: 80
+    targetPort: 80
   
   resources:
     limits:
@@ -137,9 +137,23 @@ frontend:
     maxReplicas: 3
     targetCPUUtilizationPercentage: 80
 
-  env:
-    # disable host check for testing in k8s
-    DANGEROUSLY_DISABLE_HOST_CHECK: true
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+    allowPrivilegeEscalation: false
+
+  extraVolumes:
+    - name: nginx-cache
+      emptyDir: {}
+    - name: nginx-run
+      emptyDir: {}
+
+  extraVolumeMounts:
+    - name: nginx-cache
+      mountPath: /var/cache/nginx
+    - name: nginx-run
+      mountPath: /var/run
 
 # PostgreSQL configuration
 postgresql:
@@ -193,13 +207,19 @@ redis:
 ingress:
   enabled: true
   className: "nginx"
+
+  # Annotations to add to the ingress resource
+  # Example: cert-manager annotations for automatic TLS certificates
   annotations:
     # cert-manager.io/cluster-issuer: "letsencrypt-prod"
     # kubernetes.io/ingress.class: nginx
     # kubernetes.io/tls-acme: "true"
   
+  # Hostname for accessing the application
+  # You may need to add this to /etc/hosts for local development
+  # Example: 127.0.0.1 ctao-data-explorer.local
   hosts:
-    - host: ctao-data-explorer.test.example
+    - host: ctao-data-explorer.local
       paths:
         - path: /api
           pathType: Prefix
@@ -211,7 +231,7 @@ ingress:
   # tls:
   #   - secretName: data-explorer-tls
   #     hosts:
-  #       - ctao-data-explorer.test.example
+  #       - ctao-data-explorer.local
 
 # Service Account
 serviceAccount:

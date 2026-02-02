@@ -11,6 +11,7 @@ from .tap import (
 )
 import pyvo as vo
 import math
+from pathlib import Path
 from astropy.io.votable import parse_single_table
 from astropy.coordinates import SkyCoord
 from .auth import get_optional_session_user
@@ -75,6 +76,8 @@ logger = logging.getLogger(__name__)
 SIMBAD_TAP_SYNC = settings.SIMBAD_TAP_SYNC
 OBJECT_LOOKUP_URL = settings.NED_OBJECT_LOOKUP_URL
 cookie_params = settings.cookie_params
+
+STATIC_DIR = Path("./js/build")
 
 
 # App Event Handlers for Redis Pool
@@ -967,7 +970,8 @@ app.include_router(basket_router, prefix="/api", include_in_schema=False)
 app.include_router(query_history_router, prefix="/api", include_in_schema=False)
 
 # Mount the React build folder
-app.mount("/", StaticFiles(directory="./js/build", html=True), name="js")
+if STATIC_DIR.exists():
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="js")
 
 # Run the application
 if __name__ == "__main__":
