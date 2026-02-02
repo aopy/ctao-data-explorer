@@ -4,6 +4,6 @@
 repos:
   - repo: 
       https://gitlab.cta-observatory.org/cta-computing/common/aiv-toolkit.git
-    rev: v4.0.0-rc4
+    rev: v4.0.1
     hooks:
       - id: ctao-aiv-toolkit
