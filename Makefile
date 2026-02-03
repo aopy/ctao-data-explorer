@@ -68,14 +68,14 @@ dev-debug-network:
 		curl -s -o /dev/null -w "HTTP %{http_code}\n" http://ctao-data-explorer-frontend.default.svc.cluster.local:8001/health 2>/dev/null; \
 	echo ""; \
 	echo "Browser → Frontend (via Ingress):"; \
-	curl -s -o /dev/null -w "HTTP %{http_code}\n" http://ctao-data-explorer.local:8080/health 2>/dev/null; \
+	curl -s -o /dev/null -w "HTTP %{http_code}\n" http://ctao-data-explorer.test.example:8080/health 2>/dev/null; \
 	echo "✅ Network is correctly set up."
 
 dev-trace-request:
 	@echo "Tracing a request from browser to backend..."
 	@echo ""
 	@echo "1. Browser → Ingress Controller (localhost:8080)"
-	@curl -v http://ctao-data-explorer.local:8080/health 2>&1 | grep "< HTTP"
+	@curl -v http://ctao-data-explorer.test.example:8080/health 2>&1 | grep "< HTTP"
 	@echo ""
 	@echo "2. Ingress → Frontend Pod"
 	@kubectl logs -n ingress-nginx deployment/ingress-nginx-controller --tail=1 | grep ctao-data-explorer-nginx || echo "No recent requests"
@@ -87,7 +87,7 @@ dev-trace-request:
 	@kubectl logs -n default deployment/ctao-data-explorer-backend --tail=5
 
 dev-debug-setup:
-	@echo "\n=== VERIFYING SETUP ==="
+	@echo "=== VERIFYING SETUP ==="
 	@echo ""
 	@echo "1️⃣  Pod IPs:"
 	@kubectl get pods -n default -o wide | grep ctao-data-explorer

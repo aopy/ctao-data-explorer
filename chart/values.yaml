@@ -217,9 +217,9 @@ ingress:
   
   # Hostname for accessing the application
   # You may need to add this to /etc/hosts for local development
-  # Example: 127.0.0.1 ctao-data-explorer.local
+  # Example: 127.0.0.1 ctao-data-explorer.test.example
   hosts:
-    - host: ctao-data-explorer.local
+    - host: ctao-data-explorer.test.example
       paths:
         - path: /api
           pathType: Prefix
@@ -231,7 +231,7 @@ ingress:
   # tls:
   #   - secretName: data-explorer-tls
   #     hosts:
-  #       - ctao-data-explorer.local
+  #       - ctao-data-explorer.test.example
 
 # Service Account
 serviceAccount:
