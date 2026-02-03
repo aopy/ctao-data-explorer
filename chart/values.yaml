@@ -23,13 +23,13 @@ dev:
 
     resources:
       limits:
-        cpu: 200m
-        memory: 256Mi
-        ephemeral-storage: 512Mi
+        cpu: 1Gi
+        memory: 2Gi
+        ephemeral-storage: 2Gi
       requests:
-        cpu: 50m
-        memory: 128Mi
-        ephemeral-storage: 256Mi
+        cpu: 500m
+        memory: 1Gi
+        ephemeral-storage: 1Gi
 # Backend (FastAPI) configuration
 backend:
   enabled: true
