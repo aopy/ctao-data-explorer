@@ -52,8 +52,8 @@ class Settings(BaseSettings):
 
     # OPUS / UWS
     OPUS_ROOT: str = "https://voparis-uws-test.obspm.fr"
-    OPUS_SERVICE: str
-    OPUS_APP_TOKEN: str
+    OPUS_SERVICE: str | None = None
+    OPUS_APP_TOKEN: str | None = None
     OPUS_APP_USER: str = "ctao"
 
     # Metrics

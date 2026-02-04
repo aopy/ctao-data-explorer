@@ -1,0 +1,74 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "ctao-data-explorer-pytest"
+  annotations:
+    "helm.sh/hook": test
+spec:
+  volumes:
+  - name: repo
+    hostPath:
+      path: /repo
+  automountServiceAccountToken: false      
+  containers:
+    - name: pytest
+      # playwright requires ubuntu to run browser tests
+      image: "{{ .Values.global.imageRegistry }}/{{ .Values.dev.test_pod.image.repository }}:{{ .Values.dev.test_pod.image.tag | default .Chart.AppVersion }}"
+      imagePullPolicy: IfNotPresent
+      workingDir: /repo
+      command:
+        - /bin/bash
+        - -c
+        - |
+          
+          # this is a workaround until https://gitlab.cta-observatory.org/cta-computing/common/aiv-toolkit/-/merge_requests/290
+          function add_hosts_alias {
+            original_host="${1:?}"
+            host_alias="${2:?}"
+
+            while [[ -z $(dig ${original_host} +short) ]]; do
+                echo "Waiting for ${original_host} to resolve..."
+                sleep 1
+            done
+            host_ip=$(dig ${original_host} +short | head -n 1)
+
+            echo "${host_ip} ${host_alias}" >> /etc/hosts
+          }
+
+          add_hosts_alias ingress-nginx-controller.ingress-nginx.svc.cluster.local ctao-data-explorer.test.example
+
+          export FRONTEND_URL=http://ctao-data-explorer.test.example
+
+          curl -v $FRONTEND_URL
+
+          . /opt/venv/bin/activate
+
+          {{ if .Values.dev.run_tests }}
+          pytest tests/test_playwrite.py \
+            -v --maxfail=1 --disable-warnings -o log_cli=true --log-cli-level=INFO \
+            --cov \
+            --cov-report=xml:/tmp/coverage.xml \
+            --junitxml=/tmp/report.xml \
+            --color=yes \
+            --browser=firefox --base-url=$FRONTEND_URL 
+
+          curl -T /tmp/coverage.xml http://testkit:8000/coverage.xml
+          curl -T /tmp/report.xml http://testkit:8000/report.xml
+          {{ end }}
+
+          {{ if .Values.dev.sleep }}
+          sleep infinity
+          {{ end }}
+
+
+      volumeMounts:
+        - name: repo
+          mountPath: /repo
+          readOnly: false
+
+      resources:
+      {{- toYaml .Values.dev.test_pod.resources | nindent 8 }}
+      
+
+  restartPolicy: Never

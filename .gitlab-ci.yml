@@ -1,16 +1,71 @@
-workflow:
+include:
+  - project: cta-computing/common/aiv-toolkit
+    ref: e78b620a2db2be7f6177c6ee3b2a8bf35c781093
+    file: ci-functions.yml
+  - aiv-config.yml
+
+
+stages:
+  - prepare
+  - lint
+  - build
+  - sign
+  - tests
+  - sonarqube
+  - publish
+  - report
+  - changelog
+
+build:
+  tags:
+  # playwright build always breaks on DESY-IT, no matter the request
+    - desy-test-cluster
+
+  parallel:
+    matrix:
+      - IMAGE: ["frontend", "backend", "playwright"]
+
+  variables:
+    CI_HARBOR_REGISTRY_IMAGE: 
+      harbor.cta-observatory.org/suss/${CI_PROJECT_NAME}-${IMAGE}:${DOCKER_TAG}
+    AIV_DOCKER_IMAGE_CONTEXT: $CI_PROJECT_DIR
+    AIV_DOCKERFILE: Dockerfile.${IMAGE}
+    DOCKER_CONFIG: /kaniko/.docker
+
+    KUBERNETES_CPU_REQUEST: "1"
+    KUBERNETES_CPU_LIMIT: "2"
+    KUBERNETES_MEMORY_REQUEST: "16Gi"
+    KUBERNETES_MEMORY_LIMIT: "64Gi"
+
+
+k8s-integration-tests:
+  artifacts:
+    when: always
+    paths:
+      - test-in-k8s/
+      - .toolkit/stats/pull-images-statistics.json
+      - .toolkit/stats/testkit-helm-upgrade-statistics.json
+      - test_frontend_screenshot_1_before.png
+      - test_frontend_screenshot_2_resolve.png
+      - test_frontend_screenshot_3_search.png
+    expose_as: "K8s Integration Test Results"
+    reports:
+      junit: test-in-k8s/report.xml
+
+k8s-upgrade-integration-tests:
   rules:
-    - changes:
-        - docs/**/*
-        - mkdocs.yml
-        - requirements-docs.txt
-        - .gitlab-ci.yml
     - when: never
 
-image: python:3.12
+build-docs:
+  rules:
+    - when: never
+
+deploy_docs_env:
+  rules:
+    - when: never
 
 pages:
-  stage: deploy
+  stage: publish
   before_script:
     - pip install -r requirements-docs.txt
   script:

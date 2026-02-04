@@ -1,0 +1,266 @@
+# Default values for ctao-data-explorer.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+global:
+  imagePullSecrets: []
+  imageRegistry: harbor.cta-observatory.org
+  dockerProxy: harbor.cta-observatory.org/proxy_cache
+
+dev:
+  run_tests: true
+  sleep: false
+  mount_repo: true
+
+  frontend:
+    dangerouslyDisableHostCheck: true
+
+  test_pod:
+    image:
+      repository: suss/ctao-data-explorer-playwright      
+      tag: 
+      pullPolicy: IfNotPresent
+
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+        ephemeral-storage: 2Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+        ephemeral-storage: 1Gi
+# Backend (FastAPI) configuration
+backend:
+  enabled: true
+  replicaCount: 1
+  
+  image:
+    repository: suss/ctao-data-explorer-backend
+    pullPolicy: IfNotPresent
+    tag: 
+  
+  service:
+    type: ClusterIP
+    port: 8000
+    targetPort: 8000
+  
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+  
+  env:
+    # Database configuration
+    POSTGRES_USER: ao
+    POSTGRES_PASSWORD: password
+    POSTGRES_DB: fastapi_db
+    # These will be constructed from postgres service
+    # DATABASE_URL: constructed in template
+    # REDIS_URL: constructed in template
+
+    # Back-end base URL (app URL)
+    BASE_URL: http://localhost:8000
+
+    # Database & Redis
+    # REDIS_URL: redis://redis:6379/0
+
+    
+    # Auth/IAM
+    # CTAO_CLIENT_ID: __fill_me__
+    # CTAO_CLIENT_SECRET: __fill_me__
+    # JWT_SECRET: __fill_me__
+    # SECRET_KEY: __fill_me__
+
+    # # OPUS
+    OPUS_ROOT: https://voparis-uws-test.obspm.fr
+    OPUS_SERVICE: gammapy_source_analysis
+    OPUS_APP_TOKEN: __fill_me__
+    OPUS_APP_USER: __fill_me__
+
+    # # Cookies
+    # COOKIE_SAMESITE: None
+    # COOKIE_SECURE: false
+    # COOKIE_DOMAIN:
+
+    # # Metrics
+    # METRICS_ENABLED: true
+    # METRICS_ROUTE: /metrics
+    # METRICS_PROTECT_WITH_BASIC_AUTH: false
+
+    # # Dev toggles
+    # PRODUCTION: false    
+  
+  envFrom: []
+  # - secretRef:
+  #     name: backend-secrets
+  # - configMapRef:
+  #     name: backend-config
+
+# Frontend configuration
+frontend:
+  enabled: true
+  replicaCount: 1
+  
+  image:
+    repository: suss/ctao-data-explorer-frontend
+    pullPolicy: IfNotPresent
+    tag: 
+  
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 80
+  
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 4096Mi
+      ephemeral-storage: 2Gi
+    requests:
+      cpu: 250m
+      memory: 1024Mi
+      ephemeral-storage: 1Gi
+  
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+    allowPrivilegeEscalation: false
+
+  extraVolumes:
+    - name: nginx-cache
+      emptyDir: {}
+    - name: nginx-run
+      emptyDir: {}
+
+  extraVolumeMounts:
+    - name: nginx-cache
+      mountPath: /var/cache/nginx
+    - name: nginx-run
+      mountPath: /var/run
+
+# PostgreSQL configuration
+postgresql:
+  enabled: true
+  auth:
+    username: ao
+    password: password
+    database: fastapi_db
+  
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+      storageClass: ""
+    
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+        ephemeral-storage: 2Gi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+        ephemeral-storage: 1Gi
+  
+  service:
+    type: ClusterIP
+    port: 5432
+
+# Redis configuration
+redis:
+  enabled: true
+  
+  master:
+    persistence:
+      enabled: false
+    
+    resources:
+      limits:
+        cpu: 250m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+  
+  service:
+    type: ClusterIP
+    port: 6379
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: "nginx"
+
+  # Annotations to add to the ingress resource
+  # Example: cert-manager annotations for automatic TLS certificates
+  annotations:
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  
+  # Hostname for accessing the application
+  # You may need to add this to /etc/hosts for local development
+  # Example: 127.0.0.1 ctao-data-explorer.test.example
+  hosts:
+    - host: ctao-data-explorer.test.example
+      paths:
+        - path: /api
+          pathType: Prefix
+          backend: backend
+        - path: /
+          pathType: Prefix
+          backend: frontend
+  
+  # tls:
+  #   - secretName: data-explorer-tls
+  #     hosts:
+  #       - ctao-data-explorer.test.example
+
+# Service Account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# Pod annotations
+podAnnotations: {}
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+# Security context
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}

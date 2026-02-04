@@ -1,0 +1,8 @@
+[project]
+name = "ctao-data-explorer"
+description = "CTAO Data Explorer"
+readme = "README.md"
+
+requires-python = ">=3.10"
+dependencies = []
+

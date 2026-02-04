@@ -23,3 +23,6 @@ js/build/
 # OS/IDE
 .DS_Store
 .vscode/
+
+# Avoid mixing local installation
+.pixi
