@@ -2,7 +2,7 @@
 
 ## Kubernetes
 
-Primary deployment target is on kubernetes (see [chart/](../../chart/README.md) for Helm chart).
+Primary deployment target is on kubernetes (see [chart/](https://gitlab.cta-observatory.org/cta-computing/suss/scienceportal/prototypes/ctao-data-explorer/-/blob/master/chart/README.md) for Helm chart).
 
 
 
