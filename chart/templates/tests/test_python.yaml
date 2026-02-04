@@ -21,14 +21,26 @@ spec:
         - /bin/bash
         - -c
         - |
-          export FRONTEND_URL=http://{{ include "ctao-data-explorer.fullname" . }}-frontend
           
-          echo "Frontend URL: $FRONTEND_URL"
+          # this is a workaround until https://gitlab.cta-observatory.org/cta-computing/common/aiv-toolkit/-/merge_requests/290
+          function add_hosts_alias {
+            original_host="${1:?}"
+            host_alias="${2:?}"
 
-          echo "Waiting for frontend..."
-          until curl -sf "$FRONTEND_URL" >/dev/null; do
-            sleep 2
-          done
+            while [[ -z $(dig ${original_host} +short) ]]; do
+                echo "Waiting for ${original_host} to resolve..."
+                sleep 1
+            done
+            host_ip=$(dig ${original_host} +short | head -n 1)
+
+            echo "${host_ip} ${host_alias}" >> /etc/hosts
+          }
+
+          add_hosts_alias ingress-nginx-controller.ingress-nginx.svc.cluster.local ctao-data-explorer.test.example
+
+          export FRONTEND_URL=http://ctao-data-explorer.test.example
+
+          curl -v $FRONTEND_URL
 
           . /opt/venv/bin/activate
 
@@ -39,8 +51,7 @@ spec:
             --cov-report=xml:/tmp/coverage.xml \
             --junitxml=/tmp/report.xml \
             --color=yes \
-            --browser=firefox
-            --base-url=$FRONTEND_URL 
+            --browser=firefox --base-url=$FRONTEND_URL 
 
           curl -T /tmp/coverage.xml http://testkit:8000/coverage.xml
           curl -T /tmp/report.xml http://testkit:8000/report.xml
