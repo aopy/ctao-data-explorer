@@ -66,6 +66,7 @@ deploy_docs_env:
 
 pages:
   stage: publish
+  needs: []       # replace the inherited dependencies from build-docs
   before_script:
     - pip install -r requirements-docs.txt
   script:
