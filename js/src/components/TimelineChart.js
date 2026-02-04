@@ -35,23 +35,6 @@ const TimelineChart = ({ results, selectedIds = [], onSelectIds = () => {} }) =>
   const [rows, setRows] = useState([]); // [{id, x0UtcISO, x1UtcISO, ttStart, ttEnd}]
   const cancelRef = useRef(false);
 
-  // measure available container height and drive Plotly layout.height with it
-  const containerRef = useRef(null);
-  const [plotH, setPlotH] = useState(240);
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el || !("ResizeObserver" in window)) return;
-
-    const ro = new ResizeObserver(() => {
-      const h = Math.floor(el.getBoundingClientRect().height);
-      setPlotH(Math.max(220, h));
-    });
-
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
   useEffect(() => {
     cancelRef.current = false;
 
@@ -70,7 +53,6 @@ const TimelineChart = ({ results, selectedIds = [], onSelectIds = () => {} }) =>
       }
 
       try {
-        // Collect unique MJDs to reduce duplicate calls
         const mjds = new Set();
         for (const row of data) {
           const a = Number(row[tminIdx]);
@@ -79,7 +61,6 @@ const TimelineChart = ({ results, selectedIds = [], onSelectIds = () => {} }) =>
           if (Number.isFinite(b)) mjds.add(b);
         }
 
-        // Convert all unique MJDs (TT → {utc_isot, tt_isot})
         const uniq = Array.from(mjds);
         const all = await Promise.all(uniq.map(async (m) => [m, await convertMjdTT(m)]));
         if (cancelRef.current) return;
@@ -95,15 +76,13 @@ const TimelineChart = ({ results, selectedIds = [], onSelectIds = () => {} }) =>
 
           return {
             id,
-            x0UtcISO: c0 ? c0.utc_isot : null,
-            x1UtcISO: c1 ? c1.utc_isot : null,
             ttStart: c0 ? c0.tt_isot : null,
             ttEnd: c1 ? c1.tt_isot : null,
           };
         });
 
         if (!cancelRef.current) setRows(out);
-      } catch (e) {
+      } catch {
         if (!cancelRef.current) setRows([]);
       }
     })();
@@ -115,7 +94,7 @@ const TimelineChart = ({ results, selectedIds = [], onSelectIds = () => {} }) =>
 
   const shapes = useMemo(() => {
     return rows
-      .filter((r) => r.x0UtcISO && r.x1UtcISO)
+      .filter((r) => r.ttStart && r.ttEnd)
       .map((r) => {
         const isSelected = selectedIds.includes(r.id);
         return {
@@ -135,28 +114,6 @@ const TimelineChart = ({ results, selectedIds = [], onSelectIds = () => {} }) =>
         };
       });
   }, [rows, selectedIds]);
-
-  const layout = useMemo(
-    () => ({
-      title: "Observation Timeline",
-      xaxis: {
-        type: "date",
-        autorange: true,
-        title: { text: "Time (TT)", standoff: 8 },
-        tickformat: "%Y-%m-%d\n%H:%M:%S",
-        tickangle: -45,
-        automargin: true,
-      },
-      yaxis: { visible: false, range: [0, 1], fixedrange: true },
-      showlegend: false,
-      autosize: true,
-      height: plotH,
-      margin: { l: 40, r: 10, t: 42, b: 75 },
-      hovermode: "closest",
-      shapes,
-    }),
-    [shapes, plotH]
-  );
 
   const plotData = useMemo(() => {
     if (!rows.length) return [];
@@ -182,10 +139,27 @@ const TimelineChart = ({ results, selectedIds = [], onSelectIds = () => {} }) =>
     ];
   }, [rows]);
 
-  const [revision, setRevision] = useState(0);
-  useEffect(() => {
-    setRevision((v) => v + 1);
-  }, [results, selectedIds, plotH]);
+  const layout = useMemo(
+    () => ({
+      title: "Observation Timeline",
+      xaxis: {
+        type: "date",
+        autorange: true,
+        title: { text: "Time (TT)", standoff: 8 },
+        tickformat: "%Y-%m-%d\n%H:%M:%S",
+        tickangle: -45,
+        automargin: true,
+      },
+      yaxis: { visible: false, range: [0, 1], fixedrange: true },
+      showlegend: false,
+      autosize: true,
+      margin: { l: 40, r: 10, t: 42, b: 75 },
+      hovermode: "closest",
+      shapes,
+      uirevision: "timeline",
+    }),
+    [shapes]
+  );
 
   if (!rows.length) return <div>No data available for the timeline.</div>;
 
@@ -201,11 +175,10 @@ const TimelineChart = ({ results, selectedIds = [], onSelectIds = () => {} }) =>
   const clearAll = () => onSelectIds([]);
 
   return (
-    <div ref={containerRef} style={{ width: "100%", height: "100%", minHeight: 0 }}>
+    <div style={{ width: "100%", height: "100%", minHeight: 220 }}>
       <Plot
         data={plotData}
         layout={layout}
-        revision={revision}
         style={{ width: "100%", height: "100%" }}
         useResizeHandler
         config={{ responsive: true }}
