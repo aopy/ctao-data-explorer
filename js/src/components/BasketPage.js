@@ -1,394 +1,557 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import axios from 'axios';
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import axios from "axios";
 import { AUTH_PREFIX, API_PREFIX } from "../index";
-import { mjdToDate, formatDateTimeStrings } from './datetimeUtils';
+import { mjdToDate, formatDateTimeStrings } from "./datetimeUtils";
 import QuickLookModal from "./QuickLookModal";
 
-const formatTmin = (mjd) => {
-  if (mjd == null || mjd === '') return '';
-  const mjdNum = Number(String(mjd).replace(',', '.'));
-  if (!Number.isFinite(mjdNum)) return '';
+// helpers
+const asId = (v) => (v == null ? "" : String(v));
+
+const formatTminUtc = (mjd) => {
+  if (mjd == null || mjd === "") return "";
+  const mjdNum = Number(String(mjd).replace(",", "."));
+  if (!Number.isFinite(mjdNum)) return "";
   const date = mjdToDate(mjdNum);
-  if (!date) return '';
-  const { dateStr, timeStr } = formatDateTimeStrings(date); // both UTC
+  if (!date) return "";
+  const { dateStr, timeStr } = formatDateTimeStrings(date); // UTC
   return `${dateStr} ${timeStr} UTC`;
 };
 
-export function BasketTab({ rows }) {
+// Format "YYYY-MM-DDThh:mm:ss.sss" → "dd/MM/yyyy hh:mm:ss TT"
+const formatTtIso = (tt_isot) => {
+  if (!tt_isot) return "";
+  const [d, t] = tt_isot.split("T");
+  const [y, m, day] = d.split("-");
+  return `${day}/${m}/${y} ${t.slice(0, 8)} TT`;
+};
+
+
+function BasketTab({ obsIds }) {
   const [open, setOpen] = useState(false);
-  const obsIds = useMemo(
-    () => rows.filter(r => r.selected).map(r => String(r.obs_id)),
-    [rows]
-  );
   return (
     <>
-      <button onClick={() => setOpen(true)} disabled={!obsIds.length}>
+      <button
+        type="button"
+        className="btn btn-sm btn-ctao-galaxy"
+        onClick={() => setOpen(true)}
+        disabled={!obsIds.length}
+        title={!obsIds.length ? "Basket is empty" : "Create a preview job from this basket"}
+      >
         Run Preview Job
       </button>
-      <QuickLookModal isOpen={open} onClose={()=>setOpen(false)} obsIds={obsIds}/>
+      <QuickLookModal isOpen={open} onClose={() => setOpen(false)} obsIds={obsIds} />
     </>
   );
 }
 
-function BasketPage({ isLoggedIn, onOpenItem, onActiveGroupChange, refreshTrigger,
-onBasketGroupsChange, allBasketGroups = [], activeBasketGroupId }) {
-  const [basketGroups, setBasketGroups] = useState([]);
-  const [newGroupName, setNewGroupName] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [editingGroupName, setEditingGroupName] = useState('');
+function ConfirmModal({
+  show,
+  title = "Confirm",
+  body,
+  confirmText = "Confirm",
+  cancelText = "Cancel",
+  confirmVariant = "danger",
+  isBusy = false,
+  onCancel,
+  onConfirm,
+}) {
+  if (!show) return null;
 
-  const [tminTTLabels, setTminTTLabels] = useState({}); // { '53343.92': '04/12/2004 22:04:48 TT', ... }
+  // Bootstrap-like z-indexes
+  const Z_BACKDROP = 1050;
+  const Z_MODAL = 1055;
 
-  // Format "YYYY-MM-DDThh:mm:ss.sss" → "dd/MM/yyyy hh:mm:ss TT"
-  const formatTtIso = (tt_isot) => {
-    if (!tt_isot) return '';
-    const [d, t] = tt_isot.split('T');
-    const [y, m, day] = d.split('-');
-    return `${day}/${m}/${y} ${t.slice(0, 8)} TT`;
+  const handleCancel = () => {
+    if (!isBusy) onCancel?.();
   };
 
-  const activeGroup = useMemo(() => {
-      if (!activeBasketGroupId) return null;
-      return allBasketGroups.find(group => group.id === activeBasketGroupId);
-    }, [allBasketGroups, activeBasketGroupId]);
+  return (
+    <>
+      <div className="modal-backdrop fade show" style={{ zIndex: Z_BACKDROP }} onClick={handleCancel} />
+      <div
+        className="modal show"
+        style={{ display: "block", zIndex: Z_MODAL }}
+        role="dialog"
+        aria-modal="true"
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="modal-dialog modal-dialog-centered" role="document">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title">{title}</h5>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={handleCancel}
+                aria-label="Close"
+                disabled={isBusy}
+              />
+            </div>
 
-  // Refresh TT labels whenever the visible items change
+            <div className="modal-body">
+              {typeof body === "string" ? <p className="mb-0">{body}</p> : body}
+            </div>
+
+            <div className="modal-footer">
+              <button type="button" className="btn btn-outline-secondary" onClick={handleCancel} disabled={isBusy}>
+                {cancelText}
+              </button>
+              <button
+                type="button"
+                className={`btn btn-${confirmVariant}`}
+                onClick={() => onConfirm?.()}
+                disabled={isBusy}
+              >
+                {isBusy ? (
+                  <>
+                    <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
+                    Working…
+                  </>
+                ) : (
+                  confirmText
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// main page
+
+export default function BasketPage({
+  isLoggedIn,
+  onOpenItem,
+  onActiveGroupChange,
+  refreshTrigger,
+  onBasketGroupsChange,
+  allBasketGroups = [],
+  activeBasketGroupId,
+}) {
+  const activeId = asId(activeBasketGroupId);
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const [newGroupName, setNewGroupName] = useState("");
+  const [editingGroupName, setEditingGroupName] = useState("");
+
+  // delete confirmation
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+
+  // TT labels cache: { mjdStr: "dd/MM/yyyy hh:mm:ss TT" }
+  const [tminTTLabels, setTminTTLabels] = useState({});
+
+  const activeGroup = useMemo(() => {
+    if (!activeId) return null;
+    return (allBasketGroups || []).find((g) => asId(g.id) === activeId) || null;
+  }, [allBasketGroups, activeId]);
+
+  const otherGroups = useMemo(() => {
+    const groups = allBasketGroups || [];
+    if (!activeId) return groups;
+    return groups.filter((g) => asId(g.id) !== activeId);
+  }, [allBasketGroups, activeId]);
+
+  // keep header input in sync with active group
   useEffect(() => {
-    const items = (activeGroup ? activeGroup.saved_datasets || [] : []);
+    setEditingGroupName(activeGroup?.name || "");
+  }, [activeGroup]);
+
+  const fetchBasketGroups = useCallback(async () => {
+    if (!isLoggedIn) {
+      setError(null);
+      onBasketGroupsChange?.([]);
+      onActiveGroupChange?.(null);
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const res = await axios.get(`${API_PREFIX}/basket/groups`);
+      const rawGroups = res.data || [];
+
+      // normalize IDs to string in the objects we send upward
+      const groups = rawGroups.map((g) => ({
+        ...g,
+        id: asId(g.id),
+      }));
+
+      onBasketGroupsChange?.(groups);
+
+      // decide which id should be active
+      let idToActivate = activeId;
+      if ((!idToActivate || !groups.some((g) => g.id === idToActivate)) && groups.length > 0) {
+        idToActivate = groups[0].id;
+      }
+      onActiveGroupChange?.(idToActivate || null);
+    } catch (err) {
+      console.error("Error fetching basket groups", err);
+      setError("Failed to load basket data.");
+      onBasketGroupsChange?.([]);
+      onActiveGroupChange?.(null);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isLoggedIn, onBasketGroupsChange, onActiveGroupChange, activeId]);
+
+  useEffect(() => {
+    fetchBasketGroups();
+  }, [fetchBasketGroups, refreshTrigger]);
+
+  // optional ping
+  useEffect(() => {
+    if (isLoggedIn) axios.get(`${AUTH_PREFIX}/users/me_from_session`).catch(() => {});
+  }, [isLoggedIn]);
+
+  // Update TT labels whenever active group's visible items change
+  useEffect(() => {
+    const items = activeGroup?.saved_datasets || [];
     const uniqueMjds = Array.from(
       new Set(
         items
           .map((it) => it?.dataset_json?.t_min)
           .filter((v) => v != null)
-          .map((v) => Number(String(v).replace(',', '.')))
+          .map((v) => Number(String(v).replace(",", ".")))
           .filter((n) => Number.isFinite(n))
       )
     );
-    if (!uniqueMjds.length) { setTminTTLabels({}); return; }
+
+    if (!uniqueMjds.length) {
+      setTminTTLabels({});
+      return;
+    }
+
     let cancelled = false;
+
     (async () => {
       try {
         const pairs = await Promise.all(
           uniqueMjds.map(async (m) => {
-            const resp = await axios.post('/api/convert_time', {
+            const resp = await axios.post("/api/convert_time", {
               value: String(m),
-              input_format: 'mjd',
-              input_scale: 'tt'
+              input_format: "mjd",
+              input_scale: "tt",
             });
             return [String(m), formatTtIso(resp.data.tt_isot)];
           })
         );
-        if (!cancelled) {
-          const map = Object.fromEntries(pairs);
-          setTminTTLabels(map);
-        }
+        if (!cancelled) setTminTTLabels(Object.fromEntries(pairs));
       } catch {
         if (!cancelled) setTminTTLabels({});
       }
     })();
-    return () => { cancelled = true; };
+
+    return () => {
+      cancelled = true;
+    };
   }, [activeGroup]);
-
-  useEffect(() => {
-    if (isLoggedIn) axios.get(`${AUTH_PREFIX}/users/me_from_session`);
-  }, [isLoggedIn, activeBasketGroupId]);
-
-
-  useEffect(() => {
-      setEditingGroupName(activeGroup?.name || '');
-  }, [activeGroup]);
-
-  const fetchBasketGroups = async () => {
-     // Only fetch if logged in
-     if (!isLoggedIn) {
-       // setActiveGroup(null);
-      setError(null);
-      if (onBasketGroupsChange) onBasketGroupsChange([]);
-      if (onActiveGroupChange) onActiveGroupChange(null, []);
-      return;
-     }
-
-    setIsLoading(true);
-    setError(null);
-    try {
-      const res = await axios.get(`${API_PREFIX}/basket/groups`);
-      const groups = res.data || [];
-      // Let parent know about the fetched groups
-      if (onBasketGroupsChange) onBasketGroupsChange(groups);
-      // Use the activeBasketGroupId passed via props as the source of truth
-      let idToActivate = activeBasketGroupId;
-      if ((!idToActivate || !groups.some(g => g.id === idToActivate)) && groups.length > 0) {
-          // default to the first group's id
-          idToActivate = groups[0].id;
-      }
-      const groupToActivate = groups.find(g => g.id === idToActivate);
-      // Tell the parent component which group ID is active and its datasets
-      if (onActiveGroupChange && groupToActivate) {
-          onActiveGroupChange(groupToActivate.id, groupToActivate.saved_datasets || []);
-      } else if (onActiveGroupChange) {
-          // If no group ended up being activated
-          onActiveGroupChange(null, []);
-      }
-    } catch (err) {
-       console.error('Error fetching basket groups', err);
-       setError('Failed to load basket data.');
-       if (onBasketGroupsChange) onBasketGroupsChange([]);
-       if (onActiveGroupChange) onActiveGroupChange(null, []);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // useEffect depends on isLoggedIn and refreshTrigger
-  useEffect(() => {
-    fetchBasketGroups();
-  }, [isLoggedIn, refreshTrigger]);
 
   const handleSetActiveGroup = (group) => {
-    // setActiveGroup(group);
-    if (onActiveGroupChange) {
-      onActiveGroupChange(group.id, group.saved_datasets || []);
-    }
+    const id = asId(group?.id);
+    if (!id) return;
+    onActiveGroupChange?.(id);
   };
 
   const createNewGroup = async () => {
-    if (!newGroupName.trim()) {
-        // Provide feedback to the user that name is needed?
-        return;
-    }
+    const name = newGroupName.trim();
+    if (!name) return;
     setError(null);
-    // Set loading state for the create button
-    // setIsLoadingCreate(true);
 
     try {
-      const name = newGroupName.trim();
-      // Make the API call to create the group
       await axios.post(`${API_PREFIX}/basket/groups`, { name });
-
-      setNewGroupName('');
-      fetchBasketGroups();
-
+      setNewGroupName("");
+      await fetchBasketGroups();
     } catch (err) {
-      console.error('Error creating new basket group', err);
-      setError('Failed to create group. Please try again.');
-    } finally {
-      // Reset loading state
-      // setIsLoadingCreate(false);
+      console.error("Error creating new basket group", err);
+      setError("Failed to create group. Please try again.");
     }
   };
 
   const renameGroup = async (groupId, newName) => {
-    const trimmedName = newName.trim();
-    if (!trimmedName || !activeGroup || trimmedName === activeGroup.name) {
-        setEditingGroupName(activeGroup?.name || '');
-        return;
+    const id = asId(groupId);
+    const trimmedName = (newName || "").trim();
+
+    if (!id || !activeGroup) return;
+    if (!trimmedName || trimmedName === activeGroup.name) {
+      setEditingGroupName(activeGroup?.name || "");
+      return;
     }
+
     setError(null);
     try {
-      await axios.put(`${API_PREFIX}/basket/groups/${groupId}`, { name: trimmedName });
-      fetchBasketGroups();
+      await axios.put(`${API_PREFIX}/basket/groups/${id}`, { name: trimmedName });
+      await fetchBasketGroups();
     } catch (err) {
-      console.error('Error renaming basket group', err);
-      setError('Failed to rename group.');
-      setEditingGroupName(activeGroup?.name || '');
+      console.error("Error renaming basket group", err);
+      setError("Failed to rename group.");
+      setEditingGroupName(activeGroup?.name || "");
     }
   };
 
-  const deleteGroup = async (groupId) => {
-    // Add confirmation dialog
-    if (!window.confirm(`Are you sure you want to delete this basket group? This cannot be undone.`)) {
-        return;
-    }
+  const requestDeleteGroup = () => setShowDeleteModal(true);
+
+  const confirmDeleteGroup = async () => {
+    if (!activeGroup) return;
+    setDeleteBusy(true);
     setError(null);
+
     try {
-      await axios.delete(`${API_PREFIX}/basket/groups/${groupId}`);
-      fetchBasketGroups();
+      await axios.delete(`${API_PREFIX}/basket/groups/${activeGroup.id}`);
+      setShowDeleteModal(false);
+      await fetchBasketGroups();
     } catch (err) {
-      console.error('Error deleting basket group', err);
-      setError('Failed to delete group.');
+      console.error("Error deleting basket group", err);
+      setError("Failed to delete group.");
+    } finally {
+      setDeleteBusy(false);
     }
   };
 
   const deleteItem = async (itemId) => {
     if (!activeGroup) {
-        setError("No active group selected to delete from.");
-        return;
+      setError("No active group selected to delete from.");
+      return;
     }
     setError(null);
+
     try {
       await axios.delete(`${API_PREFIX}/basket/groups/${activeGroup.id}/items/${itemId}`);
-
-      fetchBasketGroups();
-
+      await fetchBasketGroups();
     } catch (err) {
-       if (err.response && err.response.status === 404) {
-         setError(`Item or group not found.`);
-         fetchBasketGroups();
-       } else {
-         console.error('Error deleting basket item link', err);
-         setError('Failed to delete item from basket.');
-       }
+      if (err.response && err.response.status === 404) {
+        setError("Item or group not found.");
+        await fetchBasketGroups();
+      } else {
+        console.error("Error deleting basket item link", err);
+        setError("Failed to delete item from basket.");
+      }
     }
   };
 
-  const duplicateGroup = async (groupId) => {
-  setError(null);
-  try {
-    await axios.post(`${API_PREFIX}/basket/groups/${groupId}/duplicate`);
-    fetchBasketGroups();
-  } catch (err) {
-    console.error('Error duplicating basket group', err);
-    setError('Failed to duplicate group.');
-  }
+  const duplicateGroup = async () => {
+    if (!activeGroup) return;
+    setError(null);
+
+    try {
+      await axios.post(`${API_PREFIX}/basket/groups/${activeGroup.id}/duplicate`);
+      await fetchBasketGroups();
+    } catch (err) {
+      console.error("Error duplicating basket group", err);
+      setError("Failed to duplicate group.");
+    }
   };
 
-  const openItemModal = (item) => {
-    onOpenItem(item);
-  };
+  const openItemModal = (item) => onOpenItem?.(item);
 
-  // Determine items to show based on local activeGroup state
-  const itemsToShow = activeGroup ? activeGroup.saved_datasets || [] : [];
+  const itemsToShow = activeGroup?.saved_datasets || [];
 
-  // Handle loading and error states
-  if (isLoading) {
-      return <div className="mt-3 text-center">Loading basket...</div>;
-  }
+  const obsIdsForQuickLook = useMemo(
+    () => (itemsToShow || []).map((it) => asId(it.obs_id)).filter(Boolean),
+    [itemsToShow]
+  );
 
-  if (error) {
-      return <div className="alert alert-danger mt-3">{error}</div>;
-  }
+  // states
 
-  if (!isLoggedIn) {
-      return <div className="alert alert-warning mt-3">Please log in to view your basket.</div>;
-  }
-
-  const rowsForQuickLook = (itemsToShow || []).map((item) => ({
-    obs_id: item.obs_id,
-    selected: true, // treat all visible items as selected
-  }));
-
+  if (isLoading) return <div className="mt-3 text-center">Loading basket...</div>;
+  if (error) return <div className="alert alert-danger mt-3">{error}</div>;
+  if (!isLoggedIn) return <div className="alert alert-warning mt-3">Please log in to view your basket.</div>;
 
   return (
     <div className="mt-3">
-       {/* Active Basket Section */}
-       {activeGroup ? (
+      <ConfirmModal
+        show={showDeleteModal}
+        title="Delete basket?"
+        body={
+          <div>
+            <p className="mb-2">
+              This will permanently delete <strong>{activeGroup?.name || "this basket"}</strong> and all its saved items.
+            </p>
+            <p className="mb-0 text-muted small">This action cannot be undone.</p>
+          </div>
+        }
+        confirmText="Yes, delete"
+        cancelText="Cancel"
+        confirmVariant="danger"
+        isBusy={deleteBusy}
+        onCancel={() => setShowDeleteModal(false)}
+        onConfirm={confirmDeleteGroup}
+      />
+
+      {/* Active basket */}
+      {activeGroup ? (
         <div className="card mb-3">
-            <div className="card-header d-flex justify-content-between align-items-center">
-                {/* Editable Name - using controlled input */}
-                <input
-                    type="text"
-                    className="form-control form-control-sm w-50"
-                    value={editingGroupName}
-                    onChange={(e) => setEditingGroupName(e.target.value)}
-                    onBlur={() => renameGroup(activeGroup.id, editingGroupName)}
-                    onKeyPress={(e) => { if (e.key === 'Enter') renameGroup(activeGroup.id, editingGroupName); }}
-                    aria-label="Current basket name"
-                    placeholder="Basket name..."
-                />
+          <div className="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+            <div className="d-flex align-items-center gap-2 flex-grow-1" style={{ minWidth: 260 }}>
+              <span className="text-muted small">Active basket</span>
 
-                <div className="d-flex align-items-center">
-                  {/* OPUS settings and Quick Look */}
-                  <BasketTab rows={rowsForQuickLook} />
-                {/* Duplicate basket */}
-                <button
-                  className="btn btn-sm btn-outline-secondary ms-2 me-2"
-                  onClick={() => duplicateGroup(activeGroup.id)}
-                  title="Duplicate this basket"
-                >
-                  <i className="bi bi-files me-1" />
-                  Duplicate
-                </button>
-                <button
-                    className="btn btn-sm btn-danger"
-                    onClick={() => deleteGroup(activeGroup.id)}
-                >
-                    Delete Basket
-                </button>
+              <input
+                type="text"
+                className="form-control form-control-sm"
+                value={editingGroupName}
+                onChange={(e) => setEditingGroupName(e.target.value)}
+                onBlur={() => renameGroup(activeGroup.id, editingGroupName)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    renameGroup(activeGroup.id, editingGroupName);
+                    e.currentTarget.blur();
+                  }
+                  if (e.key === "Escape") {
+                    setEditingGroupName(activeGroup.name || "");
+                    e.currentTarget.blur();
+                  }
+                }}
+                aria-label="Current basket name"
+                placeholder="Basket name..."
+              />
+            </div>
+
+            <div className="d-flex align-items-center gap-2">
+              <BasketTab obsIds={obsIdsForQuickLook} />
+
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary"
+                onClick={duplicateGroup}
+                title="Duplicate this basket"
+              >
+                <i className="bi bi-files me-1" />
+                Duplicate
+              </button>
+
+              <button type="button" className="btn btn-sm btn-danger" onClick={requestDeleteGroup}>
+                Delete Basket
+              </button>
+            </div>
+          </div>
+
+          <div className="card-body p-0">
+            {itemsToShow.length > 0 ? (
+              <ul className="list-group list-group-flush">
+                {itemsToShow.map((item) => {
+                  const ds = item.dataset_json || {};
+                  const targetName = ds.target_name || "N/A";
+
+                  const mjdNum = Number(String(ds.t_min).replace(",", "."));
+                  const mjdKey = String(mjdNum);
+
+                  const tminStr = Number.isFinite(mjdNum)
+                    ? tminTTLabels[mjdKey] || "…"
+                    : formatTminUtc(ds.t_min) || "…";
+
+                  return (
+                    <li
+                      key={asId(item.id)}
+                      className="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2"
+                    >
+                      <div>
+                        Obs. id: <strong>{asId(item.obs_id)}</strong>{" "}
+                        <small className="text-muted">| Target: {targetName} | T_min: {tminStr}</small>
+                      </div>
+
+                      <div className="d-flex gap-2">
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-primary"
+                          onClick={() => openItemModal(item)}
+                        >
+                          View
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-danger"
+                          onClick={() => deleteItem(item.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <div className="p-3">
+                <p className="text-muted mb-0">No items in this basket.</p>
               </div>
-            </div>
-            <div className="card-body">
-                {itemsToShow.length > 0 ? (
-                <ul className="list-group list-group-flush">
-                    {itemsToShow.map((item) => {
-                        const ds = item.dataset_json || {};
-                        const targetName = ds.target_name || 'N/A';
-                        const mjdKey = String(Number(String(ds.t_min).replace(',', '.')));
-                        const tmin_str = tminTTLabels[mjdKey] || '…';
-                        return (
-                            <li key={item.id} className="list-group-item d-flex justify-content-between align-items-center">
-                                <div>
-                                    Obs. id: <strong>{item.obs_id}</strong> <small>| Target Name: {targetName} | T_min: {tmin_str}</small>
-                                </div>
-                                <div>
-                                    <button
-                                        className="btn btn-sm btn-outline-primary me-2"
-                                        onClick={() => openItemModal(item)}
-                                    >
-                                        View
-                                    </button>
-                                    <button
-                                        className="btn btn-sm btn-outline-danger"
-                                        onClick={() => deleteItem(item.id)}
-                                    >
-                                        Delete
-                                    </button>
-                                </div>
-                            </li>
-                        );
-                    })}
-                </ul>
-                ) : (
-                <p className="text-muted">No items in this basket.</p>
-                )}
-            </div>
+            )}
+          </div>
         </div>
-       ) : (
-           <div className="alert alert-info">You have no baskets. Create one below.</div>
-       )}
+      ) : (
+        <div className="alert alert-info">You have no baskets. Create one below.</div>
+      )}
 
+      {/* Other baskets */}
+      {otherGroups.length > 0 && (
+        <div className="card mb-3">
+          <div className="card-header d-flex align-items-center justify-content-between">
+            <div>
+              <div className="fw-semibold">Other baskets</div>
+              <div className="text-muted small">Switch your active basket</div>
+            </div>
+            <span className="badge bg-secondary">{otherGroups.length}</span>
+          </div>
 
-      {/* Other Basket Groups Section */}
-      {allBasketGroups.length > 1 && (
-        <div className="mb-3">
-          <h5>Other Baskets</h5>
-          <div className="list-group">
-            {allBasketGroups
-              .filter((group) => !activeBasketGroupId || group.id !== activeBasketGroupId)
-              .map((group) => (
+          <div className="card-body p-0">
+            <div className="list-group list-group-flush">
+              {otherGroups.map((group) => (
                 <button
-                  key={group.id}
+                  key={asId(group.id)}
                   type="button"
                   className="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
                   onClick={() => handleSetActiveGroup(group)}
+                  title="Make this basket active"
                 >
-                  {group.name}
+                  <span className="text-truncate" style={{ maxWidth: "70%" }}>
+                    {group.name}
+                  </span>
                   <span className="badge bg-secondary rounded-pill">{group.saved_datasets?.length || 0} items</span>
                 </button>
               ))}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Create New Group Section */}
-      <div className="mb-3">
-        <h5>Create New Basket</h5>
-        <div className="input-group">
-          <input
-            type="text"
-            className="form-control"
-            placeholder="New basket name"
-            value={newGroupName}
-            onChange={(e) => setNewGroupName(e.target.value)}
-            onKeyPress={(e) => { if (e.key === 'Enter') createNewGroup(); }}
-          />
-          <button className="btn btn-outline-primary" onClick={createNewGroup} disabled={!newGroupName.trim()}>
-            Create
-          </button>
+      {/* Create new basket */}
+      <div className="card mb-3">
+        <div className="card-header">
+          <div className="fw-semibold">Create a new basket</div>
+          <div className="text-muted small">Give it a short, descriptive name</div>
+        </div>
+
+        <div className="card-body">
+          <div className="input-group">
+            <input
+              type="text"
+              className="form-control"
+              placeholder="New basket name"
+              value={newGroupName}
+              onChange={(e) => setNewGroupName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  createNewGroup();
+                }
+              }}
+            />
+            <button
+              className="btn btn-outline-primary"
+              onClick={createNewGroup}
+              disabled={!newGroupName.trim()}
+              type="button"
+            >
+              Create
+            </button>
+          </div>
         </div>
       </div>
     </div>
   );
 }
-
-export default BasketPage;

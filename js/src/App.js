@@ -227,14 +227,22 @@ function TabsApp() {
     });
   }, []);
 
-  const handleBasketGroupsChange = (groups) => {
-    setAllBasketGroups(groups || []);
-    if (activeBasketGroupId && !groups.some((g) => g.id === activeBasketGroupId)) {
-      setActiveBasketGroupId(groups.length > 0 ? groups[0].id : null);
-    } else if (!activeBasketGroupId && groups.length > 0) {
-      setActiveBasketGroupId(groups[0].id);
-    }
-  };
+  const handleBasketGroupsChange = useCallback((groups) => {
+    const normalized = (groups || []).map(g => ({ ...g, id: String(g.id) }));
+
+    setAllBasketGroups(normalized);
+
+    setActiveBasketGroupId((prev) => {
+      const prevStr = prev == null ? null : String(prev);
+      if (!normalized.length) return null;
+      if (prevStr && normalized.some((g) => g.id === prevStr)) return prevStr;
+      return normalized[0].id;
+    });
+  }, []);
+
+  const handleActiveGroupChange = useCallback((groupId) => {
+    setActiveBasketGroupId(groupId == null ? null : String(groupId));
+  }, []);
 
   const handleBasketItemAdded = (newItem, addedToGroupId) => {
     setAllBasketGroups((prevGroups) =>
@@ -574,7 +582,7 @@ function TabsApp() {
                   <BasketPage
                     isLoggedIn={isLoggedIn}
                     onOpenItem={handleOpenBasketItem}
-                    onActiveGroupChange={(groupId) => setActiveBasketGroupId(groupId)}
+                    onActiveGroupChange={handleActiveGroupChange}
                     onBasketGroupsChange={handleBasketGroupsChange}
                     refreshTrigger={basketRefreshCounter}
                     allBasketGroups={allBasketGroups}

@@ -118,7 +118,7 @@ export default function ResultsTable({
   const totalCount = tableData.length;
   const filteredCount = filteredTableData.length;
 
-  const USE_PAGINATION_THRESHOLD = 500;
+  const USE_PAGINATION_THRESHOLD = 100;
   const usePagination = filteredCount > USE_PAGINATION_THRESHOLD;
 
   const [alertMessage, setAlertMessage] = useState(null);
