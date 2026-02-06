@@ -66,7 +66,7 @@ export default function QuickLookModal({ isOpen, onClose, obsIds = [], defaultCe
       e?.response?.data?.detail ||
       e?.response?.data?.message ||
       e.message ||
-      "Failed to submit Quick-Look job.";
+      "Failed to submit Preview Job.";
     toast.error(msg);
   } finally {
     setBusy(false);
@@ -89,7 +89,7 @@ export default function QuickLookModal({ isOpen, onClose, obsIds = [], defaultCe
           <div className="modal-content">
             <div className="modal-header">
               <h5 className="modal-title">
-                Quick-Look Analysis
+                Preview Job
                 {service && (
                   <span className="badge bg-info text-dark ms-2">
                     Service: {service}

@@ -602,6 +602,15 @@ function TabsApp() {
               }
             />
 
+            <Route
+              path="/opus/jobs/:jobId"
+              element={
+                <RequireAuth isLoggedIn={isLoggedIn}>
+                  <OpusJobDetailPage />
+                </RequireAuth>
+              }
+            />
+
             {/* Query Store (auth) */}
             <Route
               path="/query-store"
@@ -640,10 +649,6 @@ function TabsApp() {
 export default function App() {
   return (
     <Routes>
-      {/* Deep link route (with HashRouter: #/opus/jobs/:jobId) */}
-      <Route path="/opus/jobs/:jobId" element={<OpusJobDetailPage />} />
-
-      {/* Everything else is the tabbed app */}
       <Route path="/*" element={<TabsApp />} />
     </Routes>
   );

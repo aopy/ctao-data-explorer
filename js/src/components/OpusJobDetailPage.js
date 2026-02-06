@@ -4,7 +4,18 @@ import { jobDetails, jobResults } from "./opusApi";
 import { toast } from "react-toastify";
 
 const asArray = (x) => (Array.isArray(x) ? x : x ? [x] : []);
-const textify = (v) => (v == null ? "" : String(v));
+
+function textify(v) {
+  if (v == null) return "";
+  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return String(v);
+  if (typeof v === "object") {
+    if (Object.prototype.hasOwnProperty.call(v, "#text")) return String(v["#text"] ?? "");
+    if (Object.prototype.hasOwnProperty.call(v, "_")) return String(v["_"] ?? "");
+    if (Object.prototype.hasOwnProperty.call(v, "value")) return String(v.value ?? "");
+  }
+
+  return "";
+}
 
 const TERMINAL = new Set(["COMPLETED", "ABORTED", "ERROR"]);
 
@@ -80,7 +91,7 @@ export default function OpusJobDetailPage() {
   const [resultsJson, setResultsJson] = useState(null);
   const [loading, setLoading] = useState(true);
   const [polling, setPolling] = useState(true);
-  const [openPreview, setOpenPreview] = useState(true);
+  const [openPreview, setOpenPreview] = useState({});
 
   // fetchers
   const fetchDetails = useCallback(async () => {
@@ -88,8 +99,9 @@ export default function OpusJobDetailPage() {
     setJobJson(j);
 
     try {
-      const id = textify(jobObj["uws:jobId"]) || jobId;
-      localStorage.setItem("lastOpusJobId", id);
+      const job = j?.["uws:job"] || j || {};
+      const idFromPayload = textify(job["uws:jobId"]) || jobId;
+      localStorage.setItem("lastOpusJobId", idFromPayload);
     } catch {}
 
     return j;
@@ -99,7 +111,8 @@ export default function OpusJobDetailPage() {
     try {
       const r = await jobResults(jobId);
       setResultsJson(r);
-    } catch (e) {
+    } catch {
+      // ignore transient errors
     }
   }, [jobId]);
 
@@ -126,7 +139,7 @@ export default function OpusJobDetailPage() {
           e?.response?.data?.detail ||
           e?.response?.data?.message ||
           e?.message ||
-          "Failed to load OPUS job.";
+          "Failed to load job.";
         toast.error(msg);
         setPolling(false);
       } finally {
@@ -145,6 +158,7 @@ export default function OpusJobDetailPage() {
 
   const id = textify(jobObj["uws:jobId"]) || jobId;
   const phase = (textify(jobObj["uws:phase"]) || "UNKNOWN").toUpperCase();
+
   const owner = textify(jobObj["uws:ownerId"]);
   const created = textify(jobObj["uws:creationTime"]);
   const started = textify(jobObj["uws:startTime"]);
@@ -212,12 +226,18 @@ export default function OpusJobDetailPage() {
       <div className="d-flex align-items-center mb-3">
         <h4 className="mb-0 me-3">Job #{id}</h4>
         <span className={phaseBadgeClass}>{phase}</span>
-        {polling && (
+        {loading && (
+          <span className="ms-2 text-muted small">
+            <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
+            Loading…
+          </span>
+        )}
+        {!loading && polling && (
           <span className="ms-2 text-muted small">(updating…)</span>
         )}
-        <a className="btn btn-sm btn-outline-secondary ms-auto" href="#/">
-          Back to app
-        </a>
+        <Link className="btn btn-sm btn-outline-secondary ms-auto" to="/opus">
+          Back to job list
+        </Link>
       </div>
 
       {/* Summary */}
@@ -291,117 +311,98 @@ export default function OpusJobDetailPage() {
 
       {/* Results */}
       <div className="card mb-3">
-      <div className="card-header">Results</div>
-      {results.length === 0 ? (
-        <p className="text-muted">No results yet.</p>
-      ) : (
-        <div className="table-responsive">
-          <table className="table table-sm align-middle">
-            <thead>
-              <tr>
-                <th>Result ID</th>
-                <th>Name</th>
-                <th>Mime</th>
-                <th className="text-end text-nowrap" style={{ width: "1%" }}>
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {results.map((r, idx) => {
-                const kind = previewKind(r);
-                const isOpen = !!openPreview[r.id];
-
-                const downloadName = guessDownloadName(jobId, r);
-                const downloadUrl  = r.href ? opusProxy(jobId, r.href, { inline: false, filename: downloadName, id: r.id }) : null;
-                const previewUrl   = r.href ? opusProxy(jobId, r.href, { inline: true,  filename: downloadName, id: r.id }) : null;
-
-                return (
-                  <React.Fragment key={`${r.id}-${idx}`}>
-                    <tr>
-                      <td><code>{r.id}</code></td>
-                      <td>{r.name || "—"}</td>
-                      <td><small>{r.mime || "—"}</small></td>
-                      <td className="text-end text-nowrap py-1">
-                          <div className="btn-group btn-group-sm" role="group" aria-label={`${r.id} actions`}>
-                            {downloadUrl && (
-                              <a
-                                className="btn btn-outline-secondary"
-                                href={downloadUrl}
-                                download={downloadName}
-                              >
-                                Download
-                              </a>
-                            )}
-                            {kind && previewUrl && (
-                              <button
-                                type="button"
-                                className={`btn btn-outline-primary ${isOpen ? "active" : ""}`}
-                                onClick={() => setOpenPreview((s) => ({ ...s, [r.id]: !s[r.id] }))}
-                              >
-                                {isOpen ? "Hide preview" : "Show preview"}
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                    </tr>
-
-                    {isOpen && kind && (
-                      <tr className="bg-light">
-                        <td colSpan={4}>
-                          {kind === "image" ? (
-                            <div className="p-2">
-                              <img
-                                src={previewUrl}
-                                alt={r.name || r.id}
-                                style={{ maxWidth: "100%", height: "auto" }}
-                              />
-                            </div>
-                          ) : (
-                            <div className="p-2">
-                              <iframe
-                                title={`preview-${r.id}`}
-                                src={previewUrl}
-                                style={{
-                                  width: "100%",
-                                  height: 420,
-                                  border: "1px solid #ddd",
-                                  borderRadius: 6,
-                                  background: "#fff",
-                                }}
-                              />
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-
-      {/* collapsible raw JSON */}
-      <div className="card">
-        <div className="card-header">Raw job JSON</div>
+        <div className="card-header">Results</div>
         <div className="card-body">
-          <details>
-            <summary className="cursor-pointer">Click to expand</summary>
-            <pre className="small bg-light p-2 rounded border mt-2">
-              <code>{JSON.stringify(jobJson ?? {}, null, 2)}</code>
-            </pre>
-          </details>
-        </div>
-      </div>
+          {loading ? (
+            <p className="text-muted mb-0">Loading results…</p>
+          ) : results.length === 0 ? (
+            <p className="text-muted mb-0">No results yet.</p>
+          ) : (
+            <div className="table-responsive">
+              <table className="table table-sm align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Result ID</th>
+                    <th>Name</th>
+                    <th>Mime</th>
+                    <th className="text-end text-nowrap" style={{ width: "1%" }}>
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {results.map((r, idx) => {
+                    const rid = r.id || `idx-${idx}`;
+                    const kind = previewKind(r);
+                    const isOpen = !!openPreview[rid];
 
-      {/* footer back link */}
-      <div className="mt-3">
-        <Link className="btn btn-outline-secondary" to="/">
-          Back to app
-        </Link>
+                    const downloadName = guessDownloadName(jobId, r);
+                    const downloadUrl = r.href
+                      ? opusProxy(jobId, r.href, { inline: false, filename: downloadName, id: rid })
+                      : null;
+                    const previewUrl = r.href
+                      ? opusProxy(jobId, r.href, { inline: true, filename: downloadName, id: rid })
+                      : null;
+
+                    return (
+                      <React.Fragment key={rid}>
+                        <tr>
+                          <td><code>{r.id || "—"}</code></td>
+                          <td>{r.name || "—"}</td>
+                          <td><small>{r.mime || "—"}</small></td>
+                          <td className="text-end text-nowrap py-1">
+                            <div className="btn-group btn-group-sm" role="group" aria-label={`${rid} actions`}>
+                              {downloadUrl && (
+                                <a className="btn btn-outline-secondary" href={downloadUrl} download={downloadName}>
+                                  Download
+                                </a>
+                              )}
+                              {kind && previewUrl && (
+                                <button
+                                  type="button"
+                                  className={`btn btn-outline-primary ${isOpen ? "active" : ""}`}
+                                  onClick={() => setOpenPreview((s) => ({ ...s, [rid]: !s[rid] }))}
+                                >
+                                  {isOpen ? "Hide preview" : "Show preview"}
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+
+                        {isOpen && kind && previewUrl && (
+                          <tr className="bg-light">
+                            <td colSpan={4}>
+                              {kind === "image" ? (
+                                <div className="p-2">
+                                  <img src={previewUrl} alt={r.name || rid} style={{ maxWidth: "100%", height: "auto" }} />
+                                </div>
+                              ) : (
+                                <div className="p-2">
+                                  <iframe
+                                    title={`preview-${rid}`}
+                                    src={previewUrl}
+                                    style={{
+                                      width: "100%",
+                                      height: 420,
+                                      border: "1px solid #ddd",
+                                      borderRadius: 6,
+                                      background: "#fff",
+                                    }}
+                                  />
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            )}
+        </div>
       </div>
     </div>
   );
