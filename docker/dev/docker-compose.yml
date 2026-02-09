@@ -39,7 +39,7 @@ services:
     env_file: .env.docker
     working_dir: /app
     volumes:
-      - ./:/app
+      - ../..:/app
     depends_on:
       - postgres
       - redis
