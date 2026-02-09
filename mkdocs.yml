@@ -1,8 +1,8 @@
 site_name: CTAO Data Explorer
-site_description: "Portal to access, visualize, and analyze high-energy astrophysics data"
+site_description: "Portal to access, visualize, and analyze CTAO data"
 site_url: ""
-repo_name: aopy/ctao-data-explorer
-repo_url: https://github.com/aopy/ctao-data-explorer
+repo_name: cta-computing/suss/scienceportal/prototypes/ctao-data-explorer
+repo_url: https://gitlab.cta-observatory.org/cta-computing/suss/scienceportal/prototypes/ctao-data-explorer
 edit_uri: ""
 
 theme:
@@ -55,5 +55,5 @@ markdown_extensions:
 
 extra:
   social:
-    - icon: fontawesome/brands/github
-      link: https://github.com/aopy/ctao-data-explorer
+    - icon: fontawesome/brands/gitlab
+      link: https://gitlab.cta-observatory.org/cta-computing/suss/scienceportal/prototypes/ctao-data-explorer
