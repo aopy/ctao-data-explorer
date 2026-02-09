@@ -57,3 +57,45 @@ server {
 **Notes**
 - Place secrets in **EnvironmentFile** or systemd overrides; not in the unit file.
 - Ensure `COOKIE_SECURE=true` behind TLS and set `COOKIE_DOMAIN` to the public hostname.
+
+
+## Local development stack with docker compose
+
+Just for reference of the first containerization approaches. Note that the Dockerfiles used by the kubernetes + Helm chart approach are in the root folder of this repository.
+
+Only for local development, you will find:
+
+- `docker-compose.yml` (in `docker/dev/`)
+- `Dockerfile.backend` (in `docker/dev/`)
+- `Dockerfile.frontend` (in `docker/dev/`)
+- `requirements.txt`  (in root repository folder)
+- `.env.docker` (in `docker/dev/`)
+
+How to run:
+
+### 1) Environment configuration
+Make sure env file exists in the same directory as the `docker-compose.yml` and fill values
+
+Notes: Set `PRODUCTION=false` in `.env.docker`
+
+### 2) Start DB/Redis
+```
+docker compose -f docker/dev/docker-compose.yml up -d postgres redis
+```
+
+### 3) Run migrations
+```
+docker compose -f docker/dev/docker-compose.yml run --rm backend bash -lc 'alembic upgrade head'
+```
+### 4) Build frontend once (creates `./js/build`)
+```
+docker compose -f docker/dev/docker-compose.yml run --rm frontend npm ci
+docker compose -f docker/dev/docker-compose.yml run --rm frontend npm run build
+```
+### 5) Start backend and frontend
+```
+docker compose -f docker/dev/docker-compose.yml up -d backend frontend
+```
+### 6) Open
+Open http://localhost:3000
+
