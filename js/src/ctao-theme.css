@@ -311,6 +311,14 @@ h1,h2,h3,h4,h5,h6{
   );
 }
 
+.results-layout .card{
+  border-radius: 0 !important;
+}
+.results-layout .card-header{
+  border-top-left-radius: 0 !important;
+  border-top-right-radius: 0 !important;
+}
+
 .splitter{
   touch-action: none;
   user-select: none;
@@ -483,4 +491,35 @@ h1,h2,h3,h4,h5,h6{
 .subnav .nav-link.disabled{
   opacity: 0.45;
   pointer-events: none;
+}
+
+#modalChartTabs.nav-tabs{
+  border-bottom: 0 !important;
+}
+
+#modalChartTabs .nav-link{
+  border: 1px solid rgba(0,0,0,0.12) !important;
+  background: #fff !important;
+  color: #000 !important;
+  font-weight: 700;
+  border-radius: 0.8rem 0.8rem 0 0 !important;
+  margin-right: 0.35rem;
+}
+
+#modalChartTabs .nav-link.active{
+  background: var(--ctao-cosmic-azure) !important;
+  border-color: var(--ctao-cosmic-azure) !important;
+  color: #fff !important;
+}
+
+#modalChartTabs .nav-link:hover{
+  border-color: var(--ctao-cosmic-azure) !important;
+}
+
+.basket-item-modal .card{
+  border-radius: 0 !important;
+}
+.basket-item-modal .card-header{
+  border-top-left-radius: 0 !important;
+  border-top-right-radius: 0 !important;
 }

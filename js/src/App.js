@@ -57,13 +57,13 @@ function BasketItemModal({ show, onClose, basketItem }) {
   const chartColumns = ["obs_id", "s_ra", "s_dec", "t_min", "t_max", "em_min", "em_max"];
   const chartData = [chartColumns.map((col) => rowData[col])];
   const fakeResults = { columns: chartColumns, data: chartData };
-  const allKeys = Object.keys(rowData).sort();
+  const allKeys = Object.keys(rowData);
 
   return (
-    <div className="modal show" style={{ display: "block" }} role="dialog">
+    <div className="modal show basket-item-modal" style={{ display: "block" }} role="dialog">
       <div className="modal-dialog modal-xl" role="document">
         <div className="modal-content">
-          <div className="modal-header bg-primary text-white">
+          <div className="modal-header ctao-header-primary">
             <h5 className="modal-title">Basket Item: {rowData.obs_id || "N/A"}</h5>
             <button type="button" className="btn-close" onClick={onClose}></button>
           </div>
@@ -72,7 +72,6 @@ function BasketItemModal({ show, onClose, basketItem }) {
             <div className="row">
               <div className="col-md-7 mb-3">
                 <div className="card h-100">
-                  <div className="card-header ctao-header-primary">Sky Map</div>
                   <div className="card-body p-0" style={{ height: "400px", overflow: "hidden" }}>
                     <AladinLiteViewer overlays={allCoordinates} selectedIds={[]} initialFov={initialFov} />
                   </div>
@@ -81,7 +80,6 @@ function BasketItemModal({ show, onClose, basketItem }) {
 
               <div className="col-md-5 mb-3">
                 <div className="card h-100">
-                  <div className="card-header ctao-header-primary">Charts</div>
                   <div className="card-body d-flex flex-column" style={{ height: "400px", overflow: "auto" }}>
                     <ul className="nav nav-tabs" id="modalChartTabs" role="tablist">
                       <li className="nav-item" role="presentation">
@@ -137,7 +135,15 @@ function BasketItemModal({ show, onClose, basketItem }) {
                     {allKeys.map((key) => (
                       <tr key={key}>
                         <td>{key}</td>
-                        <td>{rowData[key]?.toString() ?? ""}</td>
+                        <td>
+                         {key === "access_url" && rowData[key] ? (
+                           <a href={String(rowData[key])} target="_blank" rel="noreferrer">
+                             {String(rowData[key])}
+                           </a>
+                         ) : (
+                           rowData[key]?.toString() ?? ""
+                         )}
+                       </td>
                       </tr>
                     ))}
                   </tbody>

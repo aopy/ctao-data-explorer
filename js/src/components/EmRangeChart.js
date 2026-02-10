@@ -4,6 +4,7 @@ import Plot from "react-plotly.js";
 
 const EmRangeChart = ({ results, selectedIds, onSelectIds = () => {} }) => {
   const { columns, data } = results || {};
+  const infoTipRef = useRef(null);
 
   // Make stable so useMemo deps don't churn
   const wavelengthToTeV = useCallback((wavelength) => {
@@ -28,13 +29,20 @@ const EmRangeChart = ({ results, selectedIds, onSelectIds = () => {} }) => {
     const ro = new ResizeObserver(() => {
       const h = Math.floor(el.getBoundingClientRect().height);
 
-      // reserve space for the footnote paragraph
-      const footnotePx = 26;
-      setPlotH(Math.max(200, h - footnotePx));
+      setPlotH(Math.max(200, h - 6));
     });
 
     ro.observe(el);
     return () => ro.disconnect();
+  }, []);
+
+  // Bootstrap tooltip init
+  useEffect(() => {
+    const el = infoTipRef.current;
+    const bs = window.bootstrap;
+    if (!el || !bs?.Tooltip) return;
+    const t = new bs.Tooltip(el);
+    return () => t.dispose();
   }, []);
 
   const emData = useMemo(() => {
@@ -85,7 +93,7 @@ const EmRangeChart = ({ results, selectedIds, onSelectIds = () => {} }) => {
 
   const layout = useMemo(
     () => ({
-      title: "Electromagnetic Range (TeV)",
+      title: "Electromagnetic Range",
       xaxis: {
         type: "log",
         autorange: true,
@@ -99,7 +107,7 @@ const EmRangeChart = ({ results, selectedIds, onSelectIds = () => {} }) => {
       showlegend: false,
       autosize: true,
       height: plotH,
-      margin: { l: 40, r: 10, t: 42, b: 65 },
+      margin: { l: 40, r: 34, t: 42, b: 65 },
       hovermode: "closest",
       shapes,
     }),
@@ -154,8 +162,22 @@ const EmRangeChart = ({ results, selectedIds, onSelectIds = () => {} }) => {
         minHeight: 0,
         display: "flex",
         flexDirection: "column",
+        position: "relative",
       }}
     >
+    {/* info tooltip (top-right) */}
+      <button
+        ref={infoTipRef}
+        type="button"
+        className="btn btn-sm btn-link p-0"
+        style={{ position: "absolute", top: 6, right: 8, zIndex: 5 }}
+        data-bs-toggle="tooltip"
+        data-bs-placement="left"
+        title="The Energy (TeV) values were converted from wavelength (m) measurements."
+        aria-label="EM Range conversion info"
+      >
+        <i className="bi bi-info-circle"></i>
+      </button>
       <div style={{ flex: "1 1 auto", minHeight: 0 }}>
         <Plot
           data={plotData}
@@ -168,10 +190,6 @@ const EmRangeChart = ({ results, selectedIds, onSelectIds = () => {} }) => {
           onDoubleClick={clearAll}
         />
       </div>
-
-      <p style={{ fontSize: "12px", margin: "6px 0 0" }}>
-        * The Energy (TeV) values were converted from wavelength (m) measurements.
-      </p>
     </div>
   );
 };
