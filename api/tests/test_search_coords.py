@@ -14,8 +14,7 @@ async def test_search_coords_happy_path_adds_datalink(app, client, monkeypatch):
     )
 
     # Stub perform_query_with_conditions to return (error=None, table, adql)
-    def fake_perform(fields, where_conditions, limit=100):
-        # Basic sanity: the spatial condition should be present if coords provided
+    def fake_perform(fields, where_conditions, limit=100, **kwargs):
         assert any("CONTAINS" in w for w in where_conditions)
         return (None, tab, "SELECT ...")
 

@@ -26,6 +26,35 @@ const defaultFormValues = {
   tapUrl: 'http://voparis-tap-he.obspm.fr/tap',
   obscoreTable: 'hess_dr.obscore_sdc',
   showAdvanced: false,
+
+  energyMin: '',
+  energyMax: '',
+
+  trackingMode: '',
+  pointingMode: '',
+  obsMode: '',
+
+  proposalId: '',
+  proposalTitle: '',
+  proposalContact: '',
+  proposalType: '',
+
+  moonLevel: 'Dark',
+  skyBrightness: 'Dark',
+
+  // "use" flags
+  useConeSearch: true,
+  useTimeSearch: true,
+  useEnergySearch: false,
+  useObsConfig: false,
+  useObsProgram: false,
+  useObsConditions: false,
+
+  // "open" flags
+  openEnergySearch: false,
+  openObsConfig: false,
+  openObsProgram: false,
+  openObsConditions: false,
 };
 
 function safeJsonParse(str) {
@@ -133,6 +162,47 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   const [metStartSeconds, setMetStartSeconds] = useState(initialFormState.metStartSeconds || '');
   const [metEndSeconds, setMetEndSeconds] = useState(initialFormState.metEndSeconds || '');
 
+  const [energyMin, setEnergyMin] = useState(initialFormState.energyMin);
+  const [energyMax, setEnergyMax] = useState(initialFormState.energyMax);
+
+  const [trackingMode, setTrackingMode] = useState(initialFormState.trackingMode);
+  const [pointingMode, setPointingMode] = useState(initialFormState.pointingMode);
+  const [obsMode, setObsMode] = useState(initialFormState.obsMode);
+
+  const [proposalId, setProposalId] = useState(initialFormState.proposalId);
+  const [proposalTitle, setProposalTitle] = useState(initialFormState.proposalTitle);
+  const [proposalContact, setProposalContact] = useState(initialFormState.proposalContact);
+  const [proposalType, setProposalType] = useState(initialFormState.proposalType);
+
+  const [moonLevel, setMoonLevel] = useState(initialFormState.moonLevel);
+  const [skyBrightness, setSkyBrightness] = useState(initialFormState.skyBrightness);
+
+  const [useConeSearch, setUseConeSearch] = useState(initialFormState.useConeSearch ?? true);
+  const [useTimeSearch, setUseTimeSearch] = useState(initialFormState.useTimeSearch ?? true);
+  const [useEnergySearch, setUseEnergySearch] = useState(initialFormState.useEnergySearch ?? false);
+  const [useObsConfig, setUseObsConfig] = useState(initialFormState.useObsConfig ?? false);
+  const [useObsProgram, setUseObsProgram] = useState(initialFormState.useObsProgram ?? false);
+  const [useObsConditions, setUseObsConditions] = useState(initialFormState.useObsConditions ?? false);
+
+  const [openEnergySearch, setOpenEnergySearch] = useState(initialFormState.openEnergySearch ?? false);
+  const [openObsConfig, setOpenObsConfig] = useState(initialFormState.openObsConfig ?? false);
+  const [openObsProgram, setOpenObsProgram] = useState(initialFormState.openObsProgram ?? false);
+  const [openObsConditions, setOpenObsConditions] = useState(initialFormState.openObsConditions ?? false);
+
+  const energyHasAny = (String(energyMin || '').trim() !== '') || (String(energyMax || '').trim() !== '');
+  const obsConfigHasAny = !!(trackingMode || pointingMode || obsMode);
+  const obsProgramHasAny = !!(String(proposalId || '').trim() || String(proposalTitle || '').trim() || String(proposalContact || '').trim() || proposalType);
+
+  // Only consider conditions "filled" if user changed away from defaults
+  const obsConditionsHasAny =
+    (moonLevel !== defaultFormValues.moonLevel) ||
+    (skyBrightness !== defaultFormValues.skyBrightness);
+
+  const energyActive = useEnergySearch || energyHasAny;
+  const obsConfigActive = useObsConfig || obsConfigHasAny;
+  const obsProgramActive = useObsProgram || obsProgramHasAny;
+  const obsConditionsActive = useObsConditions || obsConditionsHasAny;
+
   // TAP + UI
   const [tapUrl, setTapUrl] = useState(initialFormState.tapUrl);
   const [obscoreTable, setObscoreTable] = useState(initialFormState.obscoreTable);
@@ -153,6 +223,13 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
         obsEndTime, obsEndMJD,
         metStartSeconds, metEndSeconds,
         tapUrl, obscoreTable, showAdvanced,
+        energyMin, energyMax,
+        trackingMode, pointingMode, obsMode,
+        proposalId, proposalTitle, proposalContact, proposalType,
+        moonLevel, skyBrightness,
+        useConeSearch, useTimeSearch,
+        useEnergySearch, useObsConfig, useObsProgram, useObsConditions,
+        openEnergySearch, openObsConfig, openObsProgram, openObsConditions,
       };
       sessionStorage.setItem(FORM_STATE_PERSIST_KEY, serializeForStorage(snapshot));
     } catch {
@@ -166,6 +243,13 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     obsEndDateObj, obsEndTime, obsEndMJD,
     metStartSeconds, metEndSeconds,
     tapUrl, obscoreTable, showAdvanced,
+    energyMin, energyMax,
+    trackingMode, pointingMode, obsMode,
+    proposalId, proposalTitle, proposalContact, proposalType,
+    moonLevel, skyBrightness,
+    useConeSearch, useTimeSearch,
+    useEnergySearch, useObsConfig, useObsProgram, useObsConditions,
+    openEnergySearch, openObsConfig, openObsProgram, openObsConditions,
   ]);
 
   // mark hydrated on first render
@@ -194,6 +278,13 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     obsEndDateObj, obsEndTime, obsEndMJD,
     metStartSeconds, metEndSeconds,
     tapUrl, obscoreTable, showAdvanced,
+    energyMin, energyMax,
+    trackingMode, pointingMode, obsMode,
+    proposalId, proposalTitle, proposalContact, proposalType,
+    moonLevel, skyBrightness,
+    useConeSearch, useTimeSearch,
+    useEnergySearch, useObsConfig, useObsProgram, useObsConditions,
+    openEnergySearch, openObsConfig, openObsProgram, openObsConditions,
   ]);
 
   const [warningMessage, setWarningMessage] = useState('');
@@ -221,7 +312,7 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   const [isEditingStartTime, setIsEditingStartTime] = useState(false);
   const [isEditingEndTime, setIsEditingEndTime] = useState(false);
 
-  const [metEpochIso, setMetEpochIso] = useState(initialFormState.metEpochIso);
+  // const [metEpochIso, setMetEpochIso] = useState(initialFormState.metEpochIso);
 
   const [isEditingStartMjd, setIsEditingStartMjd] = useState(false);
   const [isEditingEndMjd,   setIsEditingEndMjd]   = useState(false);
@@ -443,6 +534,13 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
           obsEndTime, obsEndMJD,
           metStartSeconds, metEndSeconds,
           tapUrl, obscoreTable, showAdvanced,
+          energyMin, energyMax,
+          trackingMode, pointingMode, obsMode,
+          proposalId, proposalTitle, proposalContact, proposalType,
+          moonLevel, skyBrightness,
+          useConeSearch, useTimeSearch,
+          useEnergySearch, useObsConfig, useObsProgram, useObsConditions,
+          openEnergySearch, openObsConfig, openObsProgram, openObsConditions,
         }));
       } catch { /* ignore */ }
     }
@@ -988,58 +1086,69 @@ const handleEndMjdBlur = async () => {
   setObsEndMJD(formatMJD(out.mjd));
 };
 
-useEffect(() => {
-  if (lastChangedType === 'start_mjd') {
-    clearTimeout(startMjdDebounce.current);
-    startMjdDebounce.current = setTimeout(() => {
-      syncFromMjd('start', obsStartMJD, timeScale, timeScale, false);
-      setLastChangedType(null);
-    }, 500);
-    return () => clearTimeout(startMjdDebounce.current);
-  }
-}, [lastChangedType, obsStartMJD, timeScale, syncFromMjd]);
 
-useEffect(() => {
-  if (lastChangedType === 'end_mjd') {
-    clearTimeout(endMjdDebounce.current);
-    endMjdDebounce.current = setTimeout(() => {
-      syncFromMjd('end', obsEndMJD, timeScale, timeScale, false);
-      setLastChangedType(null);
-    }, 500);
-    return () => clearTimeout(endMjdDebounce.current);
-  }
-}, [lastChangedType, obsEndMJD, timeScale, syncFromMjd]);
+const handleClearForm = () => {
+  // core fields
+  setObjectName(defaultFormValues.objectName);
+  setUseSimbad(defaultFormValues.useSimbad);
+  setUseNed(defaultFormValues.useNed);
+  setCoordinateSystem(defaultFormValues.coordinateSystem);
+  setCoord1(defaultFormValues.coord1);
+  setCoord2(defaultFormValues.coord2);
+  setSearchRadius(defaultFormValues.searchRadius);
 
-  const handleClearForm = () => {
-    Object.assign(
-      {},
-      setObjectName(defaultFormValues.objectName),
-      setUseSimbad(defaultFormValues.useSimbad),
-      setUseNed(defaultFormValues.useNed),
-      setCoordinateSystem(defaultFormValues.coordinateSystem),
-      setCoord1(defaultFormValues.coord1),
-      setCoord2(defaultFormValues.coord2),
-      setSearchRadius(defaultFormValues.searchRadius),
-      setObsStartDateObj(defaultFormValues.obsStartDateObj),
-      setObsStartTime(defaultFormValues.obsStartTime),
-      setObsStartMJD(defaultFormValues.obsStartMJD),
-      setObsEndDateObj(defaultFormValues.obsEndDateObj),
-      setObsEndTime(defaultFormValues.obsEndTime),
-      setObsEndMJD(defaultFormValues.obsEndMJD),
-      setTapUrl(initialFormState.tapUrl),
-      setObscoreTable(initialFormState.obscoreTable),
-      setShowAdvanced(initialFormState.showAdvanced)
-    );
-    setTimeMode('auto');
-    setMetStartSeconds('');
-    setMetEndSeconds('');
-    setWarningMessage('');
-    setLastChangedType(null);
-    setTimeTouched(false);
-    setTimeWarning('');
+  setObsStartDateObj(defaultFormValues.obsStartDateObj);
+  setObsStartTime(defaultFormValues.obsStartTime);
+  setObsStartMJD(defaultFormValues.obsStartMJD);
+  setObsEndDateObj(defaultFormValues.obsEndDateObj);
+  setObsEndTime(defaultFormValues.obsEndTime);
+  setObsEndMJD(defaultFormValues.obsEndMJD);
 
-    try { sessionStorage.removeItem(FORM_STATE_PERSIST_KEY); } catch {}
-  };
+  setTapUrl(defaultFormValues.tapUrl);
+  setObscoreTable(defaultFormValues.obscoreTable);
+  setShowAdvanced(defaultFormValues.showAdvanced);
+
+  // optional fields
+  setEnergyMin(defaultFormValues.energyMin);
+  setEnergyMax(defaultFormValues.energyMax);
+
+  setTrackingMode(defaultFormValues.trackingMode);
+  setPointingMode(defaultFormValues.pointingMode);
+  setObsMode(defaultFormValues.obsMode);
+
+  setProposalId(defaultFormValues.proposalId);
+  setProposalTitle(defaultFormValues.proposalTitle);
+  setProposalContact(defaultFormValues.proposalContact);
+  setProposalType(defaultFormValues.proposalType);
+
+  setMoonLevel(defaultFormValues.moonLevel);
+  setSkyBrightness(defaultFormValues.skyBrightness);
+
+  // use flags
+  setUseConeSearch(defaultFormValues.useConeSearch);
+  setUseTimeSearch(defaultFormValues.useTimeSearch);
+  setUseEnergySearch(defaultFormValues.useEnergySearch);
+  setUseObsConfig(defaultFormValues.useObsConfig);
+  setUseObsProgram(defaultFormValues.useObsProgram);
+  setUseObsConditions(defaultFormValues.useObsConditions);
+
+  // open flags
+  setOpenEnergySearch(defaultFormValues.openEnergySearch);
+  setOpenObsConfig(defaultFormValues.openObsConfig);
+  setOpenObsProgram(defaultFormValues.openObsProgram);
+  setOpenObsConditions(defaultFormValues.openObsConditions);
+
+  // time-mode + met + warnings
+  setTimeMode('auto');
+  setMetStartSeconds('');
+  setMetEndSeconds('');
+  setWarningMessage('');
+  setLastChangedType(null);
+  setTimeTouched(false);
+  setTimeWarning('');
+
+  try { sessionStorage.removeItem(FORM_STATE_PERSIST_KEY); } catch {}
+};
 
 
   const handleSubmit = async (e) => {
@@ -1065,7 +1174,7 @@ useEffect(() => {
       return;
     }
 
-    // coords
+    if (useConeSearch) {
     const coord1Input = coord1.trim();
     const coord2Input = coord2.trim();
     if (coord1Input && coord2Input) {
@@ -1095,8 +1204,10 @@ useEffect(() => {
         setIsSubmitting(false); return;
       }
     }
+    }
 
     // time
+    if (useTimeSearch) {
     const hasBothMJD  = obsStartMJD.trim() !== '' && obsEndMJD.trim() !== '';
     const hasCalendar = !!(obsStartDateObj && obsStartTime.trim() && obsEndDateObj && obsEndTime.trim());
     const hasBothMET  = metStartSeconds.trim() !== '' && metEndSeconds.trim() !== '';
@@ -1209,11 +1320,37 @@ useEffect(() => {
       setIsSubmitting(false);
       return;
     }
+    }
 
 
-    if (!coordsAreValid && !timeIsValid) {
-      setWarningMessage('Please provide valid coordinates or a complete time interval (Date+Time or MJD).');
-      setIsSubmitting(false); return;
+    if ((!useConeSearch || !coordsAreValid) && (!useTimeSearch || !timeIsValid)) {
+      setWarningMessage('Please enable Cone Search and/or Time Search and provide valid inputs.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    // Optional filters (only if section is active)
+    if (energyActive) {
+      if (energyMin.trim() !== '') finalReqParams.energy_min = Number(energyMin);
+      if (energyMax.trim() !== '') finalReqParams.energy_max = Number(energyMax);
+    }
+
+    if (obsConfigActive) {
+      if (trackingMode) finalReqParams.tracking_mode = trackingMode;
+      if (pointingMode) finalReqParams.pointing_mode = pointingMode;
+      if (obsMode) finalReqParams.obs_mode = obsMode;
+    }
+
+    if (obsProgramActive) {
+      if (proposalId.trim()) finalReqParams.proposal_id = proposalId.trim();
+      if (proposalTitle.trim()) finalReqParams.proposal_title = proposalTitle.trim();
+      if (proposalContact.trim()) finalReqParams.proposal_contact = proposalContact.trim();
+      if (proposalType) finalReqParams.proposal_type = proposalType;
+    }
+
+    if (useObsConditions) {
+      finalReqParams.moon_level = moonLevel;
+      finalReqParams.sky_brightness = skyBrightness;
     }
 
     // call API
@@ -1251,7 +1388,20 @@ useEffect(() => {
 
           {/* Cone Search */}
           <div className="card mb-3">
-            <div className="card-header">Cone Search</div>
+            <div className="card-header d-flex justify-content-between align-items-center">
+              <span>Cone Search</span>
+              <div className="form-check form-switch m-0">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  id="useConeSearchSwitch"
+                  checked={useConeSearch}
+                  onChange={(e) => setUseConeSearch(e.target.checked)}
+                  disabled={isSubmitting}
+                />
+                <label className="form-check-label" htmlFor="useConeSearchSwitch">Use</label>
+              </div>
+            </div>
             <div className="card-body">
 
               {/* Object Resolve + Suggestions */}
@@ -1365,8 +1515,21 @@ useEffect(() => {
           )}
 
           {/* Time Search */}
-        <div className="card mb-3" data-enter-scope="time">
-          <div className="card-header">Time Search</div>
+          <div className="card mb-3" data-enter-scope="time">
+            <div className="card-header d-flex justify-content-between align-items-center">
+              <span>Time Search</span>
+              <div className="form-check form-switch m-0">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  id="useTimeSearchSwitch"
+                  checked={useTimeSearch}
+                  onChange={(e) => setUseTimeSearch(e.target.checked)}
+                  disabled={isSubmitting}
+                />
+                <label className="form-check-label" htmlFor="useTimeSearchSwitch">Use</label>
+              </div>
+            </div>
           <div className="card-body">
 
         {/* Time system selector (Bootstrap button group) */}
@@ -1584,6 +1747,205 @@ useEffect(() => {
           </div>
         </div>
 
+          </div>
+        </div>
+
+        {/* Optional criteria accordion */}
+        <div className="accordion mb-3" id="optionalCriteriaAccordion">
+
+          {/* Energy Search */}
+          <div className="accordion-item">
+            <h2 className="accordion-header" id="headingEnergy">
+              <button className="accordion-button collapsed" type="button"
+                      data-bs-toggle="collapse" data-bs-target="#collapseEnergy"
+                      aria-expanded="false" aria-controls="collapseEnergy">
+                Energy Search
+                {energyActive && <span className="badge bg-success ms-2">Active</span>}
+              </button>
+            </h2>
+            <div id="collapseEnergy" className="accordion-collapse collapse"
+                 aria-labelledby="headingEnergy" >
+              <div className="accordion-body">
+                <div className="form-check form-switch mb-2">
+                  <input className="form-check-input" type="checkbox" id="useEnergySwitch"
+                         checked={useEnergySearch} onChange={() => setUseEnergySearch(v => !v)} />
+                  <label className="form-check-label" htmlFor="useEnergySwitch">Use Energy Search</label>
+                </div>
+
+                <div className="row g-2">
+                  <div className="col-md-6">
+                    <label className="form-label">Energy min</label>
+                    <input type="number" className="form-control"
+                           value={energyMin} onChange={(e) => { setEnergyMin(e.target.value); setUseEnergySearch(true); }}
+                           disabled={isSubmitting} />
+                  </div>
+                  <div className="col-md-6">
+                    <label className="form-label">Energy max</label>
+                    <input type="number" className="form-control"
+                           value={energyMax} onChange={(e) => { setEnergyMax(e.target.value); setUseEnergySearch(true); }}
+                           disabled={isSubmitting} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Observation Configuration */}
+          <div className="accordion-item">
+            <h2 className="accordion-header" id="headingObsConfig">
+              <button className="accordion-button collapsed" type="button"
+                      data-bs-toggle="collapse" data-bs-target="#collapseObsConfig"
+                      aria-expanded="false" aria-controls="collapseObsConfig">
+                Observation Configuration
+                {obsConfigActive && <span className="badge bg-success ms-2">Active</span>}
+              </button>
+            </h2>
+            <div id="collapseObsConfig" className="accordion-collapse collapse"
+                 aria-labelledby="headingObsConfig" >
+              <div className="accordion-body">
+                <div className="form-check form-switch mb-2">
+                  <input className="form-check-input" type="checkbox" id="useObsConfigSwitch"
+                         checked={useObsConfig} onChange={() => setUseObsConfig(v => !v)} />
+                  <label className="form-check-label" htmlFor="useObsConfigSwitch">Use Observation Configuration</label>
+                </div>
+
+                <div className="row g-2">
+                  <div className="col-md-4">
+                    <label className="form-label">Telescope Tracking Mode</label>
+                    <select className="form-select"
+                            value={trackingMode} onChange={(e) => { setTrackingMode(e.target.value); setUseObsConfig(true); }}
+                            disabled={isSubmitting}>
+                      <option value="">(Any)</option>
+                      <option value="Sidereal">Sidereal</option>
+                    </select>
+                  </div>
+
+                  <div className="col-md-4">
+                    <label className="form-label">Array Pointing Mode</label>
+                    <select className="form-select"
+                            value={pointingMode} onChange={(e) => { setPointingMode(e.target.value); setUseObsConfig(true); }}
+                            disabled={isSubmitting}>
+                      <option value="">(Any)</option>
+                      <option value="Parallel">Parallel</option>
+                    </select>
+                  </div>
+
+                  <div className="col-md-4">
+                    <label className="form-label">Observation Mode</label>
+                    <select className="form-select"
+                            value={obsMode} onChange={(e) => { setObsMode(e.target.value); setUseObsConfig(true); }}
+                            disabled={isSubmitting}>
+                      <option value="">(Any)</option>
+                      <option value="Wobble">Wobble</option>
+                      <option value="On/Off">On/Off</option>
+                      <option value="Grid-Scan Mode">Grid-Scan Mode</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Observation Program */}
+          <div className="accordion-item">
+            <h2 className="accordion-header" id="headingObsProgram">
+              <button className="accordion-button collapsed" type="button"
+                      data-bs-toggle="collapse" data-bs-target="#collapseObsProgram"
+                      aria-expanded="false" aria-controls="collapseObsProgram">
+                Observation Program
+                {obsProgramActive && <span className="badge bg-success ms-2">Active</span>}
+              </button>
+            </h2>
+            <div id="collapseObsProgram" className="accordion-collapse collapse"
+                 aria-labelledby="headingObsProgram" >
+              <div className="accordion-body">
+                <div className="form-check form-switch mb-2">
+                  <input className="form-check-input" type="checkbox" id="useObsProgramSwitch"
+                         checked={useObsProgram} onChange={() => setUseObsProgram(v => !v)} />
+                  <label className="form-check-label" htmlFor="useObsProgramSwitch">Use Observation Program</label>
+                </div>
+
+                <div className="row g-2">
+                  <div className="col-md-6">
+                    <label className="form-label">Proposal ID</label>
+                    <input type="text" className="form-control"
+                           value={proposalId} onChange={(e) => { setProposalId(e.target.value); setUseObsProgram(true); }}
+                           disabled={isSubmitting} />
+                  </div>
+
+                  <div className="col-md-6">
+                    <label className="form-label">Proposal type</label>
+                    <select className="form-select"
+                            value={proposalType} onChange={(e) => { setProposalType(e.target.value); setUseObsProgram(true); }}
+                            disabled={isSubmitting}>
+                      <option value="">(Any)</option>
+                      <option value="ToO">ToO</option>
+                    </select>
+                  </div>
+
+                  <div className="col-md-6">
+                    <label className="form-label">Proposal title</label>
+                    <input type="text" className="form-control"
+                           value={proposalTitle} onChange={(e) => { setProposalTitle(e.target.value); setUseObsProgram(true); }}
+                           disabled={isSubmitting} />
+                  </div>
+
+                  <div className="col-md-6">
+                    <label className="form-label">Proposal contact person</label>
+                    <input type="text" className="form-control"
+                           value={proposalContact} onChange={(e) => { setProposalContact(e.target.value); setUseObsProgram(true); }}
+                           disabled={isSubmitting} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Observation Conditions */}
+          <div className="accordion-item">
+            <h2 className="accordion-header" id="headingObsConditions">
+              <button className="accordion-button collapsed" type="button"
+                      data-bs-toggle="collapse" data-bs-target="#collapseObsConditions"
+                      aria-expanded="false" aria-controls="collapseObsConditions">
+                Observation Conditions
+                {obsConditionsActive && <span className="badge bg-success ms-2">Active</span>}
+              </button>
+            </h2>
+            <div id="collapseObsConditions" className="accordion-collapse collapse"
+                 aria-labelledby="headingObsConditions" >
+              <div className="accordion-body">
+                <div className="form-check form-switch mb-2">
+                  <input className="form-check-input" type="checkbox" id="useObsConditionsSwitch"
+                         checked={useObsConditions} onChange={() => setUseObsConditions(v => !v)} />
+                  <label className="form-check-label" htmlFor="useObsConditionsSwitch">Use Observation Conditions</label>
+                </div>
+
+                <div className="row g-2">
+                  <div className="col-md-6">
+                    <label className="form-label">Moon level</label>
+                    <select className="form-select"
+                            value={moonLevel} onChange={(e) => { setMoonLevel(e.target.value); setUseObsConditions(true); }}
+                            disabled={isSubmitting}>
+                      <option value="None">None</option>
+                      <option value="Dark">Dark</option>
+                      <option value="Moderate">Moderate</option>
+                    </select>
+                  </div>
+
+                  <div className="col-md-6">
+                    <label className="form-label">Sky brightness</label>
+                    <select className="form-select"
+                            value={skyBrightness} onChange={(e) => { setSkyBrightness(e.target.value); setUseObsConditions(true); }}
+                            disabled={isSubmitting}>
+                      <option value="None">None</option>
+                      <option value="Dark">Dark</option>
+                      <option value="Moderate">Moderate</option>
+                    </select>
+                  </div>
+                </div>
+
+              </div>
+            </div>
           </div>
         </div>
 

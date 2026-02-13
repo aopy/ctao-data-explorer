@@ -71,6 +71,7 @@ from .tap import (
     build_where_clause,
     perform_query_with_conditions,
 )
+from .tap_schema import get_tap_table_columns
 
 MAX_ALIAS_LEN = 32
 
@@ -553,6 +554,21 @@ async def search_coords(
     mjd_start: float | None = Query(None),
     mjd_end: float | None = Query(None),
     time_scale: str | None = Query("tt"),
+    # Energy Search
+    energy_min: float | None = Query(None),
+    energy_max: float | None = Query(None),
+    # Observation Configuration
+    tracking_mode: str | None = Query(None),
+    pointing_mode: str | None = Query(None),
+    obs_mode: str | None = Query(None),
+    # Observation Program
+    proposal_id: str | None = Query(None),
+    proposal_title: str | None = Query(None),
+    proposal_contact: str | None = Query(None),
+    proposal_type: str | None = Query(None),
+    # Observation Conditions
+    moon_level: str | None = Query(None),
+    sky_brightness: str | None = Query(None),
     # TAP Params
     tap_url: str = settings.DEFAULT_TAP_URL,
     obscore_table: str = settings.DEFAULT_OBSCORE_TABLE,
@@ -564,7 +580,6 @@ async def search_coords(
     CACHE_TTL = 3600
 
     base_api_url = f"{request.url.scheme}://{request.headers['host']}"
-    # print(f"DEBUG search_coords: START. Params received: {request.query_params}")
 
     fields: dict[str, FieldBox] = {
         "tap_url": {"value": tap_url},
@@ -577,10 +592,78 @@ async def search_coords(
     coords_present = False
     time_filter_present = False
 
-    # Process Time - prioritize MJD
+    # discover available TAP columns (cached)
+    ignored_optional_filters: list[str] = []
+    try:
+        tap_cols = await get_tap_table_columns(tap_url, obscore_table)
+    except Exception as e:
+        logger.warning(
+            "search_coords: TAP_SCHEMA lookup failed (%s). Optional filters may be ignored.", e
+        )
+        tap_cols = set()
+
+    tap_schema_available = bool(tap_cols)
+
+    def col_exists(col: str) -> bool:
+        if not tap_schema_available:
+            # return True  # optimistic fallback when schema is unknown
+            return False  # conservative: don't apply optional filters
+        return col.lower() in tap_cols
+
+    def resolve_first_existing(*candidates: str) -> str | None:
+        for c in candidates:
+            if col_exists(c):
+                return c
+        return None
+
+    def esc(s: str) -> str:
+        return (s or "").replace("'", "''")
+
+    def add_optional_numeric_minmax(
+        col: str,
+        min_val: float | None,
+        max_val: float | None,
+    ) -> None:
+        if min_val is not None:
+            if col_exists(col):
+                where_conditions.append(f"{col} >= {float(min_val)}")
+            else:
+                ignored_optional_filters.append(f"{col} (min)")
+        if max_val is not None:
+            if col_exists(col):
+                where_conditions.append(f"{col} <= {float(max_val)}")
+            else:
+                ignored_optional_filters.append(f"{col} (max)")
+
+    def add_optional_enum_eq(col: str, val: str | None) -> None:
+        if not val:
+            return
+        if col_exists(col):
+            where_conditions.append(f"{col} = '{esc(val)}'")
+        else:
+            ignored_optional_filters.append(col)
+
+    def add_optional_text_eq(col: str, val: str | None) -> None:
+        if not val:
+            return
+        if col_exists(col):
+            where_conditions.append(f"{col} = '{esc(val.strip())}'")
+        else:
+            ignored_optional_filters.append(col)
+
+    def add_optional_text_like(col: str, val: str | None) -> None:
+        if not val:
+            return
+        if col_exists(col):
+            v = esc(val.strip())
+            where_conditions.append(f"ivo_nocasematch({col}, '%{v}%') = 1")
+        else:
+            ignored_optional_filters.append(col)
+
+    # Time processing (normalize to TT MJD)
     if mjd_start is not None and mjd_end is not None:
-        MIN_VALID_MJD = 0  # ~1858-11-17
-        MAX_VALID_MJD = 100000  # ~2132-11-22
+        MIN_VALID_MJD = 0
+        MAX_VALID_MJD = 100000
         if not (
             MIN_VALID_MJD <= mjd_start <= MAX_VALID_MJD
             and MIN_VALID_MJD <= mjd_end <= MAX_VALID_MJD
@@ -597,7 +680,6 @@ async def search_coords(
             scale = "tt"
 
         if scale == "utc":
-            # Convert UTC MJD -> TT MJD for querying
             mjd_start_tt = Time(mjd_start, format="mjd", scale="utc").tt.mjd
             mjd_end_tt = Time(mjd_end, format="mjd", scale="utc").tt.mjd
         else:
@@ -609,14 +691,13 @@ async def search_coords(
         time_filter_present = True
 
         logger.debug(
-            "search_coords: Using MJD filter (normalized to TT): %s -  %s (time_scale=%s)",
+            "search_coords: Using MJD filter (normalized to TT): %s - %s (time_scale=%s)",
             mjd_start_tt,
             mjd_end_tt,
             scale,
         )
 
     elif obs_start and obs_end:
-        # Calendar fallback: interpret in given time_scale, normalize to TT
         try:
             dt_start = datetime.strptime(obs_start, "%d/%m/%Y %H:%M:%S")
             dt_end = datetime.strptime(obs_end, "%d/%m/%Y %H:%M:%S")
@@ -629,11 +710,10 @@ async def search_coords(
                     status_code=400, detail=f"Unsupported time_scale '{time_scale}'"
                 )
 
-            # Interpret the naive datetimes in the declared scale then convert to TT
             if scale == "utc":
                 t_start_tt = Time(dt_start, format="datetime", scale="utc").tt
                 t_end_tt = Time(dt_end, format="datetime", scale="utc").tt
-            else:  # 'tt'
+            else:
                 t_start_tt = Time(dt_start, format="datetime", scale="tt")
                 t_end_tt = Time(dt_end, format="datetime", scale="tt")
 
@@ -656,13 +736,14 @@ async def search_coords(
             logger.error("Unexpected error during time processing: %s", e)
             raise HTTPException(status_code=500, detail="Error processing time parameters.") from e
 
-    # Process coordinates
+    # Coordinate processing
     if coordinate_system == COORD_SYS_EQ_DEG or coordinate_system == COORD_SYS_EQ_HMS:
         if ra is not None and dec is not None:
             fields["target_raj2000"] = {"value": ra}
             fields["target_dej2000"] = {"value": dec}
             coords_present = True
             logger.debug("search_coords: Equatorial coords received RA=%s, Dec=%s", ra, dec)
+
     elif coordinate_system == COORD_SYS_GAL:
         if l_deg is not None and b_deg is not None:
             try:
@@ -684,14 +765,11 @@ async def search_coords(
         time_filter_present,
     )
 
-    # adql_query_str = None
-    res_table = None
-    error = None
-
     if not coords_present and not time_filter_present:
         raise HTTPException(status_code=400, detail="Provide Coordinates or Time Interval.")
 
-    where_conditions = []
+    where_conditions: list[str] = []
+
     if coords_present:
         where_conditions.append(
             build_spatial_icrs_condition(
@@ -709,185 +787,263 @@ async def search_coords(
             )
         )
 
+    # Normalization (treat empty strings as None)
+    proposal_id = (proposal_id or "").strip() or None
+    proposal_title = (proposal_title or "").strip() or None
+    proposal_contact = (proposal_contact or "").strip() or None
+    proposal_type = (proposal_type or "").strip() or None
+
+    tracking_mode = (tracking_mode or "").strip() or None
+    pointing_mode = (pointing_mode or "").strip() or None
+    obs_mode = (obs_mode or "").strip() or None
+
+    moon_level = (moon_level or "").strip() or None
+    sky_brightness = (sky_brightness or "").strip() or None
+
+    # Optional filters
+
+    # Energy / EM range overlap:
+    # Prefer ObsCore em_min/em_max, but allow future energy_min/energy_max column names too
+    em_min_col = resolve_first_existing("em_min", "energy_min")
+    em_max_col = resolve_first_existing("em_max", "energy_max")
+
+    if em_min_col and em_max_col:
+        if energy_min is not None:
+            # dataset max >= requested min
+            where_conditions.append(f"{em_max_col} >= {float(energy_min)}")
+        if energy_max is not None:
+            # dataset min <= requested max
+            where_conditions.append(f"{em_min_col} <= {float(energy_max)}")
+    else:
+        if energy_min is not None:
+            ignored_optional_filters.append("energy_min (no em_min/em_max)")
+        if energy_max is not None:
+            ignored_optional_filters.append("energy_max (no em_min/em_max)")
+
+    # Observation Configuration
+    add_optional_enum_eq("tracking_mode", tracking_mode)
+    add_optional_enum_eq("pointing_mode", pointing_mode)
+    add_optional_enum_eq("obs_mode", obs_mode)
+
+    # Observation Program
+    add_optional_text_eq("proposal_id", proposal_id)
+    add_optional_text_like("proposal_title", proposal_title)
+    add_optional_text_like("proposal_contact", proposal_contact)
+    add_optional_enum_eq("proposal_type", proposal_type)
+
+    # Observation Conditions
+    add_optional_enum_eq("moon_level", moon_level)
+    add_optional_enum_eq("sky_brightness", sky_brightness)
+
+    if ignored_optional_filters:
+        logger.info(
+            "search_coords: Ignored optional filters (missing columns): %s",
+            ignored_optional_filters,
+        )
+
+    # Build ADQL ONCE (for cache key and execution)
     where_sql = build_where_clause(where_conditions)
     adql_query_str = build_select_query(str(fields["obscore_table"]["value"]), where_sql, limit=100)
 
     cache_key = "search:" + hashlib.sha256(adql_query_str.encode()).hexdigest()
 
+    # Redis cache GET (instrumented)
     if redis_client:
         t0 = time.perf_counter()
         ok = False
-        cached = await redis_client.get(cache_key)
-        ok = True
-        observe_redis("get", time.perf_counter() - t0, ok)
+        cached: str | None
+        try:
+            cached = await redis_client.get(cache_key)
+            ok = True
+        except Exception:
+            cached = None
+            logger.warning("Redis get failed for key=%s", cache_key, exc_info=True)
+        finally:
+            observe_redis("get", time.perf_counter() - t0, ok)
+
         if cached:
             cache_hit("search")
             return SearchResult.model_validate_json(cached)
-        else:
-            cache_miss("search")
+        cache_miss("search")
 
+    # Execute query
+    res_table = None
+    error = None
     try:
-        error, res_table, adql_query_str = perform_query_with_conditions(
-            fields, where_conditions, limit=100
+        error, res_table, _ = perform_query_with_conditions(
+            fields,
+            where_conditions,
+            limit=100,
+            adql_query_str=adql_query_str,
         )
         logger.debug(
             "search_coords: After query call: error=%s, type(res_table)=%s",
             error,
             type(res_table),
         )
-
     except Exception as e:
         logger.error("search_coords: Exception during perform_query call: %s", e)
         raise HTTPException(status_code=500, detail="Failed during query execution.") from e
 
-    if error is None:
-        # print(f"DEBUG search_coords: No error from query function. Processing table.")
-        try:
-            columns, data = astropy_table_to_list(res_table)
-            # print(f"DEBUG search_coords: astropy_table_to_list returned {len(columns)} cols, {len(data)} rows.")
-
-            if not columns and not data and res_table is not None and len(res_table) > 0:
-                logger.error(
-                    "search_coords: astropy_table_to_list returned empty lists despite input."
-                )
-                raise HTTPException(status_code=500, detail="Internal error processing results.")
-
-            columns = list(columns) if columns else []
-            data = [list(row) for row in data] if data else []
-            # print(f"DEBUG search_coords: Constructing SearchResult object.")
-
-            search_result_obj = SearchResult(columns=columns, data=data)
-            logger.debug(
-                "search_coords: SearchResult object created: %s",
-                type(search_result_obj),
-            )
-
-            data_with_datalink = data
-            columns_with_datalink = columns[:]
-
-            if "obs_publisher_did" in columns_with_datalink:
-                datalink_col = "datalink_url"
-                if datalink_col not in columns_with_datalink:
-                    columns_with_datalink.append(datalink_col)
-                idx = columns_with_datalink.index("obs_publisher_did")
-
-                # Create new data rows with the link appended
-                data_with_datalink = []
-                for row_idx, original_row in enumerate(data):
-                    new_row = original_row[:]
-                    # Ensure row has enough elements
-                    if idx < len(new_row):
-                        did = new_row[idx]
-                        if did:  # Check if DID is not None or empty
-                            encoded_did = urllib.parse.quote(str(did), safe="")
-                            datalink_url = f"{base_api_url}/api/datalink?ID={encoded_did}"
-                            if len(new_row) == len(columns_with_datalink) - 1:
-                                new_row.append(datalink_url)
-                            elif len(new_row) == len(columns_with_datalink):
-                                # If column existed, overwrite
-                                new_row[columns_with_datalink.index(datalink_col)] = datalink_url
-                            else:
-                                logger.warning(
-                                    "Row %s length mismatch when adding datalink.",
-                                    row_idx,
-                                )
-                        else:  # Handle empty DID
-                            if len(new_row) == len(columns_with_datalink) - 1:
-                                new_row.append(None)
-
-                    else:
-                        logger.warning("Row %s too short for DID index %s.", row_idx, idx)
-                        if len(new_row) == len(columns_with_datalink) - 1:
-                            new_row.append(None)
-
-                    data_with_datalink.append(new_row)
-
-            # recreate SearchResult with datalink info
-            search_result_obj = SearchResult(columns=columns_with_datalink, data=data_with_datalink)
-            # print(f"DEBUG search_coords: SearchResult RECREATED with datalink.")
-
-            if redis_client:
-                t0 = time.perf_counter()
-                ok = False
-                await redis_client.set(cache_key, search_result_obj.model_dump_json(), ex=CACHE_TTL)
-                ok = True
-                observe_redis("set", time.perf_counter() - t0, ok)
-            else:
-                logger.info("Redis client was None; skipping cache")
-
-            if user_session_data:
-                app_user_id = user_session_data["app_user_id"]
-                iam_sub = user_session_data.get("iam_subject_id")
-                logger.debug(
-                    "User app_id=%s, IAM sub=%s logged in, attempting to save history. ADQL=%s",
-                    app_user_id,
-                    iam_sub,
-                    adql_query_str,
-                )
-                try:
-                    params_to_save = {
-                        "tap_url": tap_url,
-                        "obscore_table": obscore_table,
-                        "search_radius": search_radius,
-                        "coordinate_system": coordinate_system,
-                    }
-                    if (
-                        coordinate_system == COORD_SYS_EQ_DEG
-                        or coordinate_system == COORD_SYS_EQ_HMS
-                    ):
-                        if ra is not None:
-                            params_to_save["ra"] = ra
-                        if dec is not None:
-                            params_to_save["dec"] = dec
-                    elif coordinate_system == COORD_SYS_GAL:
-                        if l_deg is not None:
-                            params_to_save["l"] = l_deg
-                        if b_deg is not None:
-                            params_to_save["b"] = b_deg
-                    # Store time parameters
-                    if obs_start:
-                        params_to_save["obs_start_input"] = obs_start
-                    if obs_end:
-                        params_to_save["obs_end_input"] = obs_end
-                    if mjd_start is not None:
-                        params_to_save["mjd_start"] = mjd_start
-                    if mjd_end is not None:
-                        params_to_save["mjd_end"] = mjd_end
-
-                    history_payload = QueryHistoryCreate(
-                        query_params=params_to_save,
-                        results=search_result_obj.model_dump(),
-                    )
-                    await _internal_create_query_history(
-                        history=history_payload,
-                        app_user_id=app_user_id,
-                        session=db_session,
-                    )
-                    logger.debug("Called create_query_history for user app_id=%s", app_user_id)
-                except Exception as history_error:
-                    logger.error(
-                        "saving query history for user app_id=%s: %s.",
-                        app_user_id,
-                        history_error,
-                    )
-                    traceback.print_exc()
-
-            logger.debug("search_coords: Returning SearchResult object.")
-            return search_result_obj
-
-        except Exception as e:
-            logger.error(
-                "ERROR search_coords: Exception during results processing: %s",
-                e,
-            )
-            traceback.print_exc()
-            raise HTTPException(
-                status_code=500, detail="Internal error processing search results."
-            ) from e
-
-    else:
+    if error is not None:
         logger.error("search_coords: Query function returned error: %s", error)
         raise HTTPException(status_code=400, detail=error)
+
+    # Results processing, datalink, Redis set
+    try:
+        columns, data = astropy_table_to_list(res_table)
+
+        if not columns and not data and res_table is not None and len(res_table) > 0:
+            logger.error("search_coords: astropy_table_to_list returned empty lists despite input.")
+            raise HTTPException(status_code=500, detail="Internal error processing results.")
+
+        columns = list(columns) if columns else []
+        data = [list(row) for row in data] if data else []
+
+        data_with_datalink = data
+        columns_with_datalink = columns[:]
+
+        if "obs_publisher_did" in columns_with_datalink:
+            datalink_col = "datalink_url"
+            if datalink_col not in columns_with_datalink:
+                columns_with_datalink.append(datalink_col)
+
+            did_idx = columns_with_datalink.index("obs_publisher_did")
+            datalink_idx = columns_with_datalink.index(datalink_col)
+
+            new_rows: list[list[Any]] = []
+            for row_idx, original_row in enumerate(data):
+                new_row = original_row[:]
+
+                # Ensure row has datalink slot
+                if len(new_row) == len(columns_with_datalink) - 1:
+                    new_row.append(None)
+                elif len(new_row) != len(columns_with_datalink):
+                    logger.warning("Row %s length mismatch when adding datalink.", row_idx)
+                    # try to make it safe
+                    while len(new_row) < len(columns_with_datalink):
+                        new_row.append(None)
+
+                did = new_row[did_idx] if did_idx < len(new_row) else None
+                if did:
+                    encoded_did = urllib.parse.quote(str(did), safe="")
+                    new_row[datalink_idx] = f"{base_api_url}/api/datalink?ID={encoded_did}"
+
+                new_rows.append(new_row)
+
+            data_with_datalink = new_rows
+
+        search_result_obj = SearchResult(columns=columns_with_datalink, data=data_with_datalink)
+
+        # Redis cache SET
+        if redis_client:
+            t0 = time.perf_counter()
+            ok = False
+            try:
+                await redis_client.set(
+                    cache_key,
+                    search_result_obj.model_dump_json(),
+                    ex=CACHE_TTL,
+                )
+                ok = True
+            except Exception:
+                logger.warning("Redis set failed for key=%s", cache_key, exc_info=True)
+            finally:
+                observe_redis("set", time.perf_counter() - t0, ok)
+        else:
+            logger.info("Redis client was None; skipping cache")
+
+        # Save query history (optional)
+        if user_session_data:
+            app_user_id = user_session_data["app_user_id"]
+            iam_sub = user_session_data.get("iam_subject_id")
+            logger.debug(
+                "User app_id=%s, IAM sub=%s logged in, attempting to save history. ADQL=%s",
+                app_user_id,
+                iam_sub,
+                adql_query_str,
+            )
+            try:
+                params_to_save: dict[str, Any] = {
+                    "tap_url": tap_url,
+                    "obscore_table": obscore_table,
+                    "search_radius": search_radius,
+                    "coordinate_system": coordinate_system,
+                }
+
+                if coordinate_system in (COORD_SYS_EQ_DEG, COORD_SYS_EQ_HMS):
+                    if ra is not None:
+                        params_to_save["ra"] = ra
+                    if dec is not None:
+                        params_to_save["dec"] = dec
+                elif coordinate_system == COORD_SYS_GAL:
+                    if l_deg is not None:
+                        params_to_save["l"] = l_deg
+                    if b_deg is not None:
+                        params_to_save["b"] = b_deg
+
+                if obs_start:
+                    params_to_save["obs_start_input"] = obs_start
+                if obs_end:
+                    params_to_save["obs_end_input"] = obs_end
+                if mjd_start is not None:
+                    params_to_save["mjd_start"] = mjd_start
+                if mjd_end is not None:
+                    params_to_save["mjd_end"] = mjd_end
+
+                if energy_min is not None:
+                    params_to_save["energy_min"] = energy_min
+                if energy_max is not None:
+                    params_to_save["energy_max"] = energy_max
+
+                if tracking_mode:
+                    params_to_save["tracking_mode"] = tracking_mode
+                if pointing_mode:
+                    params_to_save["pointing_mode"] = pointing_mode
+                if obs_mode:
+                    params_to_save["obs_mode"] = obs_mode
+
+                if proposal_id:
+                    params_to_save["proposal_id"] = proposal_id
+                if proposal_title:
+                    params_to_save["proposal_title"] = proposal_title
+                if proposal_contact:
+                    params_to_save["proposal_contact"] = proposal_contact
+                if proposal_type:
+                    params_to_save["proposal_type"] = proposal_type
+
+                if moon_level:
+                    params_to_save["moon_level"] = moon_level
+                if sky_brightness:
+                    params_to_save["sky_brightness"] = sky_brightness
+
+                history_payload = QueryHistoryCreate(
+                    query_params=params_to_save,
+                    results=search_result_obj.model_dump(),
+                )
+                await _internal_create_query_history(
+                    history=history_payload,
+                    app_user_id=app_user_id,
+                    session=db_session,
+                )
+                logger.debug("Called create_query_history for user app_id=%s", app_user_id)
+            except Exception as history_error:
+                logger.error(
+                    "saving query history for user app_id=%s: %s.",
+                    app_user_id,
+                    history_error,
+                )
+                traceback.print_exc()
+
+        logger.debug("search_coords: Returning SearchResult object.")
+        return search_result_obj
+
+    except Exception as e:
+        logger.error("ERROR search_coords: Exception during results processing: %s", e)
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500, detail="Internal error processing search results."
+        ) from e
 
 
 def _simbad_search_aliases(

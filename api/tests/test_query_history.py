@@ -14,7 +14,7 @@ async def test_search_coords_writes_history(client, as_user, db_session, monkeyp
         rows=[("ivo://padc.obspm/hess#123", 83.63)],
     )
 
-    def fake_perform(fields, where_conditions, limit=100):
+    def fake_perform(fields, where_conditions, limit=100, **kwargs):
         assert any("CONTAINS" in w for w in where_conditions)
         return (None, tab, "SELECT ...")
 
