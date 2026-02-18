@@ -15,11 +15,12 @@ pytest:
     - python -m venv .venv
     - . .venv/bin/activate
 
-    - python -m pip install -U pip setuptools wheel
+    - python -m pip install -U "pip<26" "setuptools<82" wheel
 
-    - python -c "import setuptools, pkg_resources; print('setuptools:', setuptools.__version__); print('pkg_resources OK')"
+    - python -c "import setuptools; print('setuptools:', setuptools.__version__)"
+    - python -c "import pkg_resources; print('pkg_resources OK')"
 
-    # Install app deps if present
+    # Install app deps if present (top-level or under api/)
     - if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
     - if [ -f api/requirements.txt ]; then python -m pip install -r api/requirements.txt; fi
 
@@ -44,18 +45,21 @@ pytest:
       PY
     - cp .env.ci .env
 
-    # debug
+    # Debug
     - which python
     - python -c "import sys; print(sys.executable)"
     - python -m pip --version
+
   script:
     - . .venv/bin/activate
     - python -m pytest api --maxfail=1 --disable-warnings --cov=api --cov-report=xml:coverage.xml
+
   artifacts:
     when: always
     paths:
       - coverage.xml
     expire_in: 1 week
+
   rules:
     - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
     - if: $CI_COMMIT_BRANCH
