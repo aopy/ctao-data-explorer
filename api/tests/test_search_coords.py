@@ -53,7 +53,7 @@ async def test_search_coords_happy_path_adds_datalink(app, client, monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_search_coords_requires_coords_or_time(client):
+async def test_search_coords_requires_at_least_one_criterion(client):
     r = await client.get("/api/search_coords")
     assert r.status_code == 400
-    assert "Provide Coordinates or Time Interval" in r.json()["detail"]
+    assert "Provide at least one search criterion." in r.json()["detail"]

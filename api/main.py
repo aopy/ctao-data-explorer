@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import hashlib
 import inspect
@@ -71,7 +73,7 @@ from .tap import (
     build_where_clause,
     perform_query_with_conditions,
 )
-from .tap_schema import get_tap_table_columns
+from .tap_schema import get_tap_table_columns, tap_supports_columns
 
 MAX_ALIAS_LEN = 32
 
@@ -554,7 +556,7 @@ async def search_coords(
     mjd_start: float | None = Query(None),
     mjd_end: float | None = Query(None),
     time_scale: str | None = Query("tt"),
-    # Energy Search
+    # Energy Search (TeV)
     energy_min: float | None = Query(None),
     energy_max: float | None = Query(None),
     # Observation Configuration
@@ -579,86 +581,19 @@ async def search_coords(
     redis_client = getattr(app.state, "redis", None)
     CACHE_TTL = 3600
 
-    base_api_url = f"{request.url.scheme}://{request.headers['host']}"
+    base_api_url = str(request.base_url).rstrip("/")
 
-    fields: dict[str, FieldBox] = {
+    fields: dict[str, Any] = {
         "tap_url": {"value": tap_url},
         "obscore_table": {"value": obscore_table},
         "search_radius": {"value": search_radius},
     }
+
     if coordinate_system is not None:
         coordinate_system = COORD_SYS_ALIASES.get(coordinate_system, coordinate_system)
 
     coords_present = False
     time_filter_present = False
-
-    # discover available TAP columns (cached)
-    ignored_optional_filters: list[str] = []
-    try:
-        tap_cols = await get_tap_table_columns(tap_url, obscore_table)
-    except Exception as e:
-        logger.warning(
-            "search_coords: TAP_SCHEMA lookup failed (%s). Optional filters may be ignored.", e
-        )
-        tap_cols = set()
-
-    tap_schema_available = bool(tap_cols)
-
-    def col_exists(col: str) -> bool:
-        if not tap_schema_available:
-            # return True  # optimistic fallback when schema is unknown
-            return False  # conservative: don't apply optional filters
-        return col.lower() in tap_cols
-
-    def resolve_first_existing(*candidates: str) -> str | None:
-        for c in candidates:
-            if col_exists(c):
-                return c
-        return None
-
-    def esc(s: str) -> str:
-        return (s or "").replace("'", "''")
-
-    def add_optional_numeric_minmax(
-        col: str,
-        min_val: float | None,
-        max_val: float | None,
-    ) -> None:
-        if min_val is not None:
-            if col_exists(col):
-                where_conditions.append(f"{col} >= {float(min_val)}")
-            else:
-                ignored_optional_filters.append(f"{col} (min)")
-        if max_val is not None:
-            if col_exists(col):
-                where_conditions.append(f"{col} <= {float(max_val)}")
-            else:
-                ignored_optional_filters.append(f"{col} (max)")
-
-    def add_optional_enum_eq(col: str, val: str | None) -> None:
-        if not val:
-            return
-        if col_exists(col):
-            where_conditions.append(f"{col} = '{esc(val)}'")
-        else:
-            ignored_optional_filters.append(col)
-
-    def add_optional_text_eq(col: str, val: str | None) -> None:
-        if not val:
-            return
-        if col_exists(col):
-            where_conditions.append(f"{col} = '{esc(val.strip())}'")
-        else:
-            ignored_optional_filters.append(col)
-
-    def add_optional_text_like(col: str, val: str | None) -> None:
-        if not val:
-            return
-        if col_exists(col):
-            v = esc(val.strip())
-            where_conditions.append(f"ivo_nocasematch({col}, '%{v}%') = 1")
-        else:
-            ignored_optional_filters.append(col)
 
     # Time processing (normalize to TT MJD)
     if mjd_start is not None and mjd_end is not None:
@@ -690,13 +625,6 @@ async def search_coords(
         fields["search_mjd_end"] = {"value": float(mjd_end_tt)}
         time_filter_present = True
 
-        logger.debug(
-            "search_coords: Using MJD filter (normalized to TT): %s - %s (time_scale=%s)",
-            mjd_start_tt,
-            mjd_end_tt,
-            scale,
-        )
-
     elif obs_start and obs_end:
         try:
             dt_start = datetime.strptime(obs_start, "%d/%m/%Y %H:%M:%S")
@@ -721,13 +649,6 @@ async def search_coords(
             fields["search_mjd_end"] = {"value": float(t_end_tt.mjd)}
             time_filter_present = True
 
-            logger.debug(
-                "search_coords: Date/Time -> TT MJD: %s - %s (time_scale=%s)",
-                t_start_tt.mjd,
-                t_end_tt.mjd,
-                scale,
-            )
-
         except ValueError as e:
             raise HTTPException(
                 status_code=400, detail=f"Invalid date/time format or value: {e}"
@@ -737,12 +658,11 @@ async def search_coords(
             raise HTTPException(status_code=500, detail="Error processing time parameters.") from e
 
     # Coordinate processing
-    if coordinate_system == COORD_SYS_EQ_DEG or coordinate_system == COORD_SYS_EQ_HMS:
+    if coordinate_system in (COORD_SYS_EQ_DEG, COORD_SYS_EQ_HMS):
         if ra is not None and dec is not None:
             fields["target_raj2000"] = {"value": ra}
             fields["target_dej2000"] = {"value": dec}
             coords_present = True
-            logger.debug("search_coords: Equatorial coords received RA=%s, Dec=%s", ra, dec)
 
     elif coordinate_system == COORD_SYS_GAL:
         if l_deg is not None and b_deg is not None:
@@ -758,16 +678,43 @@ async def search_coords(
                     status_code=400, detail="Invalid galactic coordinates provided."
                 ) from e
 
-    logger.debug("search_coords: Fields prepared: %s", fields)
-    logger.debug(
-        "search_coords: Coords present: %s, Time present: %s",
-        coords_present,
-        time_filter_present,
+    # Normalization (treat empty strings as None)
+    proposal_id = (proposal_id or "").strip() or None
+    proposal_title = (proposal_title or "").strip() or None
+    proposal_contact = (proposal_contact or "").strip() or None
+    proposal_type = (proposal_type or "").strip() or None
+
+    tracking_mode = (tracking_mode or "").strip() or None
+    pointing_mode = (pointing_mode or "").strip() or None
+    obs_mode = (obs_mode or "").strip() or None
+
+    moon_level = (moon_level or "").strip() or None
+    sky_brightness = (sky_brightness or "").strip() or None
+
+    # Determine whether any criteria were provided
+    energy_filter_requested = (energy_min is not None) or (energy_max is not None)
+
+    other_filter_requested = any(
+        v is not None
+        for v in [
+            tracking_mode,
+            pointing_mode,
+            obs_mode,
+            proposal_id,
+            proposal_title,
+            proposal_contact,
+            proposal_type,
+            moon_level,
+            sky_brightness,
+        ]
     )
 
-    if not coords_present and not time_filter_present:
-        raise HTTPException(status_code=400, detail="Provide Coordinates or Time Interval.")
+    if not (
+        coords_present or time_filter_present or energy_filter_requested or other_filter_requested
+    ):
+        raise HTTPException(status_code=400, detail="Provide at least one search criterion.")
 
+    # Build WHERE conditions
     where_conditions: list[str] = []
 
     if coords_present:
@@ -787,51 +734,108 @@ async def search_coords(
             )
         )
 
-    # Normalization (treat empty strings as None)
-    proposal_id = (proposal_id or "").strip() or None
-    proposal_title = (proposal_title or "").strip() or None
-    proposal_contact = (proposal_contact or "").strip() or None
-    proposal_type = (proposal_type or "").strip() or None
+    # TAP_SCHEMA discovery
+    ignored_optional_filters: list[str] = []
+    try:
+        tap_cols = await get_tap_table_columns(tap_url, obscore_table)
+    except Exception as e:
+        logger.warning(
+            "search_coords: TAP_SCHEMA lookup failed (%s). Optional filters may be ignored.",
+            e,
+        )
+        tap_cols = set()
 
-    tracking_mode = (tracking_mode or "").strip() or None
-    pointing_mode = (pointing_mode or "").strip() or None
-    obs_mode = (obs_mode or "").strip() or None
+    tap_schema_available = bool(tap_cols)
 
-    moon_level = (moon_level or "").strip() or None
-    sky_brightness = (sky_brightness or "").strip() or None
+    def col_exists(col: str) -> bool:
+        # if schema is unknown, do not apply optional filters that could break TAP query
+        if not tap_schema_available:
+            return False
+        return col.lower() in tap_cols
 
-    # Optional filters
+    def esc(s: str) -> str:
+        return (s or "").replace("'", "''")
 
-    # Energy / EM range overlap:
-    # Prefer ObsCore em_min/em_max, but allow future energy_min/energy_max column names too
-    em_min_col = resolve_first_existing("em_min", "energy_min")
-    em_max_col = resolve_first_existing("em_max", "energy_max")
+    def add_optional_enum_eq(col: str, val: str | None) -> None:
+        if not val:
+            return
+        if col_exists(col):
+            where_conditions.append(f"{col} = '{esc(val)}'")
+        else:
+            ignored_optional_filters.append(col)
 
-    if em_min_col and em_max_col:
+    def add_optional_text_eq(col: str, val: str | None) -> None:
+        if not val:
+            return
+        if col_exists(col):
+            where_conditions.append(f"{col} = '{esc(val.strip())}'")
+        else:
+            ignored_optional_filters.append(col)
+
+    def add_optional_text_like(col: str, val: str | None) -> None:
+        if not val:
+            return
+        if col_exists(col):
+            v = esc(val.strip())
+            where_conditions.append(f"ivo_nocasematch({col}, '%{v}%') = 1")
+        else:
+            ignored_optional_filters.append(col)
+
+    # Energy filtering (TeV)
+    if energy_filter_requested:
+        have_energy_cols: bool
+
+        if tap_schema_available:
+            have_energy_cols = col_exists("energy_min") and col_exists("energy_max")
+        else:
+            # Fallback probe against the actual table
+            try:
+                have_energy_cols = await tap_supports_columns(
+                    tap_url, obscore_table, ["energy_min", "energy_max"]
+                )
+            except Exception as e:
+                logger.warning(
+                    "Energy column probe failed for tap_url=%s table=%s (%s)",
+                    tap_url,
+                    obscore_table,
+                    e,
+                    exc_info=True,
+                )
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "Energy filtering could not be validated because the TAP service returned an error while "
+                        "checking column availability. Please try again later or choose another TAP table."
+                    ),
+                ) from e
+
+        if not have_energy_cols:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Energy filtering requires columns 'energy_min' and 'energy_max' to be present in '{obscore_table}', "
+                    "but they were not found. Please choose a table that provides energy columns, or disable Energy Search."
+                ),
+            )
+
+        # Overlap logic:
+        # dataset interval [energy_min, energy_max] overlaps user interval [req_min, req_max]
+        # -> energy_max >= req_min AND energy_min <= req_max
         if energy_min is not None:
-            # dataset max >= requested min
-            where_conditions.append(f"{em_max_col} >= {float(energy_min)}")
+            where_conditions.append(f"energy_max >= {float(energy_min)}")
         if energy_max is not None:
-            # dataset min <= requested max
-            where_conditions.append(f"{em_min_col} <= {float(energy_max)}")
-    else:
-        if energy_min is not None:
-            ignored_optional_filters.append("energy_min (no em_min/em_max)")
-        if energy_max is not None:
-            ignored_optional_filters.append("energy_max (no em_min/em_max)")
+            where_conditions.append(f"energy_min <= {float(energy_max)}")
 
-    # Observation Configuration
+    # Other optional filters
     add_optional_enum_eq("tracking_mode", tracking_mode)
     add_optional_enum_eq("pointing_mode", pointing_mode)
     add_optional_enum_eq("obs_mode", obs_mode)
 
-    # Observation Program
     add_optional_text_eq("proposal_id", proposal_id)
     add_optional_text_like("proposal_title", proposal_title)
     add_optional_text_like("proposal_contact", proposal_contact)
     add_optional_enum_eq("proposal_type", proposal_type)
 
-    # Observation Conditions
     add_optional_enum_eq("moon_level", moon_level)
     add_optional_enum_eq("sky_brightness", sky_brightness)
 
@@ -841,10 +845,9 @@ async def search_coords(
             ignored_optional_filters,
         )
 
-    # Build ADQL ONCE (for cache key and execution)
+    # Build ADQL once
     where_sql = build_where_clause(where_conditions)
     adql_query_str = build_select_query(str(fields["obscore_table"]["value"]), where_sql, limit=100)
-
     cache_key = "search:" + hashlib.sha256(adql_query_str.encode()).hexdigest()
 
     # Redis cache GET (instrumented)
@@ -864,23 +867,14 @@ async def search_coords(
         if cached:
             cache_hit("search")
             return SearchResult.model_validate_json(cached)
+
         cache_miss("search")
 
     # Execute query
-    res_table = None
-    error = None
+    res_table: Table | None = None
+    error: str | None = None
     try:
-        error, res_table, _ = perform_query_with_conditions(
-            fields,
-            where_conditions,
-            limit=100,
-            adql_query_str=adql_query_str,
-        )
-        logger.debug(
-            "search_coords: After query call: error=%s, type(res_table)=%s",
-            error,
-            type(res_table),
-        )
+        error, res_table, _ = perform_query_with_conditions(fields, where_conditions, limit=100)
     except Exception as e:
         logger.error("search_coords: Exception during perform_query call: %s", e)
         raise HTTPException(status_code=500, detail="Failed during query execution.") from e
@@ -889,19 +883,15 @@ async def search_coords(
         logger.error("search_coords: Query function returned error: %s", error)
         raise HTTPException(status_code=400, detail=error)
 
-    # Results processing, datalink, Redis set
+    # Results processing + datalink + Redis SET + history
     try:
         columns, data = astropy_table_to_list(res_table)
-
-        if not columns and not data and res_table is not None and len(res_table) > 0:
-            logger.error("search_coords: astropy_table_to_list returned empty lists despite input.")
-            raise HTTPException(status_code=500, detail="Internal error processing results.")
 
         columns = list(columns) if columns else []
         data = [list(row) for row in data] if data else []
 
-        data_with_datalink = data
         columns_with_datalink = columns[:]
+        data_with_datalink = data
 
         if "obs_publisher_did" in columns_with_datalink:
             datalink_col = "datalink_url"
@@ -912,17 +902,10 @@ async def search_coords(
             datalink_idx = columns_with_datalink.index(datalink_col)
 
             new_rows: list[list[Any]] = []
-            for row_idx, original_row in enumerate(data):
+            for original_row in data:
                 new_row = original_row[:]
-
-                # Ensure row has datalink slot
-                if len(new_row) == len(columns_with_datalink) - 1:
+                while len(new_row) < len(columns_with_datalink):
                     new_row.append(None)
-                elif len(new_row) != len(columns_with_datalink):
-                    logger.warning("Row %s length mismatch when adding datalink.", row_idx)
-                    # try to make it safe
-                    while len(new_row) < len(columns_with_datalink):
-                        new_row.append(None)
 
                 did = new_row[did_idx] if did_idx < len(new_row) else None
                 if did:
@@ -935,34 +918,21 @@ async def search_coords(
 
         search_result_obj = SearchResult(columns=columns_with_datalink, data=data_with_datalink)
 
-        # Redis cache SET
+        # Redis SET (instrumented)
         if redis_client:
             t0 = time.perf_counter()
             ok = False
             try:
-                await redis_client.set(
-                    cache_key,
-                    search_result_obj.model_dump_json(),
-                    ex=CACHE_TTL,
-                )
+                await redis_client.set(cache_key, search_result_obj.model_dump_json(), ex=CACHE_TTL)
                 ok = True
             except Exception:
                 logger.warning("Redis set failed for key=%s", cache_key, exc_info=True)
             finally:
                 observe_redis("set", time.perf_counter() - t0, ok)
-        else:
-            logger.info("Redis client was None; skipping cache")
 
-        # Save query history (optional)
+        # Save history (optional)
         if user_session_data:
             app_user_id = user_session_data["app_user_id"]
-            iam_sub = user_session_data.get("iam_subject_id")
-            logger.debug(
-                "User app_id=%s, IAM sub=%s logged in, attempting to save history. ADQL=%s",
-                app_user_id,
-                iam_sub,
-                adql_query_str,
-            )
             try:
                 params_to_save: dict[str, Any] = {
                     "tap_url": tap_url,
@@ -971,6 +941,7 @@ async def search_coords(
                     "coordinate_system": coordinate_system,
                 }
 
+                # coords
                 if coordinate_system in (COORD_SYS_EQ_DEG, COORD_SYS_EQ_HMS):
                     if ra is not None:
                         params_to_save["ra"] = ra
@@ -982,6 +953,7 @@ async def search_coords(
                     if b_deg is not None:
                         params_to_save["b"] = b_deg
 
+                # time
                 if obs_start:
                     params_to_save["obs_start_input"] = obs_start
                 if obs_end:
@@ -990,12 +962,16 @@ async def search_coords(
                     params_to_save["mjd_start"] = mjd_start
                 if mjd_end is not None:
                     params_to_save["mjd_end"] = mjd_end
+                if time_scale:
+                    params_to_save["time_scale"] = time_scale
 
+                # energy
                 if energy_min is not None:
                     params_to_save["energy_min"] = energy_min
                 if energy_max is not None:
                     params_to_save["energy_max"] = energy_max
 
+                # other filters
                 if tracking_mode:
                     params_to_save["tracking_mode"] = tracking_mode
                 if pointing_mode:
@@ -1026,16 +1002,12 @@ async def search_coords(
                     app_user_id=app_user_id,
                     session=db_session,
                 )
-                logger.debug("Called create_query_history for user app_id=%s", app_user_id)
             except Exception as history_error:
                 logger.error(
-                    "saving query history for user app_id=%s: %s.",
-                    app_user_id,
-                    history_error,
+                    "saving query history for user app_id=%s: %s", app_user_id, history_error
                 )
                 traceback.print_exc()
 
-        logger.debug("search_coords: Returning SearchResult object.")
         return search_result_obj
 
     except Exception as e:

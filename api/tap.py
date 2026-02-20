@@ -50,33 +50,25 @@ def build_select_query(table: str, where: str, limit: int = 100, columns: str = 
 
 
 def perform_query_with_conditions(
-    fields: dict[str, Any],
-    conditions: list[str],
-    limit: int = 100,
-    adql_query_str: str | None = None,
+    fields: dict[str, Any], conditions: list[str], limit: int = 100
 ) -> tuple[str | None, Table | None, str]:
-    """
-    Build a WHERE clause from `conditions`, compose the SELECT, execute, and return:
-    (error_message_or_None, astropy_table_or_None, adql_query_string)
-
-    If `adql_query_str` is provided, it is used directly (no rebuild).
-    """
     url = fields["tap_url"]["value"]
     obscore_table = fields["obscore_table"]["value"]
     timeout = 5
 
     error: str | None = None
     astro_table: Table | None = None
-
-    # always return the final query string we attempted (or empty string)
-    query: str = adql_query_str or ""
+    query = ""
 
     try:
         t = Tap(url)
         t.connect(timeout)
 
-        # Build query only if caller didn't provide it
-        if adql_query_str is None:
+        # if caller already computed ADQL reuse it
+        prebuilt = fields.get("adql_query_str", {}).get("value")
+        if isinstance(prebuilt, str) and prebuilt.strip():
+            query = prebuilt
+        else:
             where = build_where_clause(conditions)
             query = build_select_query(obscore_table, where, limit=limit)
 
@@ -91,7 +83,6 @@ def perform_query_with_conditions(
             astro_table = _process_tap_results(tap_results)
             if astro_table is None and error is None:
                 error = "Failed processing TAP results after query."
-
     except Exception as outer_exception:
         error = f"Failed TAP operation: {outer_exception}"
         logger.exception("Error during TAP operation: %s", outer_exception)

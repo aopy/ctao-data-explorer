@@ -198,7 +198,7 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     (moonLevel !== defaultFormValues.moonLevel) ||
     (skyBrightness !== defaultFormValues.skyBrightness);
 
-  const energyActive = useEnergySearch || energyHasAny;
+  const energyUsed = useEnergySearch;
   const obsConfigActive = useObsConfig || obsConfigHasAny;
   const obsProgramActive = useObsProgram || obsProgramHasAny;
   const obsConditionsActive = useObsConditions || obsConditionsHasAny;
@@ -339,6 +339,13 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     if (e.key !== 'Enter') return;
     if (isSubmitting) {
       e.preventDefault();
+      return;
+    }
+    // if Enter pressed in Advanced Settings input, don't submit immediately
+    if (target?.id === 'obsCoreTableInput' || target?.id === 'tapUrlInput') {
+      e.preventDefault();
+      target.blur();
+      submitViaEnter(); // after blur, state will be updated
       return;
     }
     const target = e.target;
@@ -1322,15 +1329,41 @@ const handleClearForm = () => {
     }
     }
 
+    const energyHasAny =
+      (String(energyMin || '').trim() !== '') ||
+      (String(energyMax || '').trim() !== '');
 
-    if ((!useConeSearch || !coordsAreValid) && (!useTimeSearch || !timeIsValid)) {
-      setWarningMessage('Please enable Cone Search and/or Time Search and provide valid inputs.');
+    const energyProvided = useEnergySearch && energyHasAny;
+
+    const obsConfigProvided =
+      obsConfigActive && (trackingMode || pointingMode || obsMode);
+
+    const obsProgramProvided =
+      obsProgramActive &&
+      (String(proposalId || '').trim() ||
+       String(proposalTitle || '').trim() ||
+       String(proposalContact || '').trim() ||
+       proposalType);
+
+    const obsConditionsProvided = obsConditionsActive;
+
+    const hasAnyCriteria =
+      (useConeSearch && coordsAreValid) ||
+      (useTimeSearch && timeIsValid) ||
+      energyProvided ||
+      obsConfigProvided ||
+      obsProgramProvided ||
+      obsConditionsProvided;
+
+
+    if (!hasAnyCriteria) {
+      setWarningMessage('Please provide at least one search criterion (Cone, Time, Energy, Program, Config, or Conditions).');
       setIsSubmitting(false);
       return;
     }
 
     // Optional filters (only if section is active)
-    if (energyActive) {
+    if (useEnergySearch) {
       if (energyMin.trim() !== '') finalReqParams.energy_min = Number(energyMin);
       if (energyMax.trim() !== '') finalReqParams.energy_max = Number(energyMax);
     }
@@ -1348,34 +1381,28 @@ const handleClearForm = () => {
       if (proposalType) finalReqParams.proposal_type = proposalType;
     }
 
-    if (useObsConditions) {
+    if (obsConditionsActive) {
       finalReqParams.moon_level = moonLevel;
       finalReqParams.sky_brightness = skyBrightness;
     }
 
     // call API
-    axios.get('/api/search_coords', { params: finalReqParams })
-      .then(response => {
-        const payload = response.data;
-
-        const nRows = Array.isArray(payload?.data) ? payload.data.length : 0;
-
-        // if no rows, stay on Search tab and show warning
-        if (nRows === 0) {
-          setWarningMessage('No results were found for the given search criteria.');
-          return;
-        }
-
+    try {
+      const response = await axios.get('/api/search_coords', { params: finalReqParams });
+      const payload = response.data;
+      const nRows = Array.isArray(payload?.data) ? payload.data.length : 0;
+      if (nRows === 0) {
+        setWarningMessage('No results were found for the given search criteria.');
+      } else {
         setResults(payload);
-      })
-      .catch(error => {
-        const errorDetail = error.response?.data?.detail || error.message || 'Unknown search error.';
-        setWarningMessage(`Search failed: ${errorDetail}`);
-      })
-      .finally(() => {
-        setIsSubmitting(false);
-        setLastChangedType(null);
-      });
+      }
+    } catch (error) {
+      const errorDetail = error.response?.data?.detail || error.message || 'Unknown search error.';
+      setWarningMessage(`Search failed: ${errorDetail}`);
+    } finally {
+      setIsSubmitting(false);
+      setLastChangedType(null);
+    }
   };
 
   return (
@@ -1760,7 +1787,8 @@ const handleClearForm = () => {
                       data-bs-toggle="collapse" data-bs-target="#collapseEnergy"
                       aria-expanded="false" aria-controls="collapseEnergy">
                 Energy Search
-                {energyActive && <span className="badge bg-success ms-2">Active</span>}
+                {energyUsed && <span className="badge bg-success ms-2">Active</span>}
+                {!energyUsed && energyHasAny && <span className="badge bg-secondary ms-2">Filled</span>}
               </button>
             </h2>
             <div id="collapseEnergy" className="accordion-collapse collapse"
@@ -1776,13 +1804,13 @@ const handleClearForm = () => {
                   <div className="col-md-6">
                     <label className="form-label">Energy min</label>
                     <input type="number" className="form-control"
-                           value={energyMin} onChange={(e) => { setEnergyMin(e.target.value); setUseEnergySearch(true); }}
+                           value={energyMin} onChange={(e) => setEnergyMin(e.target.value)}
                            disabled={isSubmitting} />
                   </div>
                   <div className="col-md-6">
                     <label className="form-label">Energy max</label>
                     <input type="number" className="form-control"
-                           value={energyMax} onChange={(e) => { setEnergyMax(e.target.value); setUseEnergySearch(true); }}
+                           value={energyMax} onChange={(e) => setEnergyMax(e.target.value)}
                            disabled={isSubmitting} />
                   </div>
                 </div>
