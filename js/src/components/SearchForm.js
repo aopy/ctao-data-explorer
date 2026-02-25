@@ -1840,30 +1840,40 @@ const handleClearForm = () => {
                 <div className="row g-2">
                   <div className="col-md-4">
                     <label className="form-label">Telescope Tracking Mode</label>
-                    <select className="form-select"
-                            value={trackingMode} onChange={(e) => { setTrackingMode(e.target.value); setUseObsConfig(true); }}
-                            disabled={isSubmitting}>
+                    <select
+                      className="form-select"
+                      value={trackingMode}
+                      onChange={(e) => { setTrackingMode(e.target.value); setUseObsConfig(true); }}
+                      disabled={isSubmitting}
+                    >
                       <option value="">(Any)</option>
-                      <option value="Sidereal">Sidereal</option>
+                      <option value="sidereal">Sidereal</option>
                     </select>
                   </div>
 
                   <div className="col-md-4">
                     <label className="form-label">Array Pointing Mode</label>
-                    <select className="form-select"
-                            value={pointingMode} onChange={(e) => { setPointingMode(e.target.value); setUseObsConfig(true); }}
-                            disabled={isSubmitting}>
+                    <select
+                      className="form-select"
+                      value={pointingMode}
+                      onChange={(e) => { setPointingMode(e.target.value); setUseObsConfig(true); }}
+                      disabled={isSubmitting}
+                    >
                       <option value="">(Any)</option>
-                      <option value="Parallel">Parallel</option>
+                      <option value="parallel">Parallel</option>
                     </select>
                   </div>
 
                   <div className="col-md-4">
                     <label className="form-label">Observation Mode</label>
-                    <select className="form-select"
-                            value={obsMode} onChange={(e) => { setObsMode(e.target.value); setUseObsConfig(true); }}
-                            disabled={isSubmitting}>
+                    <select
+                      className="form-select"
+                      value={obsMode}
+                      onChange={(e) => { setObsMode(e.target.value); setUseObsConfig(true); }}
+                      disabled={isSubmitting}
+                    >
                       <option value="">(Any)</option>
+                      <option value="default">Default</option>
                       <option value="Wobble">Wobble</option>
                       <option value="On/Off">On/Off</option>
                       <option value="Grid-Scan Mode">Grid-Scan Mode</option>

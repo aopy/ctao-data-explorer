@@ -120,7 +120,7 @@ export default function QuickLookModal({ isOpen, onClose, obsIds = [], defaultCe
                     type="number"
                     step="0.001"
                     className="form-control"
-                    placeholder="e.g., 83.633"
+                    //placeholder="e.g., 83.633"
                     value={ra}
                     onChange={(e) => setRa(e.target.value)}
                     aria-describedby="ql-ra-help"
@@ -135,7 +135,7 @@ export default function QuickLookModal({ isOpen, onClose, obsIds = [], defaultCe
                     type="number"
                     step="0.001"
                     className="form-control"
-                    placeholder="e.g., 22.014"
+                    //placeholder="e.g., 22.014"
                     value={dec}
                     onChange={(e) => setDec(e.target.value)}
                     aria-describedby="ql-dec-help"

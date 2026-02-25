@@ -595,6 +595,113 @@ async def search_coords(
     coords_present = False
     time_filter_present = False
 
+    where_conditions: list[str] = []
+
+    # TAP_SCHEMA discovery
+    ignored_optional_filters: list[str] = []
+    try:
+        tap_cols = await get_tap_table_columns(tap_url, obscore_table)
+    except Exception as e:
+        logger.warning(
+            "search_coords: TAP_SCHEMA lookup failed (%s). Optional filters may require fallback probing.",
+            e,
+        )
+        tap_cols = set()
+
+    tap_schema_available = bool(tap_cols)
+
+    # Per-request cache for fallback probing of optional columns
+    optional_cols_probe_cache: dict[str, bool] = {}
+
+    def col_exists(col: str) -> bool:
+        """TAP_SCHEMA-only check."""
+        if not tap_schema_available:
+            return False
+        return col.lower() in tap_cols
+
+    async def optional_col_exists(col: str) -> bool:
+        """Return True if optional column exists.
+        Use TAP_SCHEMA when available; otherwise probe actual table (cached per request).
+        """
+        if tap_schema_available:
+            return col.lower() in tap_cols
+
+        if col in optional_cols_probe_cache:
+            return optional_cols_probe_cache[col]
+
+        try:
+            exists = await tap_supports_columns(tap_url, obscore_table, [col])
+            optional_cols_probe_cache[col] = bool(exists)
+            return bool(exists)
+        except Exception as e:
+            logger.warning(
+                "Optional column probe failed for tap_url=%s table=%s col=%s (%s)",
+                tap_url,
+                obscore_table,
+                col,
+                e,
+                exc_info=True,
+            )
+            raise
+
+    def esc(s: str) -> str:
+        return (s or "").replace("'", "''")
+
+    requested_optional_filters: list[str] = []
+    applied_optional_filters: list[str] = []
+    optional_filter_probe_failed = False
+
+    async def add_optional_enum_eq(col: str, val: str | None) -> None:
+        nonlocal optional_filter_probe_failed
+        if not val:
+            return
+        requested_optional_filters.append(col)
+        try:
+            if await optional_col_exists(col):
+                where_conditions.append(f"{col} = '{esc(val)}'")
+                applied_optional_filters.append(col)
+            else:
+                ignored_optional_filters.append(col)
+        except Exception:
+            optional_filter_probe_failed = True
+            ignored_optional_filters.append(col)
+
+    async def add_optional_text_eq(col: str, val: str | None) -> None:
+        nonlocal optional_filter_probe_failed
+        if not val:
+            return
+        v = val.strip()
+        if not v:
+            return
+        requested_optional_filters.append(col)
+        try:
+            if await optional_col_exists(col):
+                where_conditions.append(f"{col} = '{esc(v)}'")
+                applied_optional_filters.append(col)
+            else:
+                ignored_optional_filters.append(col)
+        except Exception:
+            optional_filter_probe_failed = True
+            ignored_optional_filters.append(col)
+
+    async def add_optional_text_like(col: str, val: str | None) -> None:
+        nonlocal optional_filter_probe_failed
+        if not val:
+            return
+        v = val.strip()
+        if not v:
+            return
+        requested_optional_filters.append(col)
+        try:
+            if await optional_col_exists(col):
+                where_conditions.append(f"ivo_nocasematch({col}, '%{esc(v)}%') = 1")
+                applied_optional_filters.append(col)
+            else:
+                ignored_optional_filters.append(col)
+        except Exception:
+            optional_filter_probe_failed = True
+            ignored_optional_filters.append(col)
+
     # Time processing (normalize to TT MJD)
     if mjd_start is not None and mjd_end is not None:
         MIN_VALID_MJD = 0
@@ -648,11 +755,12 @@ async def search_coords(
             fields["search_mjd_start"] = {"value": float(t_start_tt.mjd)}
             fields["search_mjd_end"] = {"value": float(t_end_tt.mjd)}
             time_filter_present = True
-
         except ValueError as e:
             raise HTTPException(
                 status_code=400, detail=f"Invalid date/time format or value: {e}"
             ) from e
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error("Unexpected error during time processing: %s", e)
             raise HTTPException(status_code=500, detail="Error processing time parameters.") from e
@@ -663,7 +771,6 @@ async def search_coords(
             fields["target_raj2000"] = {"value": ra}
             fields["target_dej2000"] = {"value": dec}
             coords_present = True
-
     elif coordinate_system == COORD_SYS_GAL:
         if l_deg is not None and b_deg is not None:
             try:
@@ -714,9 +821,7 @@ async def search_coords(
     ):
         raise HTTPException(status_code=400, detail="Provide at least one search criterion.")
 
-    # Build WHERE conditions
-    where_conditions: list[str] = []
-
+    # Spatial / time WHERE clauses
     if coords_present:
         where_conditions.append(
             build_spatial_icrs_condition(
@@ -734,56 +839,9 @@ async def search_coords(
             )
         )
 
-    # TAP_SCHEMA discovery
-    ignored_optional_filters: list[str] = []
-    try:
-        tap_cols = await get_tap_table_columns(tap_url, obscore_table)
-    except Exception as e:
-        logger.warning(
-            "search_coords: TAP_SCHEMA lookup failed (%s). Optional filters may be ignored.",
-            e,
-        )
-        tap_cols = set()
-
-    tap_schema_available = bool(tap_cols)
-
-    def col_exists(col: str) -> bool:
-        # if schema is unknown, do not apply optional filters that could break TAP query
-        if not tap_schema_available:
-            return False
-        return col.lower() in tap_cols
-
-    def esc(s: str) -> str:
-        return (s or "").replace("'", "''")
-
-    def add_optional_enum_eq(col: str, val: str | None) -> None:
-        if not val:
-            return
-        if col_exists(col):
-            where_conditions.append(f"{col} = '{esc(val)}'")
-        else:
-            ignored_optional_filters.append(col)
-
-    def add_optional_text_eq(col: str, val: str | None) -> None:
-        if not val:
-            return
-        if col_exists(col):
-            where_conditions.append(f"{col} = '{esc(val.strip())}'")
-        else:
-            ignored_optional_filters.append(col)
-
-    def add_optional_text_like(col: str, val: str | None) -> None:
-        if not val:
-            return
-        if col_exists(col):
-            v = esc(val.strip())
-            where_conditions.append(f"ivo_nocasematch({col}, '%{v}%') = 1")
-        else:
-            ignored_optional_filters.append(col)
-
     # Energy filtering (TeV)
     if energy_filter_requested:
-        have_energy_cols: bool
+        have_energy_cols = False
 
         if tap_schema_available:
             have_energy_cols = col_exists("energy_min") and col_exists("energy_max")
@@ -818,36 +876,66 @@ async def search_coords(
                 ),
             )
 
-        # Overlap logic:
-        # dataset interval [energy_min, energy_max] overlaps user interval [req_min, req_max]
-        # -> energy_max >= req_min AND energy_min <= req_max
+        # Overlap logic
         if energy_min is not None:
             where_conditions.append(f"energy_max >= {float(energy_min)}")
         if energy_max is not None:
             where_conditions.append(f"energy_min <= {float(energy_max)}")
 
     # Other optional filters
-    add_optional_enum_eq("tracking_mode", tracking_mode)
-    add_optional_enum_eq("pointing_mode", pointing_mode)
-    add_optional_enum_eq("obs_mode", obs_mode)
+    await add_optional_enum_eq("tracking_type", tracking_mode)
+    await add_optional_enum_eq("pointing_mode", pointing_mode)
+    await add_optional_enum_eq("obs_mode", obs_mode)
 
-    add_optional_text_eq("proposal_id", proposal_id)
-    add_optional_text_like("proposal_title", proposal_title)
-    add_optional_text_like("proposal_contact", proposal_contact)
-    add_optional_enum_eq("proposal_type", proposal_type)
+    await add_optional_text_eq("proposal_id", proposal_id)
+    await add_optional_text_like("proposal_title", proposal_title)
+    await add_optional_text_like("proposal_contact", proposal_contact)
+    await add_optional_enum_eq("proposal_type", proposal_type)
 
-    add_optional_enum_eq("moon_level", moon_level)
-    add_optional_enum_eq("sky_brightness", sky_brightness)
+    await add_optional_enum_eq("moon_level", moon_level)
+    await add_optional_enum_eq("sky_brightness", sky_brightness)
 
     if ignored_optional_filters:
         logger.info(
-            "search_coords: Ignored optional filters (missing columns): %s",
-            ignored_optional_filters,
+            "search_coords: Ignored optional filters (missing columns or probe failure): %s",
+            sorted(set(ignored_optional_filters)),
+        )
+
+    if requested_optional_filters and applied_optional_filters and not tap_schema_available:
+        logger.info(
+            "search_coords: Applied optional filters via fallback column probe (TAP_SCHEMA unavailable): %s",
+            sorted(set(applied_optional_filters)),
+        )
+
+    only_optional_filters_requested = not (
+        coords_present or time_filter_present or energy_filter_requested
+    )
+
+    if requested_optional_filters and not applied_optional_filters and only_optional_filters_requested:
+        # If probe failed, this is a service validation problem (503)
+        if optional_filter_probe_failed:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "The requested optional filters could not be validated because the TAP service returned an error "
+                    "while checking column availability. Please try again later, choose another table/service, or add "
+                    "coordinates/time criteria to narrow the search."
+                ),
+            )
+
+        # Otherwise, validation succeeded and columns are simply missing (400)
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "The requested optional filters could not be applied because the selected table does not "
+                f"provide the required columns: {', '.join(sorted(set(ignored_optional_filters)))}."
+            ),
         )
 
     # Build ADQL once
     where_sql = build_where_clause(where_conditions)
     adql_query_str = build_select_query(str(fields["obscore_table"]["value"]), where_sql, limit=100)
+
     cache_key = "search:" + hashlib.sha256(adql_query_str.encode()).hexdigest()
 
     # Redis cache GET (instrumented)
@@ -890,6 +978,7 @@ async def search_coords(
         columns = list(columns) if columns else []
         data = [list(row) for row in data] if data else []
 
+        # Add datalink_url column if obs_publisher_did present
         columns_with_datalink = columns[:]
         data_with_datalink = data
 
@@ -904,6 +993,7 @@ async def search_coords(
             new_rows: list[list[Any]] = []
             for original_row in data:
                 new_row = original_row[:]
+                # ensure slot
                 while len(new_row) < len(columns_with_datalink):
                     new_row.append(None)
 
@@ -911,7 +1001,6 @@ async def search_coords(
                 if did:
                     encoded_did = urllib.parse.quote(str(did), safe="")
                     new_row[datalink_idx] = f"{base_api_url}/api/datalink?ID={encoded_did}"
-
                 new_rows.append(new_row)
 
             data_with_datalink = new_rows
@@ -1010,6 +1099,8 @@ async def search_coords(
 
         return search_result_obj
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("ERROR search_coords: Exception during results processing: %s", e)
         traceback.print_exc()
