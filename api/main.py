@@ -911,7 +911,11 @@ async def search_coords(
         coords_present or time_filter_present or energy_filter_requested
     )
 
-    if requested_optional_filters and not applied_optional_filters and only_optional_filters_requested:
+    if (
+        requested_optional_filters
+        and not applied_optional_filters
+        and only_optional_filters_requested
+    ):
         # If probe failed, this is a service validation problem (503)
         if optional_filter_probe_failed:
             raise HTTPException(
