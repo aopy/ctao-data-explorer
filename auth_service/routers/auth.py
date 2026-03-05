@@ -2,14 +2,12 @@ import json
 import logging
 import time
 import traceback
-from datetime import UTC, datetime
 from typing import Any
 
 import redis.asyncio as redis
 from ctao_shared.config import get_settings
 from ctao_shared.constants import (
     COOKIE_NAME_MAIN_SESSION,
-    CTAO_PROVIDER_NAME,
     SESSION_ACCESS_TOKEN_EXPIRY_KEY,
     SESSION_ACCESS_TOKEN_KEY,
     SESSION_IAM_EMAIL_KEY,
@@ -17,16 +15,16 @@ from ctao_shared.constants import (
     SESSION_IAM_GIVEN_NAME_KEY,
     SESSION_IAM_SUB_KEY,
     SESSION_KEY_PREFIX,
+    SESSION_REFRESH_TOKEN_KEY,
     SESSION_USER_ID_KEY,
 )
-from ctao_shared.db import decrypt_token, encrypt_token, get_async_session, get_redis_client
+from ctao_shared.db import decrypt_token, encrypt_token, get_redis_client
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi_users import schemas
 from pydantic import ConfigDict
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 
-from auth_service.models import UserRefreshToken
+# from sqlalchemy.future import select
+# from auth_service.models import UserRefreshToken
 from auth_service.oauth_client import oauth
 
 logger = logging.getLogger(__name__)
@@ -60,7 +58,7 @@ SESSION_DURATION_SECONDS = settings.SESSION_DURATION_SECONDS  # 8 hours
 # Session-Based Authentication Dependency
 async def get_current_session_user_data(
     request: Request,
-    db_session: AsyncSession = Depends(get_async_session),
+    # db_session: AsyncSession = Depends(get_async_session),
     redis: redis.Redis = Depends(get_redis_client),
 ) -> dict[str, Any] | None:
     # Read cookie via constant
@@ -103,17 +101,18 @@ async def get_current_session_user_data(
                 iam_access_token = None
 
             elif remaining < REFRESH_BUFFER_SECONDS:
-                # Try to refresh; on failure, keep session intact
-                stmt = select(UserRefreshToken).where(
-                    UserRefreshToken.user_id == app_user_id,
-                    UserRefreshToken.iam_provider_name == CTAO_PROVIDER_NAME,
-                )
-                result = await db_session.execute(stmt)
-                user_rt_record = result.scalars().first()
-
-                if user_rt_record and user_rt_record.encrypted_refresh_token:
-                    decrypted_rt = decrypt_token(user_rt_record.encrypted_refresh_token)
-                    if decrypted_rt:
+                enc_rt = session_data.get(SESSION_REFRESH_TOKEN_KEY)
+                if not enc_rt:
+                    logger.info("No refresh token in session; keeping session without IAM token.")
+                else:
+                    decrypted_rt = decrypt_token(enc_rt)
+                    if not decrypted_rt:
+                        logger.warning(
+                            "Failed to decrypt RT from session; keeping session without IAM token."
+                        )
+                        session_data[SESSION_REFRESH_TOKEN_KEY] = None
+                        await redis.setex(key, SESSION_DURATION_SECONDS, json.dumps(session_data))
+                    else:
                         try:
                             token_response = await oauth.ctao.fetch_access_token(
                                 grant_type="refresh_token",
@@ -123,29 +122,26 @@ async def get_current_session_user_data(
                             new_exp = token_response.get("expires_in", 3600)
                             if settings.OIDC_FAKE_EXPIRES_IN:
                                 new_exp = settings.OIDC_FAKE_EXPIRES_IN
-                            new_at_exp = time.time() + new_exp
-
-                            if "refresh_token" in token_response:
-                                enc = encrypt_token(token_response["refresh_token"])
-                                if enc is not None:
-                                    user_rt_record.encrypted_refresh_token = enc
-                                user_rt_record.last_used_at = datetime.now(UTC)
-                                db_session.add(user_rt_record)
+                            new_at_exp = time.time() + float(new_exp)
 
                             session_data[SESSION_ACCESS_TOKEN_KEY] = new_at
                             session_data[SESSION_ACCESS_TOKEN_EXPIRY_KEY] = new_at_exp
+
+                            # Refresh token rotation: store new RT if provided
+                            if token_response.get("refresh_token"):
+                                new_enc = encrypt_token(token_response["refresh_token"])
+                                if new_enc:
+                                    session_data[SESSION_REFRESH_TOKEN_KEY] = new_enc
+                                else:
+                                    logger.warning(
+                                        "Failed to encrypt rotated refresh token; keeping old RT."
+                                    )
                             await redis.setex(
                                 key, SESSION_DURATION_SECONDS, json.dumps(session_data)
                             )
                             iam_access_token = new_at
                         except Exception:
                             logger.exception("IAM token refresh failed (keeping app session).")
-                    else:
-                        logger.warning(
-                            "Failed to decrypt RT; keeping app session without IAM token."
-                        )
-                else:
-                    logger.info("No RT on file; keeping app session without IAM token.")
     except Exception:
         logger.exception("Non-fatal error in session token handling; preserving session.")
 
@@ -223,46 +219,19 @@ async def get_me(
         raise HTTPException(status_code=500, detail="Error creating user response object.") from e
 
 
-# Logout Endpoint (uses new session logic)
 @auth_api_router.post("/auth/logout_session", tags=["auth"])
 async def logout_session(
     request: Request,
-    response: Response,  # Keep Response for cookie clearing
+    response: Response,
     redis: redis.Redis = Depends(get_redis_client),
-    # Optional: get user_id for RT deletion
-    user_session_data: dict[str, Any] | None = Depends(get_optional_session_user),
-    db_session: AsyncSession = Depends(get_async_session),
+    # user_session_data: dict[str, Any] | None = Depends(get_optional_session_user),
 ) -> dict[str, str]:
-    session_id = request.cookies.get("ctao_session_main")
+    session_id = request.cookies.get(COOKIE_NAME_MAIN_SESSION)
     if session_id:
         await redis.delete(f"{SESSION_KEY_PREFIX}{session_id}")
         logger.info("Session %s deleted from Redis", session_id)
 
-        if user_session_data and user_session_data.get("app_user_id"):
-            app_user_id = user_session_data["app_user_id"]
-            # Delete refresh token from DB
-            stmt = select(UserRefreshToken).where(UserRefreshToken.user_id == app_user_id)
-            result = await db_session.execute(stmt)
-            rt_to_delete = result.scalars().all()
-            for rt_rec in rt_to_delete:
-                await db_session.delete(rt_rec)
-            await db_session.commit()
-            logger.info("Refresh token(s) for user %s deleted from DB", app_user_id)
-            # TODO: Optionally call IAM token revocation endpoint with the RT if we had it
-
-    # Clear the session cookie from the browser
-    cookie_name = COOKIE_NAME_MAIN_SESSION
-    response.delete_cookie(
-        key=cookie_name,
-        # path="/",
-        # domain=config_env("COOKIE_DOMAIN", default=None) if PRODUCTION else None,
-        # secure=config_env("COOKIE_SECURE", cast=bool, default=False) if PRODUCTION else False,
-        # httponly=True,
-        # samesite="lax"
-        # samesite = "none"
-        # max_age=0,
-        **cookie_params,
-    )
+    response.delete_cookie(key=COOKIE_NAME_MAIN_SESSION, **cookie_params)
     return {"status": "logout successful"}
 
 

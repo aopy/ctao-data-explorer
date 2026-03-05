@@ -2,14 +2,12 @@ import json
 import logging
 import time
 import uuid
-from datetime import UTC, datetime
 from typing import Any, cast
 
 import redis.asyncio as redis
 from ctao_shared.config import get_settings
 from ctao_shared.constants import (
     COOKIE_NAME_MAIN_SESSION,
-    CTAO_PROVIDER_NAME,
     SESSION_ACCESS_TOKEN_EXPIRY_KEY,
     SESSION_ACCESS_TOKEN_KEY,
     SESSION_IAM_EMAIL_KEY,
@@ -17,6 +15,7 @@ from ctao_shared.constants import (
     SESSION_IAM_GIVEN_NAME_KEY,
     SESSION_IAM_SUB_KEY,
     SESSION_KEY_PREFIX,
+    SESSION_REFRESH_TOKEN_KEY,
     SESSION_USER_ID_KEY,
 )
 from ctao_shared.db import encrypt_token, get_async_session, get_redis_client
@@ -26,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from starlette.responses import Response
 
-from auth_service.models import UserRefreshToken, UserTable
+from auth_service.models import UserTable
 from auth_service.oauth_client import oauth
 
 logger = logging.getLogger(__name__)
@@ -111,30 +110,12 @@ async def auth_callback(
 
     app_user_id: int = int(user_record.id)
 
-    # Store Refresh Token in DB (Encrypted)
+    # Encrypt refresh token for storage in Redis session
+    encrypted_rt: str | None = None
     if iam_refresh_token:
         encrypted_rt = encrypt_token(iam_refresh_token)
-        if encrypted_rt:
-            rt_stmt = select(UserRefreshToken).where(
-                UserRefreshToken.user_id == app_user_id,
-                UserRefreshToken.iam_provider_name == CTAO_PROVIDER_NAME,
-            )
-            rt_result = await db_session.execute(rt_stmt)
-            existing_rt_record = rt_result.scalars().first()
-            if existing_rt_record:
-                existing_rt_record.encrypted_refresh_token = encrypted_rt
-                existing_rt_record.last_used_at = datetime.now(UTC)
-                db_session.add(existing_rt_record)
-            else:
-                new_rt_record = UserRefreshToken(
-                    user_id=app_user_id,
-                    iam_provider_name=CTAO_PROVIDER_NAME,
-                    encrypted_refresh_token=encrypted_rt,
-                )
-                db_session.add(new_rt_record)
-            logger.info("Stored/Updated refresh token for user_id: %s", app_user_id)
-        else:
-            logger.warning("Failed to encrypt refresh token for user_id=%s", app_user_id)
+        if not encrypted_rt:
+            logger.warning("Failed to encrypt refresh token; continuing without RT in session.")
     else:
         logger.warning("No refresh token received from IAM for user_id=%s", app_user_id)
 
@@ -148,6 +129,7 @@ async def auth_callback(
         SESSION_IAM_FAMILY_NAME_KEY: family_name_to_store,
         SESSION_ACCESS_TOKEN_KEY: iam_access_token,
         SESSION_ACCESS_TOKEN_EXPIRY_KEY: iam_access_token_expiry,
+        SESSION_REFRESH_TOKEN_KEY: encrypted_rt,
     }
     await redis.setex(
         f"{SESSION_KEY_PREFIX}{session_id}",
@@ -161,7 +143,7 @@ async def auth_callback(
         await db_session.commit()
     except Exception as e:
         await db_session.rollback()
-        logger.exception("Error committing user/refresh token to DB: %s", e)
+        logger.exception("Error committing user to DB: %s", e)
         raise HTTPException(status_code=500, detail="Failed to finalize user session setup.") from e
 
     redirect_target = settings.FRONTEND_BASE_URL or settings.BASE_URL or "/"
