@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { jobDetails, jobResults } from "./opusApi";
+import AladinFitsViewer from "./AladinFitsViewer";
 import { toast } from "react-toastify";
 
 const asArray = (x) => (Array.isArray(x) ? x : x ? [x] : []);
@@ -25,6 +26,13 @@ function previewKind(res) {
   const href = (res.href || "").toLowerCase();
   const mime = (res.mime || "").toLowerCase();
 
+  // FITS
+  if (
+    id === "excess_map_fits" ||
+    mime.includes("fits") ||
+    /\.(fits|fit|fts|fz)$/i.test(name || href)
+  ) return "fits";
+
   // images
   if (
     mime.startsWith("image/") ||
@@ -41,7 +49,6 @@ function previewKind(res) {
     id === "provjson" || id === "provxml"
   ) return "text";
 
-  // unknowns (e.g., FITS) - download only
   return null;
 }
 
@@ -374,24 +381,32 @@ export default function OpusJobDetailPage() {
                           <tr className="bg-light">
                             <td colSpan={4}>
                               {kind === "image" ? (
-                                <div className="p-2">
-                                  <img src={previewUrl} alt={r.name || rid} style={{ maxWidth: "100%", height: "auto" }} />
-                                </div>
-                              ) : (
-                                <div className="p-2">
-                                  <iframe
-                                    title={`preview-${rid}`}
-                                    src={previewUrl}
-                                    style={{
-                                      width: "100%",
-                                      height: 420,
-                                      border: "1px solid #ddd",
-                                      borderRadius: 6,
-                                      background: "#fff",
-                                    }}
-                                  />
-                                </div>
-                              )}
+                                  <div className="p-2">
+                                    <img
+                                      src={previewUrl}
+                                      alt={r.name || rid}
+                                      style={{ maxWidth: "100%", height: "auto" }}
+                                    />
+                                  </div>
+                                ) : kind === "fits" ? (
+                                  <div className="p-2">
+                                    <AladinFitsViewer fitsUrl={previewUrl} height={560} fov={1.0} />
+                                  </div>
+                                ) : (
+                                  <div className="p-2">
+                                    <iframe
+                                      title={`preview-${rid}`}
+                                      src={previewUrl}
+                                      style={{
+                                        width: "100%",
+                                        height: 420,
+                                        border: "1px solid #ddd",
+                                        borderRadius: 6,
+                                        background: "#fff",
+                                      }}
+                                    />
+                                  </div>
+                                )}
                             </td>
                           </tr>
                         )}
