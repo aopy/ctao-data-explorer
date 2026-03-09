@@ -1,17 +1,17 @@
 import json
 
 import pytest
-from ctao_shared.constants import SESSION_KEY_PREFIX
+from ctao_shared.constants import COOKIE_NAME_MAIN_SESSION, SESSION_KEY_PREFIX
 
 
 @pytest.mark.anyio
 async def test_logout_deletes_session_and_refresh_tokens(auth_client, as_user, fake_redis):
-    user = await as_user()
+    await as_user()
 
     # Create a server-side session in Redis
     session_id = "session-123"
     session_data = {
-        "app_user_id": user.id,
+        "app_user_id": 1,
         "access_token": "x",
         "refresh_token": "enc-refresh-token",
     }
@@ -21,8 +21,7 @@ async def test_logout_deletes_session_and_refresh_tokens(auth_client, as_user, f
         json.dumps(session_data),
     )
 
-    # Send cookie to endpoint
-    cookies = {"ctao_session_main": session_id}
+    cookies = {COOKIE_NAME_MAIN_SESSION: session_id}
     r = await auth_client.post("/api/auth/logout_session", cookies=cookies)
     assert r.status_code == 200
 
