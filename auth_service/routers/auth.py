@@ -23,8 +23,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi_users import schemas
 from pydantic import ConfigDict
 
-# from sqlalchemy.future import select
-# from auth_service.models import UserRefreshToken
 from auth_service.oauth_client import oauth
 
 logger = logging.getLogger(__name__)

@@ -1,3 +1,3 @@
-from ctao_shared.models_auth import UserRefreshToken, UserTable
+from ctao_shared.models_auth import UserTable
 
-__all__ = ["UserRefreshToken", "UserTable"]
+__all__ = ["UserTable"]
