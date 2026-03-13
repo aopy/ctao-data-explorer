@@ -21,7 +21,7 @@ from ctao_shared.constants import (
 from ctao_shared.db import decrypt_token, encrypt_token, get_redis_client
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi_users import schemas
-from pydantic import ConfigDict
+from pydantic import BaseModel, ConfigDict
 
 from auth_service.oauth_client import oauth
 
@@ -36,7 +36,6 @@ REFRESH_BUFFER_SECONDS = settings.REFRESH_BUFFER_SECONDS
 # User Schemas
 class UserRead(schemas.BaseUser[int]):
     id: int
-    # email: str | None = None
     email: str
     iam_subject_id: str | None = None
     first_name: str | None = None
@@ -48,6 +47,19 @@ class UserRead(schemas.BaseUser[int]):
 class UserUpdate(schemas.BaseUserUpdate):
     email: str | None = None
     # No name updates
+
+
+class MeResponse(BaseModel):
+    sub: str
+    name: str | None = None
+    preferred_username: str | None = None
+    email: str | None = None
+    picture: str | None = None
+
+    # optional app-specific fields
+    app_user_id: int | None = None
+    first_name: str | None = None
+    last_name: str | None = None
 
 
 SESSION_DURATION_SECONDS = settings.SESSION_DURATION_SECONDS  # 8 hours
@@ -196,7 +208,6 @@ auth_api_router = APIRouter()
 async def get_me(
     user_session_data: dict[str, Any] = Depends(get_required_session_user),
 ) -> UserRead:
-    # print("DEBUG get_me: user_session_data received:", user_session_data)
     try:
         data_for_pydantic = {
             "id": user_session_data.get("app_user_id"),
@@ -217,12 +228,47 @@ async def get_me(
         raise HTTPException(status_code=500, detail="Error creating user response object.") from e
 
 
+@auth_api_router.get("/me", response_model=MeResponse, tags=["users"])
+async def me(
+    user_session_data: dict[str, Any] = Depends(get_required_session_user),
+) -> MeResponse:
+    """
+    BFF-style 'who am I' endpoint.
+    Returns an OIDC-like user profile derived from the server-side session.
+    Tokens are never returned.
+    """
+    sub = (user_session_data.get("iam_subject_id") or "").strip()
+    if not sub:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    first = (user_session_data.get("first_name") or "").strip() or None
+    last = (user_session_data.get("last_name") or "").strip() or None
+
+    full_name: str | None = None
+    if first or last:
+        full_name = " ".join([p for p in [first, last] if p])
+
+    return MeResponse(
+        sub=sub,
+        name=full_name,
+        preferred_username=None,
+        email=(user_session_data.get("email") or None),
+        picture=None,
+        app_user_id=(
+            int(user_session_data.get("app_user_id"))
+            if user_session_data.get("app_user_id")
+            else None
+        ),
+        first_name=first,
+        last_name=last,
+    )
+
+
 @auth_api_router.post("/auth/logout_session", tags=["auth"])
 async def logout_session(
     request: Request,
     response: Response,
     redis: redis.Redis = Depends(get_redis_client),
-    # user_session_data: dict[str, Any] | None = Depends(get_optional_session_user),
 ) -> dict[str, str]:
     session_id = request.cookies.get(COOKIE_NAME_MAIN_SESSION)
     if session_id:
