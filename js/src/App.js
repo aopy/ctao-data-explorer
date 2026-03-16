@@ -308,21 +308,39 @@ function TabsApp() {
   // Check login status on mount
   useEffect(() => {
     setIsLoadingUser(true);
+
     const timer = setTimeout(() => {
       axios
-        .get(`${AUTH_PREFIX}/users/me_from_session`, {
+        .get(`${AUTH_PREFIX}/me`, {
           skipAuthErrorHandling: true,
           validateStatus: (s) => s === 200 || s === 401,
+          withCredentials: true,
         })
         .then((res) => {
           if (res.status === 200) {
-            setUser(res.data);
+            const u = res.data;
+
+            setUser({
+              id: u.app_user_id ?? null,
+              email: u.email ?? "",
+              first_name: u.first_name ?? "",
+              last_name: u.last_name ?? "",
+              iam_subject_id: u.sub ?? "",
+              is_active: true,
+              is_superuser: false,
+              is_verified: true,
+            });
+
             localStorage.setItem("hadSession", "true");
           } else {
+            // 401
             setUser(null);
+            localStorage.removeItem("hadSession");
           }
         })
-        .catch(() => setUser(null))
+        .catch(() => {
+          setUser(null);
+        })
         .finally(() => setIsLoadingUser(false));
     }, 100);
 
