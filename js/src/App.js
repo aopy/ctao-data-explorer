@@ -341,9 +341,22 @@ function TabsApp() {
       ids: selectedIds,
     });
 
+  function getCookie(name) {
+    const m = document.cookie.match("(^|;)\\s*" + name + "=([^;]*)");
+    return m ? decodeURIComponent(m[2]) : null;
+  }
+
   const handleLogout = () => {
+    const xsrf = getCookie("XSRF-TOKEN");
     axios
-      .post(`${AUTH_PREFIX}/auth/logout_session`)
+      .post(
+        `${AUTH_PREFIX}/auth/logout_session`,
+        null,
+        {
+          headers: xsrf ? { "X-XSRF-TOKEN": xsrf } : {},
+          withCredentials: true,
+        }
+      )
       .then(() => {
         setUser(null);
         localStorage.removeItem("hadSession");

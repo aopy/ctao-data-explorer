@@ -1,7 +1,12 @@
 import json
 
 import pytest
-from ctao_shared.constants import COOKIE_NAME_MAIN_SESSION, SESSION_KEY_PREFIX
+from ctao_shared.constants import (
+    COOKIE_NAME_MAIN_SESSION,
+    COOKIE_NAME_XSRF,
+    HEADER_NAME_XSRF,
+    SESSION_KEY_PREFIX,
+)
 
 
 @pytest.mark.anyio
@@ -21,8 +26,15 @@ async def test_logout_deletes_session_and_refresh_tokens(auth_client, as_user, f
         json.dumps(session_data),
     )
 
-    cookies = {COOKIE_NAME_MAIN_SESSION: session_id}
-    r = await auth_client.post("/api/auth/logout_session", cookies=cookies)
+    csrf_token = "test-csrf-token"
+    r = await auth_client.post(
+        "/api/auth/logout_session",
+        cookies={
+            COOKIE_NAME_MAIN_SESSION: session_id,
+            COOKIE_NAME_XSRF: csrf_token,
+        },
+        headers={HEADER_NAME_XSRF: csrf_token},
+    )
     assert r.status_code == 200
 
     # Session key (and embedded refresh token) gone from Redis

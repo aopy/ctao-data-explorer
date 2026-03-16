@@ -24,6 +24,7 @@ from fastapi_users import schemas
 from pydantic import BaseModel, ConfigDict
 
 from auth_service.oauth_client import oauth
+from auth_service.security.csrf import ensure_xsrf_cookie, require_xsrf
 
 logger = logging.getLogger(__name__)
 
@@ -206,8 +207,11 @@ auth_api_router = APIRouter()
 
 @auth_api_router.get("/users/me_from_session", response_model=UserRead, tags=["users"])
 async def get_me(
+    request: Request,
+    response: Response,
     user_session_data: dict[str, Any] = Depends(get_required_session_user),
 ) -> UserRead:
+    ensure_xsrf_cookie(request, response)
     try:
         data_for_pydantic = {
             "id": user_session_data.get("app_user_id"),
@@ -230,6 +234,8 @@ async def get_me(
 
 @auth_api_router.get("/me", response_model=MeResponse, tags=["users"])
 async def me(
+    request: Request,
+    response: Response,
     user_session_data: dict[str, Any] = Depends(get_required_session_user),
 ) -> MeResponse:
     """
@@ -237,16 +243,16 @@ async def me(
     Returns an OIDC-like user profile derived from the server-side session.
     Tokens are never returned.
     """
+    # Set XSRF-TOKEN cookie on every /api/me response
+    ensure_xsrf_cookie(request, response)
+
     sub = (user_session_data.get("iam_subject_id") or "").strip()
     if not sub:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     first = (user_session_data.get("first_name") or "").strip() or None
     last = (user_session_data.get("last_name") or "").strip() or None
-
-    full_name: str | None = None
-    if first or last:
-        full_name = " ".join([p for p in [first, last] if p])
+    full_name = " ".join([p for p in [first, last] if p]) or None
 
     return MeResponse(
         sub=sub,
@@ -270,12 +276,20 @@ async def logout_session(
     response: Response,
     redis: redis.Redis = Depends(get_redis_client),
 ) -> dict[str, str]:
+    # CSRF protection
+    require_xsrf(request)
+
     session_id = request.cookies.get(COOKIE_NAME_MAIN_SESSION)
     if session_id:
         await redis.delete(f"{SESSION_KEY_PREFIX}{session_id}")
         logger.info("Session %s deleted from Redis", session_id)
 
+    # Clear cookies: session + xsrf
     response.delete_cookie(key=COOKIE_NAME_MAIN_SESSION, **cookie_params)
+    delete_kwargs = {"path": "/"}
+    if settings.COOKIE_DOMAIN:
+        delete_kwargs["domain"] = settings.COOKIE_DOMAIN
+    response.delete_cookie(key="XSRF-TOKEN", **delete_kwargs)
     return {"status": "logout successful"}
 
 

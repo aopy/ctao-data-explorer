@@ -7,6 +7,8 @@ from auth_service.oauth_client import oauth
 from ctao_shared.config import get_settings
 from ctao_shared.constants import (
     COOKIE_NAME_MAIN_SESSION,
+    COOKIE_NAME_XSRF,
+    HEADER_NAME_XSRF,
     SESSION_ACCESS_TOKEN_EXPIRY_KEY,
     SESSION_ACCESS_TOKEN_KEY,
     SESSION_KEY_PREFIX,
@@ -159,9 +161,15 @@ async def test_logout_clears_redis_session_and_cookie(
         await fake_redis.get(f"{SESSION_KEY_PREFIX}{session_id}") is not None
     ), "Session should exist in Redis before logout"
 
+    csrf_token = "test-csrf-token"
+
     r = await auth_client.post(
         "/api/auth/logout_session",
-        cookies={COOKIE_NAME_MAIN_SESSION: session_id},
+        cookies={
+            COOKIE_NAME_MAIN_SESSION: session_id,
+            COOKIE_NAME_XSRF: csrf_token,
+        },
+        headers={HEADER_NAME_XSRF: csrf_token},
     )
     assert r.status_code == 200, f"Unexpected status: {r.status_code}"
 
