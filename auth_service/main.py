@@ -12,6 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from auth_service.routers.auth import auth_api_router
 from auth_service.routers.oidc import oidc_router
+from auth_service.routers.token_relay import router as token_relay_router
 
 settings = get_settings()
 
@@ -93,3 +94,4 @@ app.add_middleware(
 # auth service endpoints live under /api/*
 app.include_router(oidc_router, prefix="/api")
 app.include_router(auth_api_router, prefix="/api")
+app.include_router(token_relay_router, prefix="/api")

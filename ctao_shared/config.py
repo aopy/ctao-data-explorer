@@ -1,3 +1,4 @@
+import json
 import os
 from functools import lru_cache
 from typing import Any
@@ -71,6 +72,13 @@ class Settings(BaseSettings):
     DB_URL: str | None = None
     NODE_OPTIONS: str | None = None
 
+    # Token relay
+    TOKEN_RELAY_TARGETS_JSON: str = "{}"
+    # example env value:
+    # TOKEN_RELAY_TARGETS_JSON='{"dataaccess":"http://127.0.0.1:8000","whoami":"http://127.0.0.1:9009"}'
+
+    TOKEN_RELAY_TIMEOUT_SECONDS: float = 30.0
+
     # Logs
     LOG_LEVEL: str = "INFO"
     LOG_INCLUDE_ACCESS: bool = True
@@ -141,6 +149,16 @@ class Settings(BaseSettings):
             self.OIDC_REDIRECT_URI = self.BASE_URL.rstrip("/") + "/auth/oidc/callback"
 
         return self
+
+    @property
+    def token_relay_targets(self) -> dict[str, str]:
+        try:
+            obj = json.loads(self.TOKEN_RELAY_TARGETS_JSON or "{}")
+            if not isinstance(obj, dict):
+                return {}
+            return {str(k): str(v).rstrip("/") for k, v in obj.items()}
+        except Exception:
+            return {}
 
 
 @lru_cache

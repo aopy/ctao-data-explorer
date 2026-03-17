@@ -1300,6 +1300,11 @@ async def datalink_endpoint(
     return Response(content=votable_xml, media_type="application/x-votable+xml")
 
 
+# @app.get("/api/_debug_auth_header", include_in_schema=False)
+# async def debug_auth_header(request: Request):
+#    return {"authorization": request.headers.get("authorization")}
+
+
 app.include_router(basket_router)
 app.include_router(opus_router)
 app.include_router(query_history_router)
