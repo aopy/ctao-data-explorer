@@ -12,7 +12,12 @@ from ctao_shared.constants import (
     COOKIE_NAME_MAIN_SESSION,
     SESSION_ACCESS_TOKEN_EXPIRY_KEY,
     SESSION_ACCESS_TOKEN_KEY,
+    SESSION_IAM_EMAIL_KEY,
+    SESSION_IAM_FAMILY_NAME_KEY,
+    SESSION_IAM_GIVEN_NAME_KEY,
+    SESSION_IAM_SUB_KEY,
     SESSION_KEY_PREFIX,
+    SESSION_USER_ID_KEY,
 )
 from ctao_shared.db import Base, get_async_session, get_redis_client
 from fastapi import FastAPI
@@ -141,11 +146,11 @@ def as_user(db_session, fake_redis, client):
         # create a server-side session in fake_redis
         session_id = str(uuid.uuid4())
         session_payload = {
-            "app_user_id": user.id,
-            "iam_subject_id": sub,
-            "email": email,
-            "first_name": first_name,
-            "last_name": last_name,
+            SESSION_USER_ID_KEY: user.id,
+            SESSION_IAM_SUB_KEY: sub,
+            SESSION_IAM_EMAIL_KEY: email,
+            SESSION_IAM_GIVEN_NAME_KEY: first_name,
+            SESSION_IAM_FAMILY_NAME_KEY: last_name,
             SESSION_ACCESS_TOKEN_KEY: "dummy",
             SESSION_ACCESS_TOKEN_EXPIRY_KEY: time.time() + 3600,
         }

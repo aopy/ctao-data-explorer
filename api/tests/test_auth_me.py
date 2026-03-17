@@ -1,11 +1,11 @@
 import json
 
 import pytest
-from ctao_shared.constants import SESSION_KEY_PREFIX
+from ctao_shared.constants import COOKIE_NAME_MAIN_SESSION, SESSION_KEY_PREFIX
 
 
 @pytest.mark.anyio
-async def test_me_from_session_returns_user(auth_client, as_user, fake_redis):
+async def test_me_returns_user(auth_client, as_user, fake_redis):
     user = await as_user(email="u@example.org", first_name="Ada", last_name="Lovelace")
 
     session_id = "session-me-1"
@@ -24,10 +24,13 @@ async def test_me_from_session_returns_user(auth_client, as_user, fake_redis):
     )
 
     r = await auth_client.get(
-        "/api/users/me_from_session",
-        cookies={"ctao_session_main": session_id},
+        "/api/me",
+        cookies={COOKIE_NAME_MAIN_SESSION: session_id},
     )
     assert r.status_code == 200
     data = r.json()
-    assert data["id"] == user.id
+    assert data["app_user_id"] == user.id
     assert data["email"] == "u@example.org"
+    assert data["first_name"] == "Ada"
+    assert data["last_name"] == "Lovelace"
+    assert data["sub"] == "sub-123"

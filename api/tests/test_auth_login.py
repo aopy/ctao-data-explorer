@@ -92,6 +92,10 @@ async def test_access_token_refresh_updates_session_in_redis(
     old_enc_rt = encrypt_token("old-refresh-token")
     session_data = {
         "app_user_id": user.id,
+        "iam_sub": "test-sub-123",
+        "iam_email": "u@example.org",
+        "first_name": "Ada",
+        "last_name": "Lovelace",
         SESSION_ACCESS_TOKEN_KEY: "old-access-token",
         SESSION_ACCESS_TOKEN_EXPIRY_KEY: time.time() + (REFRESH_BUFFER_SECONDS - 100),
         SESSION_REFRESH_TOKEN_KEY: old_enc_rt,
@@ -111,7 +115,7 @@ async def test_access_token_refresh_updates_session_in_redis(
         },
     ):
         r = await auth_client.get(
-            "/api/users/me_from_session",
+            "/api/me",
             cookies={COOKIE_NAME_MAIN_SESSION: session_id},
         )
 

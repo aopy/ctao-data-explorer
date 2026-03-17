@@ -205,11 +205,6 @@ export default function BasketPage({
     fetchBasketGroups();
   }, [fetchBasketGroups, refreshTrigger]);
 
-  // optional ping
-  useEffect(() => {
-    if (isLoggedIn) axios.get(`${AUTH_PREFIX}/users/me_from_session`).catch(() => {});
-  }, [isLoggedIn]);
-
   // Update TT labels whenever active group's visible items change
   useEffect(() => {
     const items = activeGroup?.saved_datasets || [];
