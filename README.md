@@ -75,8 +75,9 @@ Documentation is available online at https://aopy.github.io/ctao-data-explorer/
    set -o allexport 
    source .env
    set +o allexport
-   # Run the backend
-   uvicorn api.main:app --reload
+   # Run backend and auth service
+   uvicorn api.main:app --reload --port 8000
+   uvicorn auth_service.main:app --reload --port 8001
    ```
 ### Frontend Setup
 
