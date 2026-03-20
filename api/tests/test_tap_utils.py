@@ -1,13 +1,14 @@
 import numpy as np
-import pytest
 from astropy.table import Table
+
 from api.tap import (
+    astropy_table_to_list,
+    build_select_query,
     build_spatial_icrs_condition,
     build_time_overlap_condition,
     build_where_clause,
-    build_select_query,
-    astropy_table_to_list,
 )
+
 
 def test_builders_render_expected_sql():
     s = build_spatial_icrs_condition(10.0, 20.0, 5.5)
@@ -24,6 +25,7 @@ def test_builders_render_expected_sql():
     q = build_select_query("ivoa.obscore", "1=1", limit=123, columns="*")
     assert q.startswith("SELECT TOP 123")
     assert "FROM ivoa.obscore WHERE 1=1" in q
+
 
 def test_astropy_table_to_list_conversions():
     table = Table(

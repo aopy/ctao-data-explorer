@@ -1,7 +1,8 @@
 import urllib.parse
-import numpy as np
+
 import pytest
 from astropy.table import Table
+
 
 @pytest.mark.anyio
 async def test_search_coords_happy_path_adds_datalink(app, client, monkeypatch):
@@ -9,11 +10,11 @@ async def test_search_coords_happy_path_adds_datalink(app, client, monkeypatch):
     tab = Table(
         names=("obs_publisher_did", "s_ra"),
         dtype=("U100", float),
-        rows=[("ivo://padc.obspm/hess#123", 83.63)]
+        rows=[("ivo://padc.obspm/hess#123", 83.63)],
     )
+
     # Stub perform_query_with_conditions to return (error=None, table, adql)
-    def fake_perform(fields, where_conditions, limit=100):
-        # Basic sanity: the spatial condition should be present if coords provided
+    def fake_perform(fields, where_conditions, limit=100, **kwargs):
         assert any("CONTAINS" in w for w in where_conditions)
         return (None, tab, "SELECT ...")
 
@@ -25,14 +26,14 @@ async def test_search_coords_happy_path_adds_datalink(app, client, monkeypatch):
     # Query with equatorial deg coords; no time filter
     r = await client.get(
         "/api/search_coords",
-        params=dict(
-            coordinate_system="eq_deg",  # COORD_SYS_EQ_DEG in settings
-            ra=83.63,
-            dec=22.01,
-            search_radius=5.0,
-            tap_url="https://example.invalid/tap",
-            obscore_table="ivoa.obscore",
-        ),
+        params={
+            "coordinate_system": "eq_deg",
+            "ra": 83.63,
+            "dec": 22.01,
+            "search_radius": 5.0,
+            "tap_url": "https://example.invalid/tap",
+            "obscore_table": "ivoa.obscore",
+        },
     )
     assert r.status_code == 200
     data = r.json()
@@ -50,8 +51,9 @@ async def test_search_coords_happy_path_adds_datalink(app, client, monkeypatch):
     # Response should be cached
     assert any(k.startswith("search:") for k in app.state.redis.store.keys())
 
+
 @pytest.mark.anyio
-async def test_search_coords_requires_coords_or_time(client):
+async def test_search_coords_requires_at_least_one_criterion(client):
     r = await client.get("/api/search_coords")
     assert r.status_code == 400
-    assert "Provide Coordinates or Time Interval" in r.json()["detail"]
+    assert "Provide at least one search criterion." in r.json()["detail"]

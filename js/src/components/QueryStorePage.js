@@ -131,7 +131,6 @@ function QueryStorePage({ onLoadHistory, isActive, isLoggedIn }) {
 
     return (
         <div className="query-store-page">
-            <h4>Stored Queries</h4>
             {history.length > 0 ? (
                 <ul className="list-group">
                     {history.map(item => {

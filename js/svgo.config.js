@@ -4,8 +4,5 @@ module.exports = {
     { name: 'preset-default' },
     { name: 'removeDimensions', active: true },
     { name: 'removeViewBox', active: false }
-  ],
-  devServer: {
-    allowedHosts: 'all',
-  },
+  ]
 };
