@@ -10,7 +10,7 @@ def test_frontend(page: Page):
     page.goto(frontend_url, wait_until="networkidle")
 
     logging.info(f"Page title: {page.title()}")
-    expect(page).to_have_title(lambda title: "CTAO Data Explorer" in title)
+    assert "CTAO Data Explorer" in page.title()
 
     page.screenshot(path="test_frontend_screenshot_1_before.png")
 
