@@ -1,28 +1,44 @@
 import logging
 import os
-import re
 
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 
 frontend_url = os.getenv("FRONTEND_URL")
 
+
 def test_frontend(page: Page):
-    page.goto(frontend_url)
+    page.goto(frontend_url, wait_until="networkidle")
 
     logging.info(f"Page title: {page.title()}")
-    assert "CTAO Data Explorer" in page.title()
-    
-    page.wait_for_timeout(2000)
+    expect(page).to_have_title(lambda title: "CTAO Data Explorer" in title)
 
     page.screenshot(path="test_frontend_screenshot_1_before.png")
 
-    page.get_by_label("Source Name").fill("crab")
-    page.get_by_role("button", name="Resolve").click()
+    # Fill source name and resolve
+    source_input = page.locator("#objectNameInput")
+    expect(source_input).to_be_visible()
+    source_input.fill("crab")
 
-    page.wait_for_timeout(2000)
+    resolve_button = page.get_by_role("button", name="Resolve", exact=True)
+    expect(resolve_button).to_be_visible()
+    resolve_button.click()
+
+    # Wait until resolve has populated coordinates
+    coord1_input = page.locator("#coord1Input")
+    coord2_input = page.locator("#coord2Input")
+    expect(coord1_input).not_to_have_value("")
+    expect(coord2_input).not_to_have_value("")
+
     page.screenshot(path="test_frontend_screenshot_2_resolve.png")
 
-    page.get_by_role("tabpanel").get_by_role("button", name="Search").click()
+    # Click the main submit button
+    search_button = page.get_by_role("button", name="Search", exact=True)
+    expect(search_button).to_be_visible()
+    expect(search_button).to_be_enabled()
+    search_button.click()
+
+    # Wait for some post-search UI stability
+    page.wait_for_load_state("networkidle")
     page.wait_for_timeout(2000)
 
     page.screenshot(path="test_frontend_screenshot_3_search.png")
