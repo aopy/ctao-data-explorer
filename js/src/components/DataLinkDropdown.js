@@ -54,7 +54,7 @@ const DataLinkDropdown = ({ datalink_url, isOpen, onToggle }) => {
 
   return (
     <div style={{ position: 'relative' }} ref={containerRef}>
-      <button className="btn btn-sm btn-info" onClick={onToggle}>
+      <button className="btn btn-ctao-galaxy btn-sm dropdown-toggle" onClick={onToggle}>
         DataLink
       </button>
       {isOpen && (
@@ -75,7 +75,7 @@ const DataLinkDropdown = ({ datalink_url, isOpen, onToggle }) => {
           {services.map((service, index) => (
             <button
               key={index}
-              className="btn btn-sm btn-secondary d-block mb-1"
+              className="btn btn-sm btn-primary d-block mb-1"
               style={{ whiteSpace: 'nowrap' }}  // Ensures text stays on one line.
               onClick={() => window.open(service.access_url, '_blank')}
             >

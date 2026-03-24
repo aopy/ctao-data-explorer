@@ -1,64 +1,78 @@
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
+import logging
+from collections.abc import AsyncGenerator
+
 import redis.asyncio as redis
 from cryptography.fernet import Fernet
-from typing import Optional
-from .config import get_settings
-import logging
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase
+
+from ctao_shared.config import get_settings
+
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
 DATABASE_URL = settings.DATABASE_URL
-engine = create_async_engine(DATABASE_URL, echo=True) # echo=False for production
+engine = create_async_engine(DATABASE_URL, echo=True)  # echo=False for production
 
-AsyncSessionLocal = sessionmaker(
-    bind=engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-    autoflush=False,
+AsyncSessionLocal = async_sessionmaker(
+    bind=engine, expire_on_commit=False, autoflush=False, class_=AsyncSession
 )
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    """Typed declarative base for SQLAlchemy 2.0."""
+
+    pass
+
 
 # The dependency function
-async def get_async_session() -> AsyncSession:
+async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         yield session
+
 
 # Redis Setup
 REDIS_URL = settings.REDIS_URL
 redis_pool = None
 
-async def get_redis_pool():
+
+def get_redis_pool() -> redis.ConnectionPool:
     global redis_pool
     if redis_pool is None:
-        print(f"Connecting to Redis at {REDIS_URL}")
         redis_pool = redis.ConnectionPool.from_url(REDIS_URL, decode_responses=True)
     return redis_pool
 
-async def get_redis_client() -> redis.Redis:
-    pool = await get_redis_pool()
-    return redis.Redis(connection_pool=pool)
+
+def get_redis_client() -> redis.Redis:
+    pool = get_redis_pool()
+    return redis.Redis(connection_pool=pool, decode_responses=True)
+
 
 # Encryption Setup for Refresh Tokens
 ENCRYPTION_KEY_STR = settings.REFRESH_TOKEN_ENCRYPTION_KEY
 if not ENCRYPTION_KEY_STR:
-    logger.warning("REFRESH_TOKEN_ENCRYPTION_KEY is not set. Refresh token storage will be insecure.")
+    logger.warning(
+        "REFRESH_TOKEN_ENCRYPTION_KEY is not set. Refresh token storage will be insecure."
+    )
     fernet_cipher = None
 else:
     try:
         fernet_cipher = Fernet(ENCRYPTION_KEY_STR.encode())
     except Exception as e:
-        logger.error("Invalid REFRESH_TOKEN_ENCRYPTION_KEY: %s. Refresh token storage will fail.", e)
+        logger.error(
+            "Invalid REFRESH_TOKEN_ENCRYPTION_KEY: %s. Refresh token storage will fail.",
+            e,
+        )
         fernet_cipher = None
 
-def encrypt_token(token: str) -> Optional[str]:
+
+def encrypt_token(token: str) -> str | None:
     if fernet_cipher and token:
         return fernet_cipher.encrypt(token.encode()).decode()
     return None
 
-def decrypt_token(encrypted_token: str) -> Optional[str]:
+
+def decrypt_token(encrypted_token: str) -> str | None:
     if fernet_cipher and encrypted_token:
         try:
             return fernet_cipher.decrypt(encrypted_token.encode()).decode()

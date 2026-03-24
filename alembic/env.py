@@ -6,8 +6,12 @@ from sqlalchemy import pool
 from alembic import context
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from api.models import Base  # Import your models
+from ctao_shared.db import Base
+
+import api.models  # noqa: F401
+import auth_service.models  # noqa: F401
 from dotenv import load_dotenv
+
 load_dotenv(".env")
 
 DB_URL = os.environ.get("DB_URL")
@@ -64,9 +68,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+        context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
             context.run_migrations()

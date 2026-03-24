@@ -1,0 +1,38 @@
+# --- runtime deps tests import ---
+fastapi
+starlette
+pydantic>=2
+sqlalchemy[asyncio]>=2.0
+alembic
+redis>=5
+hiredis
+httpx
+anyio
+requests
+cryptography
+authlib
+itsdangerous
+fastapi-users
+fastapi-users-db-sqlalchemy
+asyncpg
+xmltodict
+astropy
+numpy
+pyvo
+prometheus-client
+prometheus-fastapi-instrumentator
+uvicorn
+aiofiles
+pydantic-settings>=2.2.1
+python-dotenv
+email-validator
+python-multipart
+passlib[bcrypt]
+aiosqlite
+# psycopg2-binary
+
+# --- test deps ---
+pytest
+pytest-asyncio
+pytest-cov
+asgi-lifespan>=2.1

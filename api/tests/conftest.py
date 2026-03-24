@@ -1,39 +1,50 @@
 import asyncio
-import os
 import inspect
-import pytest
-import httpx
-from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.pool import StaticPool
-from fastapi import FastAPI
-from api.db import Base, get_async_session, get_redis_client
-from api.models import UserTable
-from sqlalchemy import select
-from api.tests.fakeredis import FakeRedis
-from api.constants import (
-    COOKIE_NAME_MAIN_SESSION, SESSION_KEY_PREFIX,
-    SESSION_ACCESS_TOKEN_KEY, SESSION_ACCESS_TOKEN_EXPIRY_KEY,
-)
+import json
+import os
+import time
 import uuid
-import json, time
 
+import httpx
+import pytest
+from auth_service.models import UserTable
+from ctao_shared.constants import (
+    COOKIE_NAME_MAIN_SESSION,
+    SESSION_ACCESS_TOKEN_EXPIRY_KEY,
+    SESSION_ACCESS_TOKEN_KEY,
+    SESSION_IAM_EMAIL_KEY,
+    SESSION_IAM_FAMILY_NAME_KEY,
+    SESSION_IAM_GIVEN_NAME_KEY,
+    SESSION_IAM_SUB_KEY,
+    SESSION_KEY_PREFIX,
+    SESSION_USER_ID_KEY,
+)
+from ctao_shared.db import Base, get_async_session, get_redis_client
+from fastapi import FastAPI
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
+
+from api.tests.fakeredis import FakeRedis
 
 try:
     from starlette.testclient import LifespanManager
 except Exception:
     from asgi_lifespan import LifespanManager
 
+
 @pytest.fixture(scope="session")
 def anyio_backend():
     # Force AnyIO to use asyncio everywhere
     return "asyncio"
+
 
 @pytest.fixture(scope="session")
 def event_loop():
     loop = asyncio.new_event_loop()
     yield loop
     loop.close()
+
 
 @pytest.fixture(scope="session")
 async def engine():
@@ -44,23 +55,31 @@ async def engine():
         future=True,
         echo=False,
     )
+    import auth_service.models  # noqa: F401
+
+    import api.models  # noqa: F401
+
     async with eng.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield eng
     await eng.dispose()
 
+
 @pytest.fixture
 async def sessionmaker(engine):
     return async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+
 
 @pytest.fixture
 async def db_session(sessionmaker):
     async with sessionmaker() as s:
         yield s
 
+
 @pytest.fixture
 def fake_redis() -> FakeRedis:
     return FakeRedis()
+
 
 # Override app deps to use test DB + FakeRedis
 @pytest.fixture(autouse=True)
@@ -78,10 +97,32 @@ def _override_app_deps(fake_redis, sessionmaker, app):
     app.dependency_overrides.pop(get_async_session, None)
     app.dependency_overrides.pop(get_redis_client, None)
 
+
 @pytest.fixture
-async def client(app):
-    async with AsyncClient(app=app, base_url="http://testserver") as c:
-        yield c
+async def auth_client(db_session, fake_redis):
+    from auth_service.main import app as auth_app  # lazy import
+
+    async def _override_db():
+        yield db_session
+
+    def _override_redis():
+        return fake_redis
+
+    auth_app.dependency_overrides[get_async_session] = _override_db
+    auth_app.dependency_overrides[get_redis_client] = _override_redis
+
+    def _make_asgi_transport_for(app: FastAPI) -> httpx.ASGITransport:
+        params = inspect.signature(httpx.ASGITransport.__init__).parameters
+        if "lifespan" in params:
+            return httpx.ASGITransport(app=app, lifespan="on")
+        return httpx.ASGITransport(app=app)
+
+    transport = _make_asgi_transport_for(auth_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+
+    auth_app.dependency_overrides.clear()
+
 
 # Helper to inject a logged-in user
 @pytest.fixture
@@ -105,19 +146,22 @@ def as_user(db_session, fake_redis, client):
         # create a server-side session in fake_redis
         session_id = str(uuid.uuid4())
         session_payload = {
-            "app_user_id": user.id,
-            "iam_subject_id": sub,
-            "email": email,
-            "first_name": first_name,
-            "last_name": last_name,
+            SESSION_USER_ID_KEY: user.id,
+            SESSION_IAM_SUB_KEY: sub,
+            SESSION_IAM_EMAIL_KEY: email,
+            SESSION_IAM_GIVEN_NAME_KEY: first_name,
+            SESSION_IAM_FAMILY_NAME_KEY: last_name,
             SESSION_ACCESS_TOKEN_KEY: "dummy",
             SESSION_ACCESS_TOKEN_EXPIRY_KEY: time.time() + 3600,
         }
-        await fake_redis.setex(f"{SESSION_KEY_PREFIX}{session_id}", 8 * 3600, json.dumps(session_payload))
+        await fake_redis.setex(
+            f"{SESSION_KEY_PREFIX}{session_id}", 8 * 3600, json.dumps(session_payload)
+        )
 
         # set browser cookie
         client.cookies.set(COOKIE_NAME_MAIN_SESSION, session_id)
         return user
+
     return _maker
 
 
@@ -128,6 +172,7 @@ def app() -> FastAPI:
     os.environ.setdefault("ENV", "test")
 
     from api.main import app as fastapi_app
+
     return fastapi_app
 
 

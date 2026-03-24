@@ -80,8 +80,9 @@ Here are the initial instructions previous to the containerization of the applic
    set -o allexport 
    source .env
    set +o allexport
-   # Run the backend
-   uvicorn api.main:app --reload
+   # Run backend and auth service
+   uvicorn api.main:app --reload --port 8000
+   uvicorn auth_service.main:app --reload --port 8001
    ```
 ### Frontend Setup
 
@@ -90,6 +91,7 @@ Here are the initial instructions previous to the containerization of the applic
    npm install
    npm run build
    ```
+
 ## Usage
 
 > **Warning**  
@@ -125,7 +127,6 @@ Here are the initial instructions previous to the containerization of the applic
    - **Run a Preview Job (OPUS):**
      - With a basket active, click **Run Preview Job**. Review the prefilled parameters (e.g., RA, Dec, `nxpix`, `nypix`, `binsz`) and submit.
      - Track progress under **Preview Jobs**. Open a job to **Download** outputs or **Show preview** inline for PNG/SVG/text results.
-
 
 # About CTAO
 

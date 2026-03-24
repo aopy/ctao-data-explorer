@@ -1,16 +1,17 @@
 import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { listJobs } from "./opusApi";
 
 // badges for phases
 function badgeClassForPhase(phase) {
   switch (String(phase || "").toUpperCase()) {
     case "COMPLETED": return "bg-success";
-    case "ERROR":     return "bg-danger";
-    case "ABORTED":   return "bg-dark";
-    case "EXECUTING": return "bg-primary";
-    case "QUEUED":    return "bg-warning text-dark";
-    case "PENDING":   return "bg-secondary";
-    default:          return "bg-secondary";
+    case "ERROR": return "bg-danger";
+    case "ABORTED": return "bg-dark";
+    case "EXECUTING":return "bg-primary";
+    case "QUEUED": return "bg-warning text-dark";
+    case "PENDING": return "bg-secondary";
+    default: return "bg-secondary";
   }
 }
 
@@ -133,12 +134,9 @@ export default function OpusJobsPage({ isActive }) {
                   </td>
                   <td><small>{row.created || "—"}</small></td>
                   <td className="text-end">
-                    <a
-                      className="btn btn-sm btn-outline-secondary"
-                      href={`#/opus/jobs/${encodeURIComponent(row.id)}`}
-                    >
+                    <Link className="btn btn-sm btn-outline-secondary" to={`/opus/jobs/${encodeURIComponent(row.id)}`}>
                       Open
-                    </a>
+                    </Link>
                   </td>
                 </tr>
               ))}

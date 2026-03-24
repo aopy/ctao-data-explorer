@@ -1,0 +1,525 @@
+/* CTAO tokens / palette  */
+:root{
+  /* Core palette */
+  --ctao-galaxy-blue: #0b1f3b;
+
+  --ctao-cherenkov-blue: #00e4d8;
+
+  --ctao-cosmic-azure: #1a88d9;
+  --ctao-interstellar-indigo: #2b2d72;
+
+
+  --ctao-moon-gray-outline: rgb(191,191,191); /* R191 G191 B191 */
+  --ctao-moon-gray-fill: #f2f2f2;            /* lighter fill */
+
+  --ctao-white: #ffffff;
+  --ctao-black: #000000;
+
+  --app-header-height: 64px;
+
+  --app-subnav-height: 52px;
+
+  /* Bootstrap variables */
+  --bs-primary: var(--ctao-cherenkov-blue);
+  --bs-secondary: var(--ctao-interstellar-indigo);
+  --bs-info: var(--ctao-cosmic-azure);
+  --bs-link-color: var(--ctao-cosmic-azure);
+  --bs-link-hover-color: var(--ctao-interstellar-indigo);
+  --app-footer-height: 56px;
+
+}
+
+/* Typography */
+html, body {
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: var(--ctao-black);
+}
+
+.navbar .nav-link,
+.navbar-brand,
+.card-header,
+h1,h2,h3,h4,h5,h6{
+  font-weight: 700;
+}
+
+/* General components */
+.btn{
+  border-radius: 0.8rem;
+}
+
+.card{
+  border-radius: 1rem;
+}
+.card-header{
+  border-top-left-radius: 1rem;
+  border-top-right-radius: 1rem;
+}
+
+.card-noheader .card-body{
+  padding-top: 1rem;
+}
+
+/* CTAO header utility classes for cards */
+.ctao-header-primary{
+  background: var(--ctao-galaxy-blue);
+  color: var(--ctao-white);
+}
+.ctao-header-secondary{
+  background: var(--ctao-interstellar-indigo);
+  color: var(--ctao-white);
+}
+.ctao-header-accent{
+  background: var(--ctao-cherenkov-blue);
+  color: var(--ctao-galaxy-blue);
+}
+
+/* TOP header bar: Moon Gray (light)  */
+.navbar.app-header{
+  background: var(--ctao-moon-gray-fill) !important;
+  border-bottom: 1px solid var(--ctao-moon-gray-outline) !important;
+}
+
+/* Header brand block */
+:root{
+  --ctao-brand-font-size: 18px;
+  --ctao-brand-gap: 0.4em;
+  --ctao-logo-height: 26px;
+  --ctao-title-nudge-y: 1px;
+}
+
+.navbar.app-header .ctao-brand{
+  display: flex;
+  align-items: center;
+  gap: 0;
+  text-decoration: none;
+}
+
+.navbar.app-header .ctao-brand-logo{
+  height: var(--ctao-logo-height);
+  width: auto;
+  display: block;
+  margin-right: var(--ctao-brand-gap);
+}
+
+/* Galaxy Blue, Inter, Bold, size 18, visually centered with logo */
+.navbar.app-header .ctao-brand-title{
+  font-size: var(--ctao-brand-font-size);
+  font-weight: 700;
+  color: var(--ctao-galaxy-blue);
+  line-height: 1;
+  transform: translateY(var(--ctao-title-nudge-y));
+}
+
+/* Header text  */
+.navbar.app-header .nav-link{
+  color: var(--ctao-black) !important;
+}
+
+.navbar.app-header .navbar-text{
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+  font-weight: 700 !important;
+  color: var(--ctao-galaxy-blue) !important;
+}
+
+/* Header buttons */
+.navbar.app-header .btn-primary{
+  background-color: var(--ctao-cherenkov-blue) !important;
+  border-color: var(--ctao-cherenkov-blue) !important;
+  color: var(--ctao-galaxy-blue) !important;
+}
+
+/* Login button style */
+.navbar.app-header .btn-outline-primary{
+  background: transparent !important;
+  color: var(--ctao-galaxy-blue) !important;
+  border-color: var(--ctao-galaxy-blue) !important;
+}
+
+/* Hover/active: becomes Cherenkov */
+.navbar.app-header .btn-outline-primary:hover,
+.navbar.app-header .btn-outline-primary:active,
+.navbar.app-header .btn-outline-primary:focus,
+.navbar.app-header .btn-outline-primary:focus-visible{
+  background-color: var(--ctao-cherenkov-blue) !important;
+  border-color: var(--ctao-cherenkov-blue) !important;
+  color: var(--ctao-galaxy-blue) !important;
+  box-shadow: 0 0 0 .2rem rgba(0, 228, 216, .25) !important;
+}
+
+/* Keep CTAO primary buttons Cherenkov */
+.navbar.app-header .btn-primary:active,
+.navbar.app-header .btn-primary:focus,
+.navbar.app-header .btn-primary:focus-visible{
+  background-color: var(--ctao-cherenkov-blue) !important;
+  border-color: var(--ctao-cherenkov-blue) !important;
+  color: var(--ctao-galaxy-blue) !important;
+  box-shadow: 0 0 0 .2rem rgba(0, 228, 216, .25) !important;
+}
+
+/* Prevent Bootstrap from dimming the button on active */
+.navbar.app-header .btn-primary:active{
+  filter: none !important;
+}
+
+/* CTAO Galaxy button */
+.btn-ctao-galaxy{
+  background: var(--ctao-galaxy-blue) !important;
+  border-color: var(--ctao-galaxy-blue) !important;
+  color: #fff !important;
+  border-radius: 0.8rem !important; /* curved corners */
+  font-weight: 700;
+}
+
+.btn-ctao-galaxy:hover,
+.btn-ctao-galaxy:focus{
+  background: #08172c !important;  /* slightly darker Galaxy */
+  border-color: #08172c !important;
+  color: #fff !important;
+}
+
+.btn-ctao-galaxy:active{
+  filter: none !important;
+}
+
+/* second bar (tabs) */
+.subnav{
+  position: fixed;
+  top: var(--app-header-height);
+  left: 0;
+  right: 0;
+  width: 100%;
+  z-index: 1029;
+  background: var(--ctao-galaxy-blue) !important;
+  border-bottom: 0 !important;
+  min-height: var(--app-subnav-height);
+  display: flex;
+  align-items: center;
+}
+
+.subnav .nav-tabs{
+  border-bottom: 0 !important;
+  margin-bottom: 0 !important;
+  background: transparent !important;
+}
+
+/* default tab buttons */
+.subnav .nav-link{
+  background: transparent !important;
+  border: 0 !important;
+  color: #fff !important;
+  font-weight: 700;
+  position: relative;
+}
+
+/* hover */
+.subnav .nav-link:hover{
+  color: var(--ctao-cherenkov-blue) !important;
+}
+
+.subnav .nav-link.active{
+  background: transparent !important;
+  color: var(--ctao-cherenkov-blue) !important;
+}
+
+.subnav .nav-link.active::after{
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: -6px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--ctao-cherenkov-blue);
+}
+
+/* Footer (Galaxy Blue) */
+.app-footer{
+  background: var(--ctao-galaxy-blue);
+  color: #fff;
+  border-top: 1px solid rgba(255,255,255,.12);
+}
+
+.app-footer-text{
+  opacity: 0.9;
+}
+
+.app-footer-link{
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+  opacity: 0.95;
+}
+
+.app-footer-link:hover{
+  color: var(--ctao-cherenkov-blue);
+  text-decoration: none;
+  opacity: 1;
+}
+
+.app-footer-link:focus,
+.app-footer-link:active{
+  color: var(--ctao-cherenkov-blue);
+  outline: none;
+}
+
+/* Global CTAO primary controls */
+.btn-primary{
+  background-color: var(--ctao-cherenkov-blue) !important;
+  border-color: var(--ctao-cherenkov-blue) !important;
+  color: var(--ctao-galaxy-blue) !important;
+}
+.btn-outline-primary{
+  color: var(--ctao-cherenkov-blue) !important;
+  border-color: var(--ctao-cherenkov-blue) !important;
+}
+.btn-outline-primary:hover{
+  background-color: var(--ctao-cherenkov-blue) !important;
+  border-color: var(--ctao-cherenkov-blue) !important;
+  color: var(--ctao-galaxy-blue) !important;
+}
+
+/* Checkbox ticks */
+.form-check-input:checked{
+  background-color: var(--ctao-cherenkov-blue) !important;
+  border-color: var(--ctao-cherenkov-blue) !important;
+}
+
+/* react-data-table-component checkboxes */
+.rdt_Table input[type="checkbox"]{
+  accent-color: var(--ctao-cherenkov-blue);
+}
+
+/* Focus rings */
+.form-control:focus,
+.form-select:focus,
+.btn:focus{
+  border-color: var(--ctao-cherenkov-blue) !important;
+  box-shadow: 0 0 0 .2rem rgba(0, 228, 216, .25) !important;
+}
+
+.results-layout{
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+
+  height: calc(
+    100vh
+    - var(--app-header-height, 64px)
+    - var(--app-subnav-height, 52px)
+    - var(--app-footer-height, 56px)
+    - 64px
+  );
+}
+
+.results-layout .card{
+  border-radius: 0 !important;
+}
+.results-layout .card-header{
+  border-top-left-radius: 0 !important;
+  border-top-right-radius: 0 !important;
+}
+
+.splitter{
+  touch-action: none;
+  user-select: none;
+}
+
+.tab-content{
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tab-pane{
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.tab-pane.fade:not(.show){
+  display: none; /* prevent hidden panes from affecting layout */
+}
+
+.results-top{
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+}
+
+.results-pane{
+  min-width: 0;
+  min-height: 0;
+}
+
+.results-bottom{
+  min-height: 0;
+}
+
+.results-top,
+.results-bottom{
+  min-height: 0;
+}
+
+/* Splitter styles */
+.splitter{
+  flex: 0 0 auto;
+  background: rgba(255,255,255,0.06);
+}
+
+.splitter-vertical{
+  width: 8px;
+  cursor: col-resize;
+  background: rgba(11,31,59,0.15);
+}
+
+.splitter-horizontal{
+  height: 8px;
+  cursor: row-resize;
+  background: rgba(11,31,59,0.15);
+}
+
+.splitter-vertical:hover,
+.splitter-horizontal:hover{
+  background: rgba(30,111,255,0.35);
+}
+
+.splitter-vertical::after,
+.splitter-horizontal::after{
+  content: "";
+  display: block;
+  margin: auto;
+  opacity: 0.6;
+}
+
+.splitter-vertical::after{
+  width: 2px;
+  height: 32px;
+  background: rgba(255,255,255,0.65);
+  border-radius: 2px;
+}
+
+.splitter-horizontal::after{
+  height: 2px;
+  width: 32px;
+  background: rgba(255,255,255,0.65);
+  border-radius: 2px;
+}
+
+.results-bottom{
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.results-table-wrap{
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.results-table-wrap .rdt_Table{
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Page wrapper */
+.app-page{
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Main content area: must sit below the 2 fixed bars */
+.app-main{
+  flex: 1 1 auto;
+  min-height: 0;
+
+  padding-top: calc(var(--app-header-height, 64px) + var(--app-subnav-height, 52px) + 12px) !important;
+
+  /* Make tab-content able to stretch */
+  display: flex;
+  flex-direction: column;
+}
+
+/* Footer at the bottom when content is short */
+.app-footer{
+  margin-top: auto;
+}
+
+/* Charts area must be allowed to shrink/grow inside flex containers */
+.results-pane .card,
+.results-pane .card-body{
+  min-height: 0;
+}
+
+#chartTabsContent{
+  min-height: 0;
+  height: 100%;
+}
+
+#chartTabsContent > .tab-pane{
+  min-height: 0;
+  height: 100%;
+}
+
+/* Chart tabs styling (Timeline / EM Range) */
+#chartTabs.nav-tabs{
+  border-bottom: 0 !important;
+}
+
+#chartTabs .nav-link{
+  border: 1px solid rgba(0,0,0,0.12) !important;
+  background: #fff !important;
+  color: #000 !important;
+  font-weight: 700;
+  border-radius: 0.8rem 0.8rem 0 0 !important;
+  margin-right: 0.35rem;
+}
+
+#chartTabs .nav-link.active{
+  background: var(--ctao-cosmic-azure) !important;
+  border-color: var(--ctao-cosmic-azure) !important;
+  color: #fff !important;
+}
+
+#chartTabs .nav-link:hover{
+  border-color: var(--ctao-cosmic-azure) !important;
+}
+
+/* disabled tab look */
+.subnav .nav-link.disabled{
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+#modalChartTabs.nav-tabs{
+  border-bottom: 0 !important;
+}
+
+#modalChartTabs .nav-link{
+  border: 1px solid rgba(0,0,0,0.12) !important;
+  background: #fff !important;
+  color: #000 !important;
+  font-weight: 700;
+  border-radius: 0.8rem 0.8rem 0 0 !important;
+  margin-right: 0.35rem;
+}
+
+#modalChartTabs .nav-link.active{
+  background: var(--ctao-cosmic-azure) !important;
+  border-color: var(--ctao-cosmic-azure) !important;
+  color: #fff !important;
+}
+
+#modalChartTabs .nav-link:hover{
+  border-color: var(--ctao-cosmic-azure) !important;
+}
+
+.basket-item-modal .card{
+  border-radius: 0 !important;
+}
+.basket-item-modal .card-header{
+  border-top-left-radius: 0 !important;
+  border-top-right-radius: 0 !important;
+}
