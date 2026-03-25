@@ -91,7 +91,13 @@ app.add_middleware(
     max_age=600,
 )
 
-# auth service endpoints live under /api/*
+# auth service endpoints live under /auth/*
+app.include_router(oidc_router, prefix="/auth")
+app.include_router(auth_api_router, prefix="/auth")
+# Legacy compatibility (temporary):
 app.include_router(oidc_router, prefix="/api")
 app.include_router(auth_api_router, prefix="/api")
+# relay
+app.include_router(token_relay_router, prefix="/auth")
+# Legacy compatibility (temporary)
 app.include_router(token_relay_router, prefix="/api")

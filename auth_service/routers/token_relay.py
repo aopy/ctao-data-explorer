@@ -12,7 +12,7 @@ from auth_service.routers.auth import get_required_session_user
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-router = APIRouter(prefix="/relay", tags=["token-relay"])
+router = APIRouter(prefix="", tags=["token-relay"])
 
 # Hop-by-hop headers must not be forwarded (RFC 7230)
 HOP_BY_HOP_HEADERS = {
@@ -33,10 +33,7 @@ def _filtered_request_headers(req: Request) -> dict[str, str]:
         lk = k.lower()
         if lk in HOP_BY_HOP_HEADERS:
             continue
-        if lk == "host":
-            continue
-        # we don't forward cookies to downstream microservices
-        if lk == "cookie":
+        if lk in {"host", "cookie", "authorization"}:
             continue
         out[k] = v
     return out
