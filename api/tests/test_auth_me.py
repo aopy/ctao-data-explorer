@@ -24,7 +24,7 @@ async def test_me_returns_user(auth_client, as_user, fake_redis):
     )
 
     r = await auth_client.get(
-        "/api/me",
+        "/auth/me",
         cookies={COOKIE_NAME_MAIN_SESSION: session_id},
     )
     assert r.status_code == 200

@@ -368,7 +368,7 @@ function TabsApp() {
     const xsrf = getCookie("XSRF-TOKEN");
     axios
       .post(
-        `${AUTH_PREFIX}/auth/logout_session`,
+        `${AUTH_PREFIX}/logout_session`,
         null,
         {
           headers: xsrf ? { "X-XSRF-TOKEN": xsrf } : {},

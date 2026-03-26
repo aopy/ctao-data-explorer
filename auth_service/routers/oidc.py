@@ -41,7 +41,7 @@ async def login(request: Request) -> Response:
     Start OIDC auth flow: redirect to provider.
     """
     redirect_uri = settings.OIDC_REDIRECT_URI or (
-        f"{settings.BASE_URL}/auth/api/oidc/callback" if settings.BASE_URL else None
+        f"{settings.BASE_URL}/auth/oidc/callback" if settings.BASE_URL else None
     )
     if not redirect_uri:
         raise HTTPException(500, "OIDC_REDIRECT_URI (or BASE_URL) must be set.")
