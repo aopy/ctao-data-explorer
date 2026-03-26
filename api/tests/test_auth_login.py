@@ -41,7 +41,7 @@ async def test_login_stores_encrypted_refresh_token_in_redis(
         },
     ):
         r = await auth_client.get(
-            "/api/oidc/callback",
+            "/auth/oidc/callback",
             params={"code": "fake-code", "state": "fake-state"},
         )
 
@@ -115,7 +115,7 @@ async def test_access_token_refresh_updates_session_in_redis(
         },
     ):
         r = await auth_client.get(
-            "/api/me",
+            "/auth/me",
             cookies={COOKIE_NAME_MAIN_SESSION: session_id},
         )
 
@@ -168,7 +168,7 @@ async def test_logout_clears_redis_session_and_cookie(
     csrf_token = "test-csrf-token"
 
     r = await auth_client.post(
-        "/api/auth/logout_session",
+        "/auth/logout_session",
         cookies={
             COOKIE_NAME_MAIN_SESSION: session_id,
             COOKIE_NAME_XSRF: csrf_token,

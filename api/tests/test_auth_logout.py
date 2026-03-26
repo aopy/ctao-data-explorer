@@ -28,7 +28,7 @@ async def test_logout_deletes_session_and_refresh_tokens(auth_client, as_user, f
 
     csrf_token = "test-csrf-token"
     r = await auth_client.post(
-        "/api/auth/logout_session",
+        "/auth/logout_session",
         cookies={
             COOKIE_NAME_MAIN_SESSION: session_id,
             COOKIE_NAME_XSRF: csrf_token,
