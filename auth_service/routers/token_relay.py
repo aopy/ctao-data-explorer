@@ -10,7 +10,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from auth_service.routers.auth import get_required_session_user
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
 
 router = APIRouter(prefix="", tags=["token-relay"])
 
@@ -58,8 +57,16 @@ def _join_url(base: str, path: str) -> str:
     return f"{base}/{path}" if path else base
 
 
+_ASGI_TARGETS: dict[str, object] = {}  # injected in tests
+
+
+def register_asgi_target(name: str, app: object) -> None:
+    _ASGI_TARGETS[name] = app
+
+
 @router.api_route(
-    "/{service}/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+    "/{service}/{path:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 )
 async def relay(
     service: str,
@@ -67,10 +74,7 @@ async def relay(
     request: Request,
     user_session_data: dict = Depends(get_required_session_user),
 ) -> Response:
-    """
-    Reverse-proxy a request to a configured target and inject Authorization: Bearer <access_token>.
-    Browser sends only session cookie → auth_service looks up token in Redis session → forwards to downstream.
-    """
+    settings = get_settings()
     targets = settings.token_relay_targets
     base = targets.get(service)
     if not base:
@@ -78,18 +82,41 @@ async def relay(
 
     access_token = user_session_data.get("iam_access_token")
     if not access_token:
-        # session exists but token missing (e.g. offline_access not granted)
         raise HTTPException(status_code=401, detail="No access token in session")
-
-    downstream_url = _join_url(base, path)
-    if request.url.query:
-        downstream_url = f"{downstream_url}?{request.url.query}"
 
     headers = _filtered_request_headers(request)
     headers["Authorization"] = f"Bearer {access_token}"
-
-    # preserve content-type and body
     body = await request.body()
+
+    # ---- ASGI target (tests) ----
+    if base.startswith("asgi://"):
+        target_name = base.removeprefix("asgi://").strip("/")
+        asgi_app = _ASGI_TARGETS.get(target_name)
+        if not asgi_app:
+            raise HTTPException(status_code=500, detail="ASGI relay target not registered")
+
+        transport = httpx.ASGITransport(app=asgi_app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://asgi") as client:
+            r = await client.request(
+                method=request.method,
+                url="/" + (path or ""),
+                headers=headers,
+                params=request.query_params,
+                content=body if body else None,
+            )
+
+        resp_headers = _filtered_response_headers(r.headers.items())
+        return Response(
+            content=r.content,
+            status_code=r.status_code,
+            headers=resp_headers,
+            media_type=r.headers.get("content-type"),
+        )
+
+    # ---- Normal HTTP target (real deployment) ----
+    downstream_url = _join_url(base, path)
+    if request.url.query:
+        downstream_url = f"{downstream_url}?{request.url.query}"
 
     timeout = httpx.Timeout(settings.TOKEN_RELAY_TIMEOUT_SECONDS)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
@@ -105,7 +132,6 @@ async def relay(
             raise HTTPException(status_code=502, detail="Downstream service unreachable") from e
 
     resp_headers = _filtered_response_headers(r.headers.items())
-
     return Response(
         content=r.content,
         status_code=r.status_code,
