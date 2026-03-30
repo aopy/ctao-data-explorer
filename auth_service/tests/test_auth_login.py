@@ -3,7 +3,6 @@ import time
 from unittest.mock import patch
 
 import pytest
-from auth_service.oauth_client import oauth
 from ctao_shared.config import get_settings
 from ctao_shared.constants import (
     COOKIE_NAME_MAIN_SESSION,
@@ -15,6 +14,8 @@ from ctao_shared.constants import (
     SESSION_REFRESH_TOKEN_KEY,
 )
 from ctao_shared.db import decrypt_token, encrypt_token
+
+from auth_service.oauth_client import oauth
 
 settings = get_settings()
 REFRESH_BUFFER_SECONDS = settings.REFRESH_BUFFER_SECONDS
@@ -75,7 +76,6 @@ async def test_login_stores_encrypted_refresh_token_in_redis(
 @pytest.mark.anyio
 async def test_access_token_refresh_updates_session_in_redis(
     auth_client,
-    client,
     as_user,
     fake_redis,
 ):
@@ -84,9 +84,8 @@ async def test_access_token_refresh_updates_session_in_redis(
     request should trigger a token refresh and update iam_at, iam_at_exp,
     and iam_rt in Redis.
     """
-    user = await as_user()
-    session_id = client.cookies.get(COOKIE_NAME_MAIN_SESSION)
-    assert session_id is not None, "as_user did not set session cookie on client"
+    user, session_id = await as_user()
+    assert session_id is not None
 
     # Overwrite the session with an AT that's about to expire
     old_enc_rt = encrypt_token("old-refresh-token")
@@ -151,13 +150,12 @@ async def test_access_token_refresh_updates_session_in_redis(
 @pytest.mark.anyio
 async def test_logout_clears_redis_session_and_cookie(
     auth_client,
-    client,
     as_user,
     fake_redis,
 ):
     """Logout must delete the Redis session key and clear the session cookie."""
     await as_user()
-    session_id = client.cookies.get(COOKIE_NAME_MAIN_SESSION)
+    session_id = auth_client.cookies.get(COOKIE_NAME_MAIN_SESSION)
     assert session_id is not None, "as_user did not set session cookie on client"
 
     # Confirm key exists before logout
