@@ -2,12 +2,7 @@ include:
   - project: cta-computing/common/aiv-toolkit
     ref: e78b620a2db2be7f6177c6ee3b2a8bf35c781093
     file: ci-functions.yml
-    rules:
-      - if: '$CI_SERVER_HOST == "gitlab.cta-observatory.org"'
-
-  - local: aiv-config.yml
-    rules:
-      - if: '$CI_SERVER_HOST == "gitlab.cta-observatory.org"'
+  - aiv-config.yml
 
 stages:
   - prepare
@@ -22,33 +17,26 @@ stages:
   - test
   - build-sonar
 
-.ctao_only:
-  rules:
-    - if: '$CI_SERVER_HOST == "gitlab.cta-observatory.org"'
-
-.obspm_only:
-  rules:
-    - if: '$CI_SERVER_HOST == "gitlab.obspm.fr"'
-
 build:
-  extends: .ctao_only
   tags:
     - desy-test-cluster
+
   parallel:
     matrix:
       - IMAGE: ["frontend", "backend", "auth", "playwright"]
+
   variables:
     CI_HARBOR_REGISTRY_IMAGE: harbor.cta-observatory.org/suss/${CI_PROJECT_NAME}-${IMAGE}:${DOCKER_TAG}
     AIV_DOCKER_IMAGE_CONTEXT: $CI_PROJECT_DIR
     AIV_DOCKERFILE: Dockerfile.${IMAGE}
     DOCKER_CONFIG: /kaniko/.docker
+
     KUBERNETES_CPU_REQUEST: "1"
     KUBERNETES_CPU_LIMIT: "2"
     KUBERNETES_MEMORY_REQUEST: "16Gi"
     KUBERNETES_MEMORY_LIMIT: "64Gi"
 
 k8s-integration-tests:
-  extends: .ctao_only
   artifacts:
     when: always
     paths:
@@ -63,22 +51,18 @@ k8s-integration-tests:
       junit: test-in-k8s/report.xml
 
 k8s-upgrade-integration-tests:
-  extends: .ctao_only
   rules:
     - when: never
 
 build-docs:
-  extends: .ctao_only
   rules:
     - when: never
 
 deploy_docs_env:
-  extends: .ctao_only
   rules:
     - when: never
 
 pages:
-  extends: .ctao_only
   stage: publish
   needs: []
   before_script:
@@ -90,13 +74,14 @@ pages:
       - public
 
 pytest-obspm:
-  extends: .obspm_only
   stage: test
   image: python:3.12
+  rules:
+    - if: '$CI_SERVER_HOST == "gitlab.obspm.fr"'
   variables:
     PIP_DISABLE_PIP_VERSION_CHECK: "1"
     PIP_NO_CACHE_DIR: "1"
-    PYTHONPATH: "$CI_PROJECT_DIR:$CI_PROJECT_DIR/api:$CI_PROJECT_DIR/auth_service"
+    PYTHONPATH: "$CI_PROJECT_DIR"
   before_script:
     - set -euo pipefail
     - python -V
@@ -143,19 +128,17 @@ pytest-obspm:
     expire_in: 1 week
 
 build-sonar-obspm:
-  extends: .obspm_only
   stage: build-sonar
   image:
     name: sonarsource/sonar-scanner-cli:11
     entrypoint: [""]
+  rules:
+    - if: '$CI_SERVER_HOST == "gitlab.obspm.fr"'
   needs:
     - job: pytest-obspm
       artifacts: true
   script:
-    - sonar-scanner
-      -Dsonar.host.url="${SONAR_HOST_URL}"
-      -Dsonar.login="${SONAR_TOKEN}"
-      -Dsonar.projectKey="${SONAR_PROJECT_KEY}"
+    - sonar-scanner -Dsonar.host.url="${SONAR_HOST_URL}" -Dsonar.login="${SONAR_TOKEN}" -Dsonar.projectKey="${SONAR_PROJECT_KEY}"
   variables:
     SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
     GIT_DEPTH: "0"
