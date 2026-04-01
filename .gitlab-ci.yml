@@ -2,8 +2,12 @@ include:
   - project: cta-computing/common/aiv-toolkit
     ref: e78b620a2db2be7f6177c6ee3b2a8bf35c781093
     file: ci-functions.yml
-  - aiv-config.yml
+    rules:
+      - if: '$CI_SERVER_HOST == "gitlab.cta-observatory.org"'
 
+  - local: aiv-config.yml
+    rules:
+      - if: '$CI_SERVER_HOST == "gitlab.cta-observatory.org"'
 
 stages:
   - prepare
@@ -15,30 +19,36 @@ stages:
   - publish
   - report
   - changelog
+  - test
+  - build-sonar
+
+.ctao_only:
+  rules:
+    - if: '$CI_SERVER_HOST == "gitlab.cta-observatory.org"'
+
+.obspm_only:
+  rules:
+    - if: '$CI_SERVER_HOST == "gitlab.obspm.fr"'
 
 build:
+  extends: .ctao_only
   tags:
-  # playwright build always breaks on DESY-IT, no matter the request
     - desy-test-cluster
-
   parallel:
     matrix:
-      - IMAGE: ["frontend", "backend", "playwright"]
-
+      - IMAGE: ["frontend", "backend", "auth", "playwright"]
   variables:
-    CI_HARBOR_REGISTRY_IMAGE: 
-      harbor.cta-observatory.org/suss/${CI_PROJECT_NAME}-${IMAGE}:${DOCKER_TAG}
+    CI_HARBOR_REGISTRY_IMAGE: harbor.cta-observatory.org/suss/${CI_PROJECT_NAME}-${IMAGE}:${DOCKER_TAG}
     AIV_DOCKER_IMAGE_CONTEXT: $CI_PROJECT_DIR
     AIV_DOCKERFILE: Dockerfile.${IMAGE}
     DOCKER_CONFIG: /kaniko/.docker
-
     KUBERNETES_CPU_REQUEST: "1"
     KUBERNETES_CPU_LIMIT: "2"
     KUBERNETES_MEMORY_REQUEST: "16Gi"
     KUBERNETES_MEMORY_LIMIT: "64Gi"
 
-
 k8s-integration-tests:
+  extends: .ctao_only
   artifacts:
     when: always
     paths:
@@ -53,23 +63,102 @@ k8s-integration-tests:
       junit: test-in-k8s/report.xml
 
 k8s-upgrade-integration-tests:
+  extends: .ctao_only
   rules:
     - when: never
 
 build-docs:
+  extends: .ctao_only
   rules:
     - when: never
 
 deploy_docs_env:
+  extends: .ctao_only
   rules:
     - when: never
 
 pages:
+  extends: .ctao_only
   stage: publish
-  needs: []       # replace the inherited dependencies from build-docs
+  needs: []
   before_script:
     - pip install -r requirements-docs.txt
   script:
     - mkdocs build --strict --site-dir public
   artifacts:
-    paths: [public]
+    paths:
+      - public
+
+pytest-obspm:
+  extends: .obspm_only
+  stage: test
+  image: python:3.12
+  variables:
+    PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    PIP_NO_CACHE_DIR: "1"
+    PYTHONPATH: "$CI_PROJECT_DIR:$CI_PROJECT_DIR/api:$CI_PROJECT_DIR/auth_service"
+  before_script:
+    - set -euo pipefail
+    - python -V
+    - python -m venv .venv
+    - . .venv/bin/activate
+
+    - python -m pip install -U "pip<26" "setuptools<82" wheel
+
+    - python -c "import setuptools; print('setuptools:', setuptools.__version__)"
+    - python -c "import pkg_resources; print('pkg_resources OK')"
+
+    - if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
+    - if [ -f api/requirements.txt ]; then python -m pip install -r api/requirements.txt; fi
+    - if [ -f requirements-ci.txt ]; then python -m pip install -r requirements-ci.txt; fi
+    - if [ -f api/requirements-ci.txt ]; then python -m pip install -r api/requirements-ci.txt; fi
+
+    - python -c "import pkg_resources; print('pkg_resources still OK after deps')"
+
+    - printf "OPUS_SERVICE=%s\nOPUS_APP_TOKEN=%s\nOPUS_APP_USER=%s\n" \
+        "${OPUS_SERVICE:-https://example.invalid/opus}" \
+        "${OPUS_APP_TOKEN:-dummy-ci-token}" \
+        "${OPUS_APP_USER:-ci}" > .env.ci
+
+    - |
+      python - <<'PY' >> .env.ci
+      from cryptography.fernet import Fernet
+      print("REFRESH_TOKEN_ENCRYPTION_KEY="+Fernet.generate_key().decode())
+      PY
+
+    - cp .env.ci .env
+
+    - which python
+    - python -c "import sys; print(sys.executable)"
+    - python -m pip --version
+
+  script:
+    - . .venv/bin/activate
+    - python -m pytest api auth_service/tests --maxfail=1 --disable-warnings --cov=api --cov=auth_service --cov-report=xml:coverage.xml
+
+  artifacts:
+    when: always
+    paths:
+      - coverage.xml
+    expire_in: 1 week
+
+build-sonar-obspm:
+  extends: .obspm_only
+  stage: build-sonar
+  image:
+    name: sonarsource/sonar-scanner-cli:11
+    entrypoint: [""]
+  needs:
+    - job: pytest-obspm
+      artifacts: true
+  script:
+    - sonar-scanner
+      -Dsonar.host.url="${SONAR_HOST_URL}"
+      -Dsonar.login="${SONAR_TOKEN}"
+      -Dsonar.projectKey="${SONAR_PROJECT_KEY}"
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+    GIT_DEPTH: "0"
+  allow_failure: true
+  tags:
+    - sonar
