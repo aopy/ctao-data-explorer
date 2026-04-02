@@ -1,0 +1,6 @@
+auth:
+  env:
+    BASE_URL: "https://ctao-data-explorer.test.example"
+    FRONTEND_BASE_URL: "https://ctao-data-explorer.test.example/"
+    OIDC_REDIRECT_URI: "https://ctao-data-explorer.test.example/auth/oidc/callback"
+    COOKIE_DOMAIN: "ctao-data-explorer.test.example"

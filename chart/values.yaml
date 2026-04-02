@@ -30,6 +30,7 @@ dev:
         cpu: 500m
         memory: 1Gi
         ephemeral-storage: 1Gi
+
 # Backend (FastAPI) configuration
 backend:
   enabled: true
@@ -69,23 +70,14 @@ backend:
     # REDIS_URL: constructed in template
 
     # Back-end base URL (app URL)
-    BASE_URL: http://localhost:8000
+    BASE_URL: "https://ctao-data-explorer.test.example"
 
     # Database & Redis
     # REDIS_URL: redis://redis:6379/0
 
-    
-    # Auth/IAM
-    # CTAO_CLIENT_ID: __fill_me__
-    # CTAO_CLIENT_SECRET: __fill_me__
-    # JWT_SECRET: __fill_me__
-    # SECRET_KEY: __fill_me__
-
     # # OPUS
     OPUS_ROOT: https://voparis-uws-test.obspm.fr
     OPUS_SERVICE: gammapy_source_analysis
-    OPUS_APP_TOKEN: __fill_me__
-    OPUS_APP_USER: __fill_me__
 
     # # Cookies
     # COOKIE_SAMESITE: None
@@ -105,6 +97,44 @@ backend:
   #     name: backend-secrets
   # - configMapRef:
   #     name: backend-config
+
+auth:
+  enabled: true
+  replicaCount: 1
+  
+  image:
+    repository: suss/ctao-data-explorer-auth
+    pullPolicy: IfNotPresent
+    tag: 
+
+  service:
+    type: ClusterIP
+    port: 8001
+    targetPort: 8001
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+  secrets:
+    existingSecret: ""
+    clientId: ""
+    clientSecret: ""
+    refreshTokenEncryptionKey: ""
+    sessionSecretKeyOidc: ""
+
+  env:
+    BASE_URL: "https://ctao-data-explorer.example.org"
+    FRONTEND_BASE_URL: "https://ctao-data-explorer.example.org/"
+    OIDC_REDIRECT_URI: "https://ctao-data-explorer.example.org/auth/oidc/callback"
+    OIDC_SERVER_METADATA_URL: "https://majestix-vm15.zeuthen.desy.de/.well-known/openid-configuration"
+    COOKIE_SECURE: True
+    COOKIE_SAMESITE: Lax
+    COOKIE_DOMAIN: "ctao-data-explorer.example.org"
 
 # Frontend configuration
 frontend:
@@ -226,7 +256,10 @@ ingress:
           backend: backend
         - path: /
           pathType: Prefix
-          backend: frontend
+          backend: frontend      
+        - path: /auth
+          pathType: Prefix
+          backend: auth
   
   # tls:
   #   - secretName: data-explorer-tls
@@ -238,6 +271,12 @@ serviceAccount:
   create: true
   annotations: {}
   name: ""
+
+# Service ports for ingress
+servicePorts:
+  backend: 8000
+  frontend: 80
+  auth: 8001
 
 # Pod annotations
 podAnnotations: {}
