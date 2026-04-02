@@ -22,7 +22,7 @@ build:
 
   parallel:
     matrix:
-      - IMAGE: ["frontend", "backend", "playwright"]
+      - IMAGE: ["frontend", "backend", "auth", "playwright"]
 
   variables:
     CI_HARBOR_REGISTRY_IMAGE: harbor.cta-observatory.org/suss/${CI_PROJECT_NAME}-${IMAGE}:${DOCKER_TAG}
@@ -34,6 +34,18 @@ build:
     KUBERNETES_CPU_LIMIT: "2"
     KUBERNETES_MEMORY_REQUEST: "16Gi"
     KUBERNETES_MEMORY_LIMIT: "64Gi"
+
+unit-test:
+  stage: tests
+  image: ghcr.io/prefix-dev/pixi:latest
+
+  script:
+    - pixi run test
+
+  artifacts:
+    paths:
+      - test/coverage.xml
+      - test/report.xml
 
 k8s-integration-tests:
   artifacts:

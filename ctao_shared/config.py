@@ -60,9 +60,7 @@ class Settings(BaseSettings):
     DEFAULT_SELECT_LIMIT: int = 100
 
     # OIDC / OAuth
-    OIDC_SERVER_METADATA_URL: str = (
-        "https://iam-ctao.cloud.cnaf.infn.it/.well-known/openid-configuration"
-    )
+    OIDC_SERVER_METADATA_URL: str | None = None
     CTAO_CLIENT_ID: str | None = None
     CTAO_CLIENT_SECRET: str | None = None
     OIDC_REDIRECT_URI: str | None = None
