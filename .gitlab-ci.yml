@@ -14,7 +14,6 @@ stages:
   - publish
   - report
   - changelog
-  - test
   - build-sonar
 
 build:
@@ -74,7 +73,7 @@ pages:
       - public
 
 pytest-obspm:
-  stage: test
+  stage: tests
   image: python:3.12
   rules:
     - if: '$CI_SERVER_HOST == "gitlab.obspm.fr"'
