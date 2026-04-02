@@ -23,7 +23,7 @@ build:
 
   parallel:
     matrix:
-      - IMAGE: ["frontend", "backend", "auth", "playwright"]
+      - IMAGE: ["frontend", "backend", "playwright"]
 
   variables:
     CI_HARBOR_REGISTRY_IMAGE: harbor.cta-observatory.org/suss/${CI_PROJECT_NAME}-${IMAGE}:${DOCKER_TAG}
