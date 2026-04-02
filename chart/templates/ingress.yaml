@@ -13,6 +13,7 @@ spec:
   {{- if .Values.ingress.className }}
   ingressClassName: {{ .Values.ingress.className }}
   {{- end }}
+
   {{- if .Values.ingress.tls }}
   tls:
     {{- range .Values.ingress.tls }}
@@ -23,6 +24,7 @@ spec:
       secretName: {{ .secretName }}
     {{- end }}
   {{- end }}
+
   rules:
     {{- range .Values.ingress.hosts }}
     - host: {{ .host | quote }}
@@ -35,7 +37,7 @@ spec:
               service:
                 name: {{ include "ctao-data-explorer.fullname" $ }}-{{ .backend }}
                 port:
-                  number: {{ if eq .backend "backend" }}{{ $.Values.backend.service.port }}{{ else }}{{ $.Values.frontend.service.port }}{{ end }}
+                  number: {{ index $.Values.servicePorts .backend }}
           {{- end }}
     {{- end }}
 {{- end }}

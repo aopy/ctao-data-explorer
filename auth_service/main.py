@@ -68,6 +68,17 @@ app = FastAPI(
     swagger_ui_oauth2_redirect_url="/auth/docs/oauth2-redirect" if docs_enabled else None,
 )
 
+
+@app.get("/health/live", include_in_schema=False)
+def live() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.get("/health/ready", include_in_schema=False)
+def ready() -> dict[str, str]:
+    return {"status": "ok"}
+
+
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
