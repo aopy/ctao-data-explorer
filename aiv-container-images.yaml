@@ -1,7 +1,0 @@
-images:
-- dockerfile_path: Dockerfile.backend
-  repository: harbor.cta-observatory.org/suss/ctao-data-explorer-backend
-- dockerfile_path: Dockerfile.frontend
-  repository: harbor.cta-observatory.org/suss/ctao-data-explorer-frontend
-- dockerfile_path: Dockerfile.playwright
-  repository: harbor.cta-observatory.org/suss/ctao-data-explorer-playwright
