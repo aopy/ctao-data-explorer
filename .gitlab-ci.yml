@@ -4,6 +4,8 @@ stages:
 
 pytest:
   stage: test
+  tags:
+    - sonar
   image: python:3.12
   variables:
     PIP_DISABLE_PIP_VERSION_CHECK: "1"
