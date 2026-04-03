@@ -24,7 +24,10 @@ export const API_PREFIX = "/api";
 // Auth service base:
 //  in local dev: talk directly to auth_service on port 8001
 //  in prod: use '/api' so reverse proxy can route it
-export const AUTH_PREFIX = isLocal ? "http://localhost:8001/api" : "/api";
+// export const AUTH_PREFIX = isLocal ? "http://localhost:8001/api" : "/api";
+export const AUTH_PREFIX = isLocal
+  ? 'http://localhost:8001/auth'
+  : '/auth';
 
 // Axios base URL for *relative* API calls (Data Explorer backend)
 axios.defaults.baseURL = isLocal ? "http://localhost:8000" : "";

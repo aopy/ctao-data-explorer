@@ -68,6 +68,17 @@ app = FastAPI(
     swagger_ui_oauth2_redirect_url="/auth/docs/oauth2-redirect" if docs_enabled else None,
 )
 
+
+@app.get("/health/live", include_in_schema=False)
+def live() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.get("/health/ready", include_in_schema=False)
+def ready() -> dict[str, str]:
+    return {"status": "ok"}
+
+
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -91,7 +102,8 @@ app.add_middleware(
     max_age=600,
 )
 
-# auth service endpoints live under /api/*
-app.include_router(oidc_router, prefix="/api")
-app.include_router(auth_api_router, prefix="/api")
-app.include_router(token_relay_router, prefix="/api")
+# auth service endpoints live under /auth/*
+app.include_router(oidc_router, prefix="/auth")
+app.include_router(auth_api_router, prefix="/auth")
+# relay
+app.include_router(token_relay_router, prefix="/auth")

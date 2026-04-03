@@ -6,13 +6,16 @@ Documentation is available online at https://aopy.github.io/ctao-data-explorer/
 
 ## Table of Contents
 
-- [Features](#features)
-- [Requirements](#requirements)
-- [Installation](#installation)
-  - [Backend Setup](#backend-setup)
-  - [Frontend Setup](#frontend-setup)
-  - [Run with Docker](#run-with-docker)
-- [Usage](#usage)
+- [CTAO Data Explorer](#ctao-data-explorer)
+  - [Table of Contents](#table-of-contents)
+  - [Features](#features)
+  - [Requirements](#requirements)
+    - [Backend](#backend)
+    - [Frontend](#frontend)
+  - [Installation](#installation)
+    - [Backend Setup](#backend-setup)
+    - [Frontend Setup](#frontend-setup)
+  - [Usage](#usage)
 - [About CTAO](#about-ctao)
 
 ## Features
@@ -51,6 +54,8 @@ Documentation is available online at https://aopy.github.io/ctao-data-explorer/
 
 ## Installation
 
+Here are the initial instructions previous to the containerization of the application. For deployment that will be used in production see the [Deployment section in the docs](http://ctao-data-explorer-a09d9e.gitlab-pages.cta-observatory.org/developer-guide/deployment/).
+
 ### Backend Setup
 
    ```bash
@@ -86,34 +91,6 @@ Documentation is available online at https://aopy.github.io/ctao-data-explorer/
    npm install
    npm run build
    ```
-
-## Run with Docker
-
-**Prereqs:** Docker Desktop installed.
-
-### 1) Copy env template and fill secrets
-```bash
-cp .env.example .env.docker
-# set BASE_URL=http://localhost:8000, CTAO_CLIENT_ID/SECRET, OPUS_ROOT/OPUS_SERVICE, DB/REDIS, etc.
-```
-### 2) Start DB/Redis
-```bash
-docker compose -f docker-compose.dev.yml up -d postgres redis
-```
-### 3) Run DB migrations (one time per clean DB)
-```bash
-docker compose -f docker-compose.dev.yml run --rm migrate
-```
-### 4) Build frontend once (creates ./js/build)
-```bash
-docker compose -f docker-compose.dev.yml run --rm frontend npm ci
-docker compose -f docker-compose.dev.yml run --rm frontend npm run build
-```
-### 5) Start backend (serves the built React app)
-```bash
-docker compose -f docker-compose.dev.yml up -d backend
-open http://localhost:8000
-```
 
 ## Usage
 

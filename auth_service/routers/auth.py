@@ -270,7 +270,7 @@ async def me(
     )
 
 
-@auth_api_router.post("/auth/logout_session", tags=["auth"])
+@auth_api_router.post("/logout_session", tags=["auth"])
 async def logout_session(
     request: Request,
     response: Response,
