@@ -128,13 +128,13 @@ auth:
     sessionSecretKeyOidc: ""
 
   env:
-    BASE_URL: "https://ctao-data-explorer.example.org"
-    FRONTEND_BASE_URL: "https://ctao-data-explorer.example.org/"
-    OIDC_REDIRECT_URI: "https://ctao-data-explorer.example.org/auth/oidc/callback"
+    BASE_URL: "https://ctao-data-explorer.test.example"
+    FRONTEND_BASE_URL: "https://ctao-data-explorer.test.example/"
+    OIDC_REDIRECT_URI: "https://ctao-data-explorer.test.example/auth/oidc/callback"
+    COOKIE_DOMAIN: "ctao-data-explorer.test.example"
     OIDC_SERVER_METADATA_URL: "https://majestix-vm15.zeuthen.desy.de/.well-known/openid-configuration"
     COOKIE_SECURE: True
     COOKIE_SAMESITE: Lax
-    COOKIE_DOMAIN: "ctao-data-explorer.example.org"
 
 # Frontend configuration
 frontend:

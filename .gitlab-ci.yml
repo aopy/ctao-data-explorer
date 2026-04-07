@@ -48,6 +48,8 @@ unit-test:
       - test/report.xml
 
 k8s-integration-tests:
+  tags:
+    - desy-testcluster-ctao-computing-aiv 
   artifacts:
     when: always
     paths:
@@ -62,14 +64,22 @@ k8s-integration-tests:
       junit: test-in-k8s/report.xml
 
 k8s-upgrade-integration-tests:
-  rules:
-    - when: never
+  extends: .test-in-k8s
+  tags:
+    - desy-testcluster-ctao-computing-aiv 
+  variables: 
+    UPGRADE_BASE_REF: "v0.9.2"
+
 
 build-docs:
   rules:
     - when: never
 
 deploy_docs_env:
+  rules:
+    - when: never
+
+pypi:
   rules:
     - when: never
 
