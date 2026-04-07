@@ -1,19 +1,18 @@
+import asyncio
 import json
 import logging
 import time
 import traceback
 from typing import Any
 
+import httpx
 import redis.asyncio as redis
+from authlib.integrations.base_client.errors import OAuthError
 from ctao_shared.config import get_settings
 from ctao_shared.constants import (
     COOKIE_NAME_MAIN_SESSION,
     SESSION_ACCESS_TOKEN_EXPIRY_KEY,
     SESSION_ACCESS_TOKEN_KEY,
-    SESSION_IAM_EMAIL_KEY,
-    SESSION_IAM_FAMILY_NAME_KEY,
-    SESSION_IAM_GIVEN_NAME_KEY,
-    SESSION_IAM_SUB_KEY,
     SESSION_KEY_PREFIX,
     SESSION_REFRESH_TOKEN_KEY,
     SESSION_USER_ID_KEY,
@@ -23,6 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi_users import schemas
 from pydantic import BaseModel, ConfigDict
 
+from auth_service.metrics import TOKEN_REFRESH_FAILURES
 from auth_service.oauth_client import oauth
 from auth_service.security.csrf import ensure_xsrf_cookie, require_xsrf
 
@@ -64,6 +64,21 @@ class MeResponse(BaseModel):
 
 
 SESSION_DURATION_SECONDS = settings.SESSION_DURATION_SECONDS  # 8 hours
+
+
+def _refresh_fail_reason(exc: Exception) -> str:
+    # provider-side structured errors (Authlib)
+    if isinstance(exc, OAuthError):
+        err = getattr(exc, "error", None) or "oauth_error"
+        # common iam token endpoint failures like,
+        # invalid_grant = revoked/expired RT, bad code_verifier, etc.
+        return str(err)
+
+    # network/timeouts etc.
+    if isinstance(exc, httpx.RequestError):
+        return "network"
+
+    return "other"
 
 
 # Session-Based Authentication Dependency
@@ -109,76 +124,73 @@ async def get_current_session_user_data(
                 session_data[SESSION_ACCESS_TOKEN_KEY] = None
                 session_data[SESSION_ACCESS_TOKEN_EXPIRY_KEY] = None
                 await redis.setex(key, SESSION_DURATION_SECONDS, json.dumps(session_data))
-                iam_access_token = None
+                return None
 
-            elif remaining < REFRESH_BUFFER_SECONDS:
+            if remaining < REFRESH_BUFFER_SECONDS:
                 enc_rt = session_data.get(SESSION_REFRESH_TOKEN_KEY)
                 if not enc_rt:
-                    logger.info("No refresh token in session; keeping session without IAM token.")
-                else:
-                    decrypted_rt = decrypt_token(enc_rt)
-                    if not decrypted_rt:
-                        logger.warning(
-                            "Failed to decrypt RT from session; keeping session without IAM token."
-                        )
-                        session_data[SESSION_REFRESH_TOKEN_KEY] = None
-                        await redis.setex(key, SESSION_DURATION_SECONDS, json.dumps(session_data))
-                    else:
-                        try:
-                            token_response = await oauth.ctao.fetch_access_token(
-                                grant_type="refresh_token",
-                                refresh_token=decrypted_rt,
-                            )
-                            new_at = token_response["access_token"]
-                            new_exp = token_response.get("expires_in", 3600)
-                            if settings.OIDC_FAKE_EXPIRES_IN:
-                                new_exp = settings.OIDC_FAKE_EXPIRES_IN
-                            new_at_exp = time.time() + float(new_exp)
+                    logger.info("No refresh token in session; forcing re-auth.")
+                    return None
 
-                            session_data[SESSION_ACCESS_TOKEN_KEY] = new_at
-                            session_data[SESSION_ACCESS_TOKEN_EXPIRY_KEY] = new_at_exp
+                decrypted_rt = decrypt_token(enc_rt)
 
-                            # Refresh token rotation: store new RT if provided
-                            if token_response.get("refresh_token"):
-                                new_enc = encrypt_token(token_response["refresh_token"])
-                                if new_enc:
-                                    session_data[SESSION_REFRESH_TOKEN_KEY] = new_enc
-                                else:
-                                    logger.warning(
-                                        "Failed to encrypt rotated refresh token; keeping old RT."
-                                    )
-                            await redis.setex(
-                                key, SESSION_DURATION_SECONDS, json.dumps(session_data)
-                            )
-                            iam_access_token = new_at
-                        except Exception:
-                            logger.exception("IAM token refresh failed (keeping app session).")
+                if not decrypted_rt:
+                    logger.warning("Failed to decrypt RT; forcing re-auth.")
+                    return None
+
+                async def _attempt_refresh() -> dict[str, Any]:
+                    return await oauth.ctao.fetch_access_token(
+                        grant_type="refresh_token",
+                        refresh_token=decrypted_rt,
+                    )
+
+                try:
+                    try:
+                        token_response = await _attempt_refresh()
+                    except httpx.RequestError:
+                        await asyncio.sleep(0.2)
+                        token_response = await _attempt_refresh()
+                    new_at = token_response["access_token"]
+                    new_exp = token_response.get("expires_in", 3600)
+                    if settings.OIDC_FAKE_EXPIRES_IN:
+                        new_exp = settings.OIDC_FAKE_EXPIRES_IN
+                    new_at_exp = time.time() + float(new_exp)
+
+                    session_data[SESSION_ACCESS_TOKEN_KEY] = new_at
+                    session_data[SESSION_ACCESS_TOKEN_EXPIRY_KEY] = new_at_exp
+
+                    # rotate refresh token if provided
+                    if token_response.get("refresh_token"):
+                        new_enc = encrypt_token(token_response["refresh_token"])
+                        if new_enc:
+                            session_data[SESSION_REFRESH_TOKEN_KEY] = new_enc
+
+                    await redis.setex(key, SESSION_DURATION_SECONDS, json.dumps(session_data))
+                    iam_access_token = new_at
+
+                except Exception as e:
+                    reason = _refresh_fail_reason(e)
+                    TOKEN_REFRESH_FAILURES.labels(reason=reason).inc()
+                    # force re-auth for consistency
+                    logger.warning(
+                        "IAM token refresh failed (reason=%s). Forcing re-auth by deleting session.",
+                        reason,
+                        exc_info=True,
+                    )
+                    await redis.delete(key)
+                    return None
+
     except Exception:
-        logger.exception("Non-fatal error in session token handling; preserving session.")
-
-    iam_subject_id = (
-        session_data.get(SESSION_IAM_SUB_KEY)
-        or session_data.get("iam_subject_id")
-        or session_data.get("sub")
-    )
-    email = session_data.get(SESSION_IAM_EMAIL_KEY) or session_data.get("email")
-    first_name = (
-        session_data.get(SESSION_IAM_GIVEN_NAME_KEY)
-        or session_data.get("given_name")
-        or session_data.get("first_name")
-    )
-    last_name = (
-        session_data.get(SESSION_IAM_FAMILY_NAME_KEY)
-        or session_data.get("family_name")
-        or session_data.get("last_name")
-    )
+        logger.exception("Unexpected error in session token handling; forcing re-auth.")
+        await redis.delete(key)
+        return None
 
     return {
         "app_user_id": app_user_id,
-        "iam_subject_id": iam_subject_id,
-        "email": email,
-        "first_name": first_name,
-        "last_name": last_name,
+        "iam_subject_id": session_data.get("iam_sub") or session_data.get("iam_subject_id"),
+        "email": session_data.get("iam_email") or session_data.get("email"),
+        "first_name": session_data.get("first_name") or session_data.get("given_name"),
+        "last_name": session_data.get("last_name") or session_data.get("family_name"),
         "iam_access_token": iam_access_token,
         "is_active": True,
         "is_superuser": False,
