@@ -305,6 +305,20 @@ function TabsApp() {
     return () => window.removeEventListener("session-lost", handleLost);
   }, [navigate]);
 
+  useEffect(() => {
+    const onReauth = () => {
+      setUser(null);
+      localStorage.removeItem("hadSession");
+
+      // setGlobalMessage("Your IAM session expired. Please log in again.");
+      // redirect to home/search
+      navigate("/search", { replace: true });
+    };
+
+    window.addEventListener("reauth-required", onReauth);
+    return () => window.removeEventListener("reauth-required", onReauth);
+  }, [navigate]);
+
   // Check login status on mount
   useEffect(() => {
     setIsLoadingUser(true);
