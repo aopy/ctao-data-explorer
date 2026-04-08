@@ -4,6 +4,7 @@ import time
 import uuid
 from typing import Any, cast
 
+import httpx
 import redis.asyncio as redis
 from ctao_shared.config import get_settings
 from ctao_shared.constants import (
@@ -45,8 +46,12 @@ async def login(request: Request) -> Response:
     )
     if not redirect_uri:
         raise HTTPException(500, "OIDC_REDIRECT_URI (or BASE_URL) must be set.")
-    resp = await oauth.ctao.authorize_redirect(request, redirect_uri)
-    return cast(Response, resp)
+    try:
+        resp = await oauth.ctao.authorize_redirect(request, redirect_uri)
+        return cast(Response, resp)
+    except httpx.RequestError as err:
+        logger.exception("OIDC provider metadata unreachable")
+        raise HTTPException(status_code=503, detail="OIDC provider unreachable") from err
 
 
 @oidc_router.get("/callback")
