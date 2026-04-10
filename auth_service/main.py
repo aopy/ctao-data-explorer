@@ -6,8 +6,9 @@ import redis.asyncio as redis
 from ctao_shared.config import get_settings
 from ctao_shared.db import get_redis_pool
 from ctao_shared.logging_config import setup_logging
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.middleware.sessions import SessionMiddleware
 
 from auth_service.routers.auth import auth_api_router
@@ -67,6 +68,14 @@ app = FastAPI(
     openapi_url="/auth/openapi.json" if docs_enabled else None,
     swagger_ui_oauth2_redirect_url="/auth/docs/oauth2-redirect" if docs_enabled else None,
 )
+
+if settings.METRICS_ENABLED:
+    from fastapi import Response
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
+    @app.get(settings.METRICS_ROUTE, include_in_schema=False)
+    def metrics() -> Response:
+        return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/health/live", include_in_schema=False)
