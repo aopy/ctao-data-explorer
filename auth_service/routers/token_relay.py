@@ -6,6 +6,7 @@ from collections.abc import Iterable
 import httpx
 from ctao_shared.config import get_settings
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 
 from auth_service.routers.auth import get_required_session_user
 
@@ -82,13 +83,19 @@ async def relay(
 
     access_token = user_session_data.get("iam_access_token")
     if not access_token:
-        raise HTTPException(status_code=401, detail="No access token in session")
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "reauth_required", "reason": "no_access_token"},
+            headers={
+                "WWW-Authenticate": 'Bearer error="invalid_token", error_description="reauth_required"'
+            },
+        )
 
     headers = _filtered_request_headers(request)
     headers["Authorization"] = f"Bearer {access_token}"
     body = await request.body()
 
-    # ---- ASGI target (tests) ----
+    # ASGI target (tests)
     if base.startswith("asgi://"):
         target_name = base.removeprefix("asgi://").strip("/")
         asgi_app = _ASGI_TARGETS.get(target_name)
@@ -113,7 +120,7 @@ async def relay(
             media_type=r.headers.get("content-type"),
         )
 
-    # ---- Normal HTTP target (real deployment) ----
+    # Normal HTTP target (real deployment)
     downstream_url = _join_url(base, path)
     if request.url.query:
         downstream_url = f"{downstream_url}?{request.url.query}"

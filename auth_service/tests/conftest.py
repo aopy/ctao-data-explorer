@@ -14,7 +14,7 @@ from ctao_shared.constants import (
     SESSION_KEY_PREFIX,
     SESSION_REFRESH_TOKEN_KEY,
 )
-from ctao_shared.db import Base, get_async_session, get_redis_client
+from ctao_shared.db import Base, encrypt_token, get_async_session, get_redis_client
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
@@ -79,31 +79,33 @@ def _make_asgi_transport(app) -> httpx.ASGITransport:
     return httpx.ASGITransport(app=app)
 
 
-@pytest.fixture
-async def auth_app():
+@pytest.fixture(scope="session")
+def app():
     os.environ.setdefault("TESTING", "1")
-    from auth_service.main import app
+    os.environ.setdefault("ENV", "test")
 
-    return app
+    from auth_service.main import app as auth_app
+
+    return auth_app
 
 
 @pytest.fixture
-async def auth_client(auth_app, db_session, fake_redis):
+async def auth_client(app, db_session, fake_redis):
     async def _override_db():
         yield db_session
 
     def _override_redis():
         return fake_redis
 
-    auth_app.dependency_overrides[get_async_session] = _override_db
-    auth_app.dependency_overrides[get_redis_client] = _override_redis
+    app.dependency_overrides[get_async_session] = _override_db
+    app.dependency_overrides[get_redis_client] = _override_redis
 
-    async with LifespanManager(auth_app):
-        transport = _make_asgi_transport(auth_app)
+    async with LifespanManager(app):
+        transport = _make_asgi_transport(app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             yield client
 
-    auth_app.dependency_overrides.clear()
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture
@@ -127,6 +129,10 @@ def as_user(db_session, fake_redis, auth_client):
             await db_session.flush()
 
         session_id = str(uuid.uuid4())
+
+        enc_rt = encrypt_token(refresh_token_plain)
+        assert enc_rt is not None, "REFRESH_TOKEN_ENCRYPTION_KEY must be set for tests"
+
         session_payload = {
             "app_user_id": user.id,
             "iam_sub": sub,
@@ -135,7 +141,7 @@ def as_user(db_session, fake_redis, auth_client):
             "last_name": last_name,
             SESSION_ACCESS_TOKEN_KEY: access_token,
             SESSION_ACCESS_TOKEN_EXPIRY_KEY: time.time() + expires_in,
-            SESSION_REFRESH_TOKEN_KEY: refresh_token_plain,
+            SESSION_REFRESH_TOKEN_KEY: enc_rt,
         }
         await fake_redis.setex(
             f"{SESSION_KEY_PREFIX}{session_id}",

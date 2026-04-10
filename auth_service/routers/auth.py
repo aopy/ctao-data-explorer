@@ -1,19 +1,18 @@
+import asyncio
 import json
 import logging
 import time
 import traceback
 from typing import Any
 
+import httpx
 import redis.asyncio as redis
+from authlib.integrations.base_client.errors import OAuthError
 from ctao_shared.config import get_settings
 from ctao_shared.constants import (
     COOKIE_NAME_MAIN_SESSION,
     SESSION_ACCESS_TOKEN_EXPIRY_KEY,
     SESSION_ACCESS_TOKEN_KEY,
-    SESSION_IAM_EMAIL_KEY,
-    SESSION_IAM_FAMILY_NAME_KEY,
-    SESSION_IAM_GIVEN_NAME_KEY,
-    SESSION_IAM_SUB_KEY,
     SESSION_KEY_PREFIX,
     SESSION_REFRESH_TOKEN_KEY,
     SESSION_USER_ID_KEY,
@@ -23,15 +22,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi_users import schemas
 from pydantic import BaseModel, ConfigDict
 
+from auth_service.metrics import TOKEN_REFRESH_FAILURES
 from auth_service.oauth_client import oauth
 from auth_service.security.csrf import ensure_xsrf_cookie, require_xsrf
 
 logger = logging.getLogger(__name__)
-
-settings = get_settings()
-cookie_params = settings.cookie_params
-
-REFRESH_BUFFER_SECONDS = settings.REFRESH_BUFFER_SECONDS
 
 
 # User Schemas
@@ -63,126 +58,205 @@ class MeResponse(BaseModel):
     last_name: str | None = None
 
 
-SESSION_DURATION_SECONDS = settings.SESSION_DURATION_SECONDS  # 8 hours
+class ReauthRequired(Exception):
+    pass
 
 
-# Session-Based Authentication Dependency
-async def get_current_session_user_data(
-    request: Request,
-    # db_session: AsyncSession = Depends(get_async_session),
-    redis: redis.Redis = Depends(get_redis_client),
-) -> dict[str, Any] | None:
-    # Read cookie via constant
+def _settings():
+    return get_settings()
+
+
+def _refresh_fail_reason(exc: Exception) -> str:
+    # provider-side structured errors (Authlib)
+    if isinstance(exc, OAuthError):
+        err = getattr(exc, "error", None) or "oauth_error"
+        # common iam token endpoint failures like,
+        # invalid_grant = revoked/expired RT, bad code_verifier, etc.
+        return str(err)
+
+    # network/timeouts etc.
+    if isinstance(exc, httpx.RequestError):
+        return "network"
+
+    return "other"
+
+
+async def _load_session(
+    redis_client: redis.Redis, request: Request
+) -> tuple[str, dict[str, Any]] | None:
     session_id = request.cookies.get(COOKIE_NAME_MAIN_SESSION)
     if not session_id:
         return None
 
     key = f"{SESSION_KEY_PREFIX}{session_id}"
-    session_data_json = await redis.get(key)
-    if not session_data_json:
+    raw = await redis_client.get(key)
+    if not raw:
         return None
 
-    # keep Redis entry alive
-    await redis.expire(key, SESSION_DURATION_SECONDS)
+    await redis_client.expire(key, _settings().SESSION_DURATION_SECONDS)
 
     try:
-        session_data = json.loads(session_data_json)
+        data = json.loads(raw)
     except json.JSONDecodeError:
         logger.warning("Invalid session data for session_id: %s", session_id)
         return None
 
-    app_user_id = session_data.get(SESSION_USER_ID_KEY)
-    if not app_user_id:
-        # minimal requirement for being "logged in" to the app
+    if not data.get(SESSION_USER_ID_KEY):
         return None
 
-    # IAM token is optional for app auth, handle it leniently
-    iam_access_token = session_data.get(SESSION_ACCESS_TOKEN_KEY)
-    iam_access_token_expiry = session_data.get(SESSION_ACCESS_TOKEN_EXPIRY_KEY)
+    return key, data
 
-    try:
-        if iam_access_token and iam_access_token_expiry:
-            remaining = iam_access_token_expiry - time.time()
 
-            if remaining <= 0:
-                # expire IAM token but DO NOT drop the app session
-                session_data[SESSION_ACCESS_TOKEN_KEY] = None
-                session_data[SESSION_ACCESS_TOKEN_EXPIRY_KEY] = None
-                await redis.setex(key, SESSION_DURATION_SECONDS, json.dumps(session_data))
-                iam_access_token = None
-
-            elif remaining < REFRESH_BUFFER_SECONDS:
-                enc_rt = session_data.get(SESSION_REFRESH_TOKEN_KEY)
-                if not enc_rt:
-                    logger.info("No refresh token in session; keeping session without IAM token.")
-                else:
-                    decrypted_rt = decrypt_token(enc_rt)
-                    if not decrypted_rt:
-                        logger.warning(
-                            "Failed to decrypt RT from session; keeping session without IAM token."
-                        )
-                        session_data[SESSION_REFRESH_TOKEN_KEY] = None
-                        await redis.setex(key, SESSION_DURATION_SECONDS, json.dumps(session_data))
-                    else:
-                        try:
-                            token_response = await oauth.ctao.fetch_access_token(
-                                grant_type="refresh_token",
-                                refresh_token=decrypted_rt,
-                            )
-                            new_at = token_response["access_token"]
-                            new_exp = token_response.get("expires_in", 3600)
-                            if settings.OIDC_FAKE_EXPIRES_IN:
-                                new_exp = settings.OIDC_FAKE_EXPIRES_IN
-                            new_at_exp = time.time() + float(new_exp)
-
-                            session_data[SESSION_ACCESS_TOKEN_KEY] = new_at
-                            session_data[SESSION_ACCESS_TOKEN_EXPIRY_KEY] = new_at_exp
-
-                            # Refresh token rotation: store new RT if provided
-                            if token_response.get("refresh_token"):
-                                new_enc = encrypt_token(token_response["refresh_token"])
-                                if new_enc:
-                                    session_data[SESSION_REFRESH_TOKEN_KEY] = new_enc
-                                else:
-                                    logger.warning(
-                                        "Failed to encrypt rotated refresh token; keeping old RT."
-                                    )
-                            await redis.setex(
-                                key, SESSION_DURATION_SECONDS, json.dumps(session_data)
-                            )
-                            iam_access_token = new_at
-                        except Exception:
-                            logger.exception("IAM token refresh failed (keeping app session).")
-    except Exception:
-        logger.exception("Non-fatal error in session token handling; preserving session.")
-
-    iam_subject_id = (
-        session_data.get(SESSION_IAM_SUB_KEY)
-        or session_data.get("iam_subject_id")
-        or session_data.get("sub")
-    )
-    email = session_data.get(SESSION_IAM_EMAIL_KEY) or session_data.get("email")
-    first_name = (
-        session_data.get(SESSION_IAM_GIVEN_NAME_KEY)
-        or session_data.get("given_name")
-        or session_data.get("first_name")
-    )
-    last_name = (
-        session_data.get(SESSION_IAM_FAMILY_NAME_KEY)
-        or session_data.get("family_name")
-        or session_data.get("last_name")
-    )
-
+def _build_user_payload(
+    session_data: dict[str, Any], iam_access_token: str | None
+) -> dict[str, Any]:
     return {
-        "app_user_id": app_user_id,
-        "iam_subject_id": iam_subject_id,
-        "email": email,
-        "first_name": first_name,
-        "last_name": last_name,
+        "app_user_id": session_data.get(SESSION_USER_ID_KEY),
+        "iam_subject_id": session_data.get("iam_sub") or session_data.get("iam_subject_id"),
+        "email": session_data.get("iam_email") or session_data.get("email"),
+        "first_name": session_data.get("first_name") or session_data.get("given_name"),
+        "last_name": session_data.get("last_name") or session_data.get("family_name"),
         "iam_access_token": iam_access_token,
         "is_active": True,
         "is_superuser": False,
     }
+
+
+def _is_token_expired(expiry: float) -> bool:
+    return (expiry - time.time()) <= 0
+
+
+def _needs_refresh(expiry: float) -> bool:
+    return (expiry - time.time()) < _settings().REFRESH_BUFFER_SECONDS
+
+
+async def _attempt_refresh_once(refresh_token: str) -> dict[str, Any]:
+    return await oauth.ctao.fetch_access_token(
+        grant_type="refresh_token",
+        refresh_token=refresh_token,
+    )
+
+
+async def _refresh_access_token_with_retry(refresh_token: str) -> dict[str, Any]:
+    try:
+        return await _attempt_refresh_once(refresh_token)
+    except httpx.RequestError:
+        await asyncio.sleep(0.2)
+        return await _attempt_refresh_once(refresh_token)
+
+
+def _apply_token_response(session_data: dict[str, Any], token_response: dict[str, Any]) -> str:
+    new_at = token_response["access_token"]
+    new_exp = token_response.get("expires_in", 3600)
+    if _settings().OIDC_FAKE_EXPIRES_IN:
+        new_exp = _settings().OIDC_FAKE_EXPIRES_IN
+
+    session_data[SESSION_ACCESS_TOKEN_KEY] = new_at
+    session_data[SESSION_ACCESS_TOKEN_EXPIRY_KEY] = time.time() + float(new_exp)
+
+    # rotate refresh token if provided
+    rt = token_response.get("refresh_token")
+    if rt:
+        new_enc = encrypt_token(rt)
+        if new_enc:
+            session_data[SESSION_REFRESH_TOKEN_KEY] = new_enc
+
+    return new_at
+
+
+async def _persist_session(
+    redis_client: redis.Redis, key: str, session_data: dict[str, Any]
+) -> None:
+    await redis_client.setex(key, _settings().SESSION_DURATION_SECONDS, json.dumps(session_data))
+
+
+async def _force_reauth(
+    redis_client: redis.Redis, key: str, reason: str, exc: Exception | None = None
+) -> None:
+    TOKEN_REFRESH_FAILURES.labels(reason=reason).inc()
+    logger.warning(
+        "IAM token refresh failed (reason=%s). Forcing re-auth by deleting session.",
+        reason,
+        exc_info=exc is not None,
+    )
+    await redis_client.delete(key)
+
+
+async def _ensure_valid_access_token(
+    redis_client: redis.Redis,
+    key: str,
+    session_data: dict[str, Any],
+) -> str | None:
+    """
+    Returns:
+      - access token (possibly refreshed) if usable
+      - None if re-auth is required (session deleted / invalid state)
+    """
+    at = session_data.get(SESSION_ACCESS_TOKEN_KEY)
+    exp = session_data.get(SESSION_ACCESS_TOKEN_EXPIRY_KEY)
+
+    if not at or exp is None:
+        return None
+
+    try:
+        exp_f = float(exp)
+    except (TypeError, ValueError):
+        return None
+
+    if _is_token_expired(exp_f):
+        session_data[SESSION_ACCESS_TOKEN_KEY] = None
+        session_data[SESSION_ACCESS_TOKEN_EXPIRY_KEY] = None
+        await _persist_session(redis_client, key, session_data)
+        return None
+
+    if not _needs_refresh(exp_f):
+        return at
+
+    enc_rt = session_data.get(SESSION_REFRESH_TOKEN_KEY)
+    if not enc_rt:
+        await redis_client.delete(key)
+        return None
+
+    decrypted_rt = decrypt_token(enc_rt)
+    if not decrypted_rt:
+        await redis_client.delete(key)
+        return None
+
+    try:
+        token_response = await _refresh_access_token_with_retry(decrypted_rt)
+        at = _apply_token_response(session_data, token_response)
+        await _persist_session(redis_client, key, session_data)
+        return at
+    except Exception as e:
+        reason = _refresh_fail_reason(e)
+        await _force_reauth(redis_client, key, reason, exc=e)
+        raise ReauthRequired() from e
+
+
+async def get_current_session_user_data(
+    request: Request,
+    redis: redis.Redis = Depends(get_redis_client),
+) -> dict[str, Any] | None:
+    loaded = await _load_session(redis, request)
+    if not loaded:
+        return None
+
+    key, session_data = loaded
+
+    try:
+        access_token = await _ensure_valid_access_token(redis, key, session_data)
+        return _build_user_payload(session_data, access_token)
+
+    except ReauthRequired:
+        # Refresh failed
+        await redis.delete(key)
+        return None
+
+    except Exception:
+        # any unexpected error in auth path -> force re-auth
+        logger.exception("Unexpected error in session token handling; forcing re-auth.")
+        await redis.delete(key)
+        return None
 
 
 # Dependency for required Authenticated User
@@ -285,10 +359,13 @@ async def logout_session(
         logger.info("Session %s deleted from Redis", session_id)
 
     # Clear cookies: session + xsrf
-    response.delete_cookie(key=COOKIE_NAME_MAIN_SESSION, **cookie_params)
+    response.delete_cookie(
+        key=COOKIE_NAME_MAIN_SESSION,
+        **get_settings().cookie_params,
+    )
     delete_kwargs = {"path": "/"}
-    if settings.COOKIE_DOMAIN:
-        delete_kwargs["domain"] = settings.COOKIE_DOMAIN
+    if _settings().COOKIE_DOMAIN:
+        delete_kwargs["domain"] = _settings().COOKIE_DOMAIN
     response.delete_cookie(key="XSRF-TOKEN", **delete_kwargs)
     return {"status": "logout successful"}
 
