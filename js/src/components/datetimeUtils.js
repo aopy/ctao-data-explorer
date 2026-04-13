@@ -35,64 +35,8 @@ export function mjdToDate(mjd) {
   }
 }
 
-// Converts a Date object (UTC) to MJD
- export function dateToMjd(date) {
-  if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
-    console.warn("dateToMjd: Invalid input date object.");
-    return null;
-  }
-  try {
-    const unixEpochJD = 2440587.5;
-    const msPerDay = 86400000;
-    const timestamp = date.getTime();
-    const jd = (timestamp / msPerDay) + unixEpochJD;
-    const mjd = jd - 2400000.5;
-    return parseFloat(mjd.toFixed(8));
-  } catch (e) {
-    console.error("Error converting Date to MJD:", e);
-    return null;
-  }
-}
-
-
-// Parses "dd/MM/yyyy" and "HH:mm:ss" into a Date object using date-fns
-// returns null if format is invalid, assumes input is UTC intent
-export function parseDateTimeStrings(dateStr, timeStr) {
-  if (!dateStr || !timeStr) return null;
-  const dateTimeString = `${dateStr} ${timeStr}`;
-  // 'dd/MM/yyyy HH:mm:ss' is the format string for date-fns parse
-
-  const dateRegex = /^(\d{2})\/(\d{2})\/(\d{4})$/;
-  const timeRegex = /^(\d{2}):(\d{2}):(\d{2})$/;
-
-  const dateMatch = dateStr.match(dateRegex);
-  const timeMatch = timeStr.match(timeRegex);
-
-  if (!dateMatch || !timeMatch) return null;
-
-  const day = parseInt(dateMatch[1], 10);
-  const month = parseInt(dateMatch[2], 10) - 1; // JS months are 0-indexed
-  const year = parseInt(dateMatch[3], 10);
-  const hours = parseInt(timeMatch[1], 10);
-  const minutes = parseInt(timeMatch[2], 10);
-  const seconds = parseInt(timeMatch[3], 10);
-
-  // Basic validation
-  if (month < 0 || month > 11 || day < 1 || day > 31 || hours < 0 || hours > 23 || minutes < 0 || minutes > 59 || seconds < 0 || seconds > 59) {
-      return null;
-  }
-  // Create date object using UTC values to avoid timezone issues
-  const date = new Date(Date.UTC(year, month, day, hours, minutes, seconds));
-
-  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month || date.getUTCDate() !== day ||
-      date.getUTCHours() !== hours || date.getUTCMinutes() !== minutes || date.getUTCSeconds() !== seconds) {
-      return null; // Invalid date components (e.g., Feb 30)
-  }
-  return date;
-}
-
 // Formats a Date object into "dd/MM/yyyy" and "HH:mm:ss" UTC strings using date-fns
-export function formatDateTimeStrings(date: Date) {
+export function formatDateTimeStrings(date) {
   if (!date || isNaN(date.getTime())) {
     return { dateStr: '', timeStr: '' };
   }
