@@ -90,3 +90,6 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+Mkdocs build directory
+public/
