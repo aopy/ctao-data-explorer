@@ -1,5 +1,5 @@
 
-FROM ghcr.io/prefix-dev/pixi:latest AS auth
+FROM ghcr.io/prefix-dev/pixi:0.66.0-noble AS auth
 
 RUN apt-get update && apt-get install -y \
     libpq-dev gcc && \
@@ -11,7 +11,12 @@ COPY ctao_shared /app/ctao_shared
 
 WORKDIR /app
 
-RUN pixi install
+RUN pixi install \
+    && useradd --create-home --shell /bin/bash appuser \
+    && chown -R appuser:appuser /app
+
+USER appuser
+
 WORKDIR /app/auth_service
 
 EXPOSE 8001

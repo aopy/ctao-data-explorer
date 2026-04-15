@@ -32,7 +32,7 @@ Documentation is available online at https://aopy.github.io/ctao-data-explorer/
 
 ### Backend
 
-- Python >=3.10
+- Python >=3.12
 - FastAPI
 - Uvicorn
 - Aiofiles

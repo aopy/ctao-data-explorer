@@ -163,7 +163,7 @@ The following table lists the configurable parameters of the chart and their def
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `ingress.enabled` | Enable ingress | `false` |
-| `ingress.className` | Ingress class name | `nginx` |
+| `ingress.className` | Ingress class name | `haproxy` |
 | `ingress.hosts` | Ingress hosts configuration | See values.yaml |
 
 ## Accessing the Application
