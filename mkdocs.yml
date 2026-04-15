@@ -29,6 +29,7 @@ nav:
     - Configuration (.env): developer-guide/configuration.md
     - API & OpenAPI: developer-guide/api.md
     - Deployment: developer-guide/deployment.md
+    - Development environment: developer-guide/devenv.md
     - CI/CD for Docs: developer-guide/ci-cd.md
     - Standards & Interop: developer-guide/standards.md
     - Metrics & Health: developer-guide/metrics.md
