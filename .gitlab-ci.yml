@@ -1,6 +1,6 @@
 include:
   - project: cta-computing/common/aiv-toolkit
-    ref: e78b620a2db2be7f6177c6ee3b2a8bf35c781093
+    ref: ed9623bc5dfbccfb57dfff2a92b908007ebd69d5
     file: ci-functions.yml
   - aiv-config.yml
 
@@ -34,13 +34,20 @@ build:
 
 unit-test:
   stage: tests
-  image: ghcr.io/prefix-dev/pixi:latest
+  image: ghcr.io/prefix-dev/pixi:0.66.0-noble
+
   script:
     - pixi run test
   artifacts:
+    when: always
     paths:
       - test/coverage.xml
       - test/report.xml
+    reports:
+      junit: test/report.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: test/coverage.xml
 
 frontend-test:
   stage: tests
@@ -84,6 +91,8 @@ k8s-upgrade-integration-tests:
     - desy-testcluster-ctao-computing-aiv
   variables:
     UPGRADE_BASE_REF: "v0.9.2"
+    # fix for new ingress controller
+    CHERRY_PICK_COMMITS: "1dee0f9d66075c3939900455bea53540c764ea2b 098285546f619de8a78ae92649a1ad33e2329b4c d2e66faaf8e2a309e07b5dc7d4d22de60bd7c883 1eb7565"
 
 build-docs:
   rules:

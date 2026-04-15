@@ -1,9 +1,56 @@
+[build-system]
+requires = ["setuptools>=80", "setuptools-scm[simple]>=9.2"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "ctao-data-explorer"
 description = "CTAO Data Explorer"
 readme = "README.md"
-requires-python = ">=3.10"
-dependencies = []
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+authors = [
+    {name = "Onur Ates", email = "onur.ates@cta-consortium.org"},
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115,<0.116",
+    "fastapi-users>=15.0,<16",
+    "fastapi-users-db-sqlalchemy",
+    "uvicorn>=0.32,<0.33",
+    "aiofiles>=22.1",
+    "pyvo>=1,<2",
+    "numpy>=2.1,<2.2",
+    "requests>=2.32,<2.33",
+    "cryptography>=46.0.5,<47",
+    "hiredis>=3.2,<3.3",
+    "authlib>=1.4,<1.5",
+    "itsdangerous",
+    "asyncpg",
+    "httpx>=0.28,<0.29",
+    "xmltodict>=1.0,<1.1",
+    "alembic>=1.14,<1.15",
+    "psycopg2-binary",
+    "astropy>=6.1,<6.2",
+    "pydantic>=2.9,<2.10",
+    "anyio>=4.4,<4.5",
+    "python-dotenv",
+    "redis",
+    "pydantic-settings",
+    "prometheus-fastapi-instrumentator",
+    "asgi-lifespan>=2.1.0,<3",
+    "aiosqlite>=0.22.1,<0.23",
+]
+
+# needed for setuptools_scm to find the version from git tags
+dynamic = ["version"]
+
+[project.urls]
+repository = "https://gitlab.cta-observatory.org/cta-computing/suss/scienceportal/prototypes/ctao-data-explorer"
+documentation = "http://cta-computing.gitlab-pages.cta-observatory.org/suss/scienceportal/prototypes/ctao-data-explorer"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["api*", "auth_service*", "ctao_shared*"]
 
 [tool.black]
 line-length = 100

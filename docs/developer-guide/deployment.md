@@ -1,10 +1,9 @@
 # Deployment
 
 ## Kubernetes
+Primary deployment target is on kubernetes (see [chart/](__https://gitlab.cta-observatory.org/cta-computing/suss/scienceportal/prototypes/ctao-data-explorer/-/blob/master/chart/README.md__) for Helm chart).
 
-Primary deployment target is on kubernetes (see [chart/](https://gitlab.cta-observatory.org/cta-computing/suss/scienceportal/prototypes/ctao-data-explorer/-/blob/master/chart/README.md) for Helm chart).
-
-
+The ingress controller used is **HAProxy** (`ingressClassName: haproxy`). Make sure the HAProxy ingress controller is installed in your cluster before deploying.
 
 ## Alternative deployment
 
@@ -57,7 +56,7 @@ server {
 **Notes**
 - Place secrets in **EnvironmentFile** or systemd overrides; not in the unit file.
 - Ensure `COOKIE_SECURE=true` behind TLS and set `COOKIE_DOMAIN` to the public hostname.
-
+- The Nginx above is the **bare-metal reverse proxy**, unrelated to the Kubernetes ingress controller.
 
 ## Local development stack with docker compose
 

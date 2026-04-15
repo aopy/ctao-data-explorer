@@ -1,24 +1,12 @@
 ###
-# TODO: duplicate in config?
 export CHART_NAME=ctao-data-explorer
 export CHART_LOCATION=chart
 
 include aiv-toolkit/Makefile
 
-# TODO: move this to kit
 export TEST_ARTIFACTS_PATH ?= $(PWD)
 export TEST_REPORT_CONFIG ?= $(PWD)/aiv-config.yml
 export TEX_CONTENT_PATH ?= $(PWD)/report
-
-
-
-# - dockerfile_path: Dockerfile.backend
-#   repository: harbor.cta-observatory.org/suss/ctao-data-explorer-backend
-# - dockerfile_path: Dockerfile.frontend
-#   repository: harbor.cta-observatory.org/suss/ctao-data-explorer-frontend
-# - dockerfile_path: Dockerfile.playwright
-#   repository: harbor.cta-observatory.org/suss/ctao-data-explorer-playwright
-
 
 build-dev: setup-k8s-cluster
 	docker build -f Dockerfile.backend -t harbor.cta-observatory.org/suss/ctao-data-explorer-backend:dev .
@@ -36,57 +24,58 @@ build-dev: setup-k8s-cluster
 # Debug
 ###################
 
-# Manual dev-forward, not needed normally, just fallback for debugging
-dev-forward:
-	@echo "⚠️  WARNING: This is not needed with extraPortMappings in kind-dev-config.yml"
-	@echo "⚠️  Use this only if extraPortMappings fails or for debugging"
-	@echo ""
-	@echo "Starting manual port-forward..."
-	@echo "Frontend: http://localhost:8080/home"
-	@echo "Backend:  http://localhost:8080/api/docs"
-	@echo ""
-	@echo "Press Ctrl+C to stop"
-	kubectl port-forward -n ingress-nginx service/ingress-nginx-controller 8080:80
+# Helper: get the release-suffixed deployment name
+FRONTEND_DEPLOY = $(shell kubectl get deployment -n default -o name | grep frontend | head -1 | sed 's|deployment.apps/||')
+BACKEND_DEPLOY  = $(shell kubectl get deployment -n default -o name | grep backend  | head -1 | sed 's|deployment.apps/||')
+INGRESS_NAME    = $(shell kubectl get ingress -n default -o name | head -1 | sed 's|ingress.networking.k8s.io/||')
+HAPROXY_DEPLOY  = $(shell kubectl get deployment -n haproxy-controller -o name | head -1 | sed 's|deployment.apps/||')
+HAPROXY_SVC_PORT = 30080
 
-# Debug network topology and connectivity
 dev-debug-network:
-	echo "=== POD IPs ==="; \
-	kubectl get pods -n default -o wide; \
-	kubectl get pods -n ingress-nginx -o wide; \
-	echo ""; \
-	echo "=== SERVICE IPs ==="; \
-	kubectl get svc -n default; \
-	echo ""; \
-	echo "=== INGRESS ROUTING ==="; \
-	kubectl describe ingress ctao-data-explorer-ingress -n default | grep -A 10 "Rules:"; \
-	echo ""; \
-	echo "=== TEST CONNECTIVITY ==="; \
-	echo "Frontend → Backend (using Python):"; \
-	kubectl exec -n default deployment/ctao-data-explorer-frontend -- \
-		python3 -c "import httpx; r = httpx.get('http://ctao-data-explorer-backend:8000/api/v1/health', timeout=5); print(f'HTTP {r.status_code}: {r.text}')" 2>/dev/null; \
-	echo ""; \
-	echo "Ingress → Frontend (using curl from ingress controller):"; \
-	kubectl exec -n ingress-nginx deployment/ingress-nginx-controller -- \
-		curl -s -o /dev/null -w "HTTP %{http_code}\n" http://ctao-data-explorer-frontend.default.svc.cluster.local:8001/health 2>/dev/null; \
-	echo ""; \
-	echo "Browser → Frontend (via Ingress):"; \
-	curl -s -o /dev/null -w "HTTP %{http_code}\n" http://ctao-data-explorer.test.example:8080/health 2>/dev/null; \
-	echo "✅ Network is correctly set up."
+	@echo "=== POD IPs ==="
+	@kubectl get pods -n default -o wide
+	@kubectl get pods -n haproxy-controller -o wide
+	@echo ""
+	@echo "=== SERVICE IPs ==="
+	@kubectl get svc -n default
+	@echo ""
+	@echo "=== INGRESS ROUTING ==="
+	@kubectl describe ingress $(INGRESS_NAME) -n default | grep -A 10 "Rules:" || echo "❌ No ingress found"
+	@echo ""
+	@echo "=== TEST CONNECTIVITY ==="
+	@echo "Frontend → Backend (using Python):"
+	@kubectl exec -n default deployment/$(BACKEND_DEPLOY) -- \
+		python3 -c "import httpx; r = httpx.get('http://$(BACKEND_DEPLOY):8000/api/v1/health', timeout=5); print(f'HTTP {r.status_code}: {r.text}')" \
+		|| echo "❌ Frontend cannot reach backend"
+	@echo ""
+	@echo "Ingress → Frontend (curl from haproxy controller):"
+	@kubectl exec -n haproxy-controller deployment/$(HAPROXY_DEPLOY) -- \
+		curl -s -o /dev/null -w "HTTP %{http_code}\n" \
+		http://$(FRONTEND_DEPLOY).default.svc.cluster.local:80/health \
+		|| echo "❌ Ingress cannot reach frontend"
+	@echo ""
+	@echo "Browser → Frontend (via Ingress):"
+	@curl -s -o /dev/null -w "HTTP %{http_code}\n" \
+		-H "Host: ctao-data-explorer.test.example" \
+		http://ctao-data-explorer.test.example:$(HAPROXY_SVC_PORT)/ \
+		|| echo "❌ Cannot reach via ingress"
+	@echo "✅ Network check complete."
 
 dev-trace-request:
 	@echo "Tracing a request from browser to backend..."
 	@echo ""
-	@echo "1. Browser → Ingress Controller (localhost:8080)"
-	@curl -v http://ctao-data-explorer.test.example:8080/health 2>&1 | grep "< HTTP"
+	@echo "1. Browser → Ingress Controller (port $(HAPROXY_SVC_PORT))"
+	@curl -v -H "Host: ctao-data-explorer.test.example" \
+		http://ctao-data-explorer.test.example:$(HAPROXY_SVC_PORT)/ 2>&1 | grep "< HTTP" || echo "❌ No response"
 	@echo ""
-	@echo "2. Ingress → Frontend Pod"
-	@kubectl logs -n ingress-nginx deployment/ingress-nginx-controller --tail=1 | grep ctao-data-explorer-nginx || echo "No recent requests"
+	@echo "2. HAProxy controller logs (last request):"
+	@kubectl logs -n haproxy-controller deployment/$(HAPROXY_DEPLOY) --tail=5 | grep -i "ctao\|error\|warn" || echo "No relevant log entries"
 	@echo ""
 	@echo "3. Frontend Pod logs (last 5 lines):"
-	@kubectl logs -n default deployment/ctao-data-explorer-frontend --tail=5
+	@kubectl logs -n default deployment/$(FRONTEND_DEPLOY) --tail=5
 	@echo ""
 	@echo "4. Backend Pod logs (last 5 lines):"
-	@kubectl logs -n default deployment/ctao-data-explorer-backend --tail=5
+	@kubectl logs -n default deployment/$(BACKEND_DEPLOY) --tail=5
 
 dev-debug-setup:
 	@echo "=== VERIFYING SETUP ==="
@@ -94,53 +83,41 @@ dev-debug-setup:
 	@echo "1️⃣  Pod IPs:"
 	@kubectl get pods -n default -o wide | grep ctao-data-explorer
 	@echo ""
-	@echo "2️⃣  All Pods in cluster (looking for 10.244.0.7):"
-	@kubectl get pods -A -o wide | grep "10.244.0.7" || echo "   No pod with IP 10.244.0.7"
-	@echo ""
-	@echo "3️⃣  Ingress configuration:"
-	@kubectl get ingress ctao-data-explorer-ingress -n default -o yaml | grep -A 20 "spec:" | grep -A 10 "paths:"
-	@echo ""
-	@echo "4️⃣  Check for multiple Ingress resources:"
+	@echo "2️⃣  Ingress resources:"
 	@kubectl get ingress -A
 	@echo ""
-	@echo "5️⃣  Backend health endpoint test (Backend reachability from Frontend):"
-	@kubectl exec -n default deployment/ctao-data-explorer-frontend -- \
-		python3 -c "import httpx; r = httpx.get('http://ctao-data-explorer-backend:8000/v1/health'); print(f'Status: {r.status_code}'); print(f'Body: {r.text}')" 2>/dev/null || \
-		echo "   ❌ Cannot reach backend /v1/health"
+	@echo "3️⃣  Ingress configuration:"
+	@kubectl get ingress $(INGRESS_NAME) -n default -o yaml | grep -A 20 "spec:" | grep -A 10 "paths:" || echo "❌ Ingress not found"
 	@echo ""
-	@echo "6️⃣ a Frontend health endpoint test (local to frontend):"
-	@kubectl exec -n default deployment/ctao-data-explorer-frontend -- \
-		python3 -c "import httpx; r = httpx.get('http://127.0.0.1:8001/health'); print(f'Status: {r.status_code}'); print(f'Body: {r.text}')" 2>/dev/null || \
-		echo "   ❌ Frontend pod can't serve /health locally"
+	@echo "4️⃣  Backend health (from within cluster):"
+	@kubectl exec -n default deployment/$(FRONTEND_DEPLOY) -- \
+		python3 -c "import httpx; r = httpx.get('http://$(BACKEND_DEPLOY):8000/api/v1/health', timeout=5); print(f'Status: {r.status_code}'); print(f'Body: {r.text}')" \
+		|| echo "❌ Cannot reach backend"
 	@echo ""
-	@echo "6️⃣ b Frontend health endpoint test (from backend -> frontend service):"
-	@kubectl exec -n default deployment/ctao-data-explorer-backend -- \
-		python3 -c "import urllib.request; r = urllib.request.urlopen('http://ctao-data-explorer-frontend:8001/health', timeout=5); print('Status:', r.getcode()); print('Body:', r.read().decode())" 2>&1 || \
-		echo "   ❌ Backend cannot reach frontend"
+	@echo "5️⃣  Frontend health (local to pod):"
+	@kubectl exec -n default deployment/$(FRONTEND_DEPLOY) -- \
+		curl -s -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:80/health \
+		|| echo "❌ Frontend pod not serving /health locally"
 	@echo ""
-	@echo "7️⃣  Backend probes configuration:"
-	@kubectl get deployment ctao-data-explorer-backend -n default -o yaml | grep -A 5 "livenessProbe\|readinessProbe" || echo "   No probes configured"
+	@echo "6️⃣  Backend probes:"
+	@kubectl get deployment $(BACKEND_DEPLOY) -n default -o yaml | grep -A 5 "livenessProbe\|readinessProbe" || echo "   No probes configured"
 	@echo ""
-	@echo "8️⃣  Frontend probes configuration:"
-	@kubectl get deployment ctao-data-explorer-frontend -n default -o yaml | grep -A 5 "livenessProbe\|readinessProbe" || echo "   No probes configured"
-	@echo ""
+	@echo "7️⃣  Frontend probes:"
+	@kubectl get deployment $(FRONTEND_DEPLOY) -n default -o yaml | grep -A 5 "livenessProbe\|readinessProbe" || echo "   No probes configured"
 
 kind-status-all:
-	echo "\n=== STATUS: ==="
-	echo "\n=== Kind Cluster ==="
-	kind get clusters || echo "No Kind clusters running"
-	echo ""
-	echo "=== Docker Containers ==="
-	docker ps --filter "name=dpps-local" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" || echo "No Docker containers running"
-	echo ""
-	echo "=== Kubernetes Nodes ==="
-	kubectl get nodes 2>/dev/null || echo "Cluster node not accessible"
-	echo ""
-	echo "=== Pods ==="
-	kubectl get pods -A 2>/dev/null || echo "Cluster pods not accessible"
-	echo ""
-	echo "=== Services ==="
-	kubectl get svc -A 2>/dev/null || echo "Cluster service not accessible"
-	echo ""
-	echo "=== Ingress ==="
-	kubectl get ingress -A 2>/dev/null || echo "Cluster ingress pods not accessible"
+	@echo ""
+	@echo "=== KIND CLUSTER ==="
+	@kind get clusters || echo "No Kind clusters running"
+	@echo ""
+	@echo "=== KUBERNETES NODES ==="
+	@kubectl get nodes 2>/dev/null || echo "Cluster not accessible"
+	@echo ""
+	@echo "=== PODS ==="
+	@kubectl get pods -A 2>/dev/null || echo "Cluster not accessible"
+	@echo ""
+	@echo "=== SERVICES ==="
+	@kubectl get svc -A 2>/dev/null || echo "Cluster not accessible"
+	@echo ""
+	@echo "=== INGRESS ==="
+	@kubectl get ingress -A 2>/dev/null || echo "Cluster not accessible"
