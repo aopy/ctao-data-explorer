@@ -1,0 +1,73 @@
+diff --git a/chart/templates/tests/test_python.yaml b/chart/templates/tests/test_python.yaml
+index c1c168f..221617b 100644
+--- a/chart/templates/tests/test_python.yaml
++++ b/chart/templates/tests/test_python.yaml
+@@ -21,37 +21,20 @@ spec:
+         - /bin/bash
+         - -c
+         - |
+-          
+-          # this is a workaround until https://gitlab.cta-observatory.org/cta-computing/common/aiv-toolkit/-/merge_requests/290
+-          function add_hosts_alias {
+-            original_host="${1:?}"
+-            host_alias="${2:?}"
+-
+-            while [[ -z $(dig ${original_host} +short) ]]; do
+-                echo "Waiting for ${original_host} to resolve..."
+-                sleep 1
+-            done
+-            host_ip=$(dig ${original_host} +short | head -n 1)
+-
+-            echo "${host_ip} ${host_alias}" >> /etc/hosts
+-          }
+-
+-          add_hosts_alias ingress-nginx-controller.ingress-nginx.svc.cluster.local ctao-data-explorer.test.example
+-
+-          export FRONTEND_URL=http://ctao-data-explorer.test.example
+-
++          set -euo pipefail
++          export FRONTEND_URL=http://ctao-data-explorer.test
+           curl -v $FRONTEND_URL
+ 
+           . /opt/venv/bin/activate
+ 
+           {{ if .Values.dev.run_tests }}
+-          pytest tests/test_playwrite.py \
+-            -v --maxfail=1 --disable-warnings -o log_cli=true --log-cli-level=INFO \
++          pytest tests/test_playwright.py \
++            -v --maxfail=1 --disable-warnings -o log-cli=true --log-cli-level=INFO \
+             --cov \
+             --cov-report=xml:/tmp/coverage.xml \
+             --junitxml=/tmp/report.xml \
+             --color=yes \
+-            --browser=firefox --base-url=$FRONTEND_URL 
++            --browser=firefox --base-url=$FRONTEND_URL
+ 
+           curl -T /tmp/coverage.xml http://testkit:8000/coverage.xml
+           curl -T /tmp/report.xml http://testkit:8000/report.xml
+diff --git a/chart/values.yaml b/chart/values.yaml
+index 9a4eab7..1fd40fb 100644
+--- a/chart/values.yaml
++++ b/chart/values.yaml
+@@ -206,7 +206,7 @@ redis:
+ # Ingress configuration
+ ingress:
+   enabled: true
+-  className: "nginx"
++  className: "haproxy"
+ 
+   # Annotations to add to the ingress resource
+   # Example: cert-manager annotations for automatic TLS certificates
+@@ -219,7 +219,7 @@ ingress:
+   # You may need to add this to /etc/hosts for local development
+   # Example: 127.0.0.1 ctao-data-explorer.test.example
+   hosts:
+-    - host: ctao-data-explorer.test.example
++    - host: ctao-data-explorer.test
+       paths:
+         - path: /api
+           pathType: Prefix
+diff --git a/tests/test_playwrite.py b/tests/test_playwright.py
+similarity index 100%
+rename from tests/test_playwrite.py
+rename to tests/test_playwright.py

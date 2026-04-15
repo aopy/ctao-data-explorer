@@ -1,6 +1,6 @@
 include:
   - project: cta-computing/common/aiv-toolkit
-    ref: ed9623bc5dfbccfb57dfff2a92b908007ebd69d5
+    ref: fdcd7e77e4c13dafd56b3a499613db8aa6cb4eff
     file: ci-functions.yml
   - aiv-config.yml
 
@@ -23,7 +23,8 @@ build:
     matrix:
       - IMAGE: ["frontend", "backend", "auth", "playwright"]
   variables:
-    CI_HARBOR_REGISTRY_IMAGE: harbor.cta-observatory.org/suss/${CI_PROJECT_NAME}-${IMAGE}:${DOCKER_TAG}
+    CI_HARBOR_REGISTRY_IMAGE: 
+      harbor.cta-observatory.org/suss/${CI_PROJECT_NAME}-${IMAGE}:${DOCKER_TAG}
     AIV_DOCKER_IMAGE_CONTEXT: $CI_PROJECT_DIR
     AIV_DOCKERFILE: Dockerfile.${IMAGE}
     DOCKER_CONFIG: /kaniko/.docker
@@ -92,7 +93,7 @@ k8s-upgrade-integration-tests:
   variables:
     UPGRADE_BASE_REF: "v0.9.2"
     # fix for new ingress controller
-    CHERRY_PICK_COMMITS: "1dee0f9d66075c3939900455bea53540c764ea2b 098285546f619de8a78ae92649a1ad33e2329b4c d2e66faaf8e2a309e07b5dc7d4d22de60bd7c883 1eb7565"
+    BASE_REF_PATCH_FILES: pre-upgrade.patch
 
 build-docs:
   rules:
