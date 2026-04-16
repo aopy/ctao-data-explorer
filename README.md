@@ -2,7 +2,7 @@
 
 This project is a web application to access, visualize, and analyze Cherenkov data, in the perspective of the **Cherenkov Telescope Array Observatory (CTAO)**. It combines a **React** frontend with a **FastAPI** backend. Users can search the archive, curate results, explore interactive visualizations, and submit selected items as preview jobs to the [OPUS](https://voparis-uws-test.obspm.fr/client/) service. The application adopts standards from the [International Virtual Observatory Alliance (IVOA)](https://ivoa.net/) to ensure interoperability and broad accessibility of astronomical data.
 
-Documentation is available online at https://aopy.github.io/ctao-data-explorer/
+Documentation is [here](http://ctao-data-explorer-a09d9e.gitlab-pages.cta-observatory.org/).
 
 ## Table of Contents
 
@@ -46,11 +46,15 @@ Documentation is available online at https://aopy.github.io/ctao-data-explorer/
 - Postgres
 - Redis
 
+See `pyproject.toml` for more details.
+
 ### Frontend
 
 - Node.js
 - React.js
 - Axios
+
+See `js/package.json` for more details.
 
 ## Installation
 

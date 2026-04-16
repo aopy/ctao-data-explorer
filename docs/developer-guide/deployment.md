@@ -1,11 +1,49 @@
 # Deployment
 
-## Kubernetes
-Primary deployment target is on kubernetes (see [chart/](__https://gitlab.cta-observatory.org/cta-computing/suss/scienceportal/prototypes/ctao-data-explorer/-/blob/master/chart/README.md__) for Helm chart).
+## Kubernetes deployment (recommended)
+The primary and supported deployment method is on Kubernetes. This is the only deployment method that is actively maintained and validated in CI.
 
-The ingress controller used is **HAProxy** (`ingressClassName: haproxy`). Make sure the HAProxy ingress controller is installed in your cluster before deploying.
+The application is deployed using a Helm chart (see [chart/](https://gitlab.cta-observatory.org/cta-computing/suss/scienceportal/prototypes/ctao-data-explorer/-/blob/master/chart/README.md)).
 
-## Alternative deployment
+### Requirements
+* A Kubernetes cluster (tested with standard CNCF‑compatible clusters)
+* Helm v3
+* HAProxy ingress controller
+
+### GitOps-based staging, pre-production and production deployment
+Production deployments follow GitOps principles and are managed using FluxCD.
+The application is first deployed to staging in the CTAO-SDMC Kubernetes AIV test cluster, where charts and images are validated. Once validated, the same immutable artifacts (Helm charts and container images) are promoted seamlessly to pre‑production and production environments.
+
+### Release and deployment flow
+
+#### Package release
+After a package release, container images and the Helm chart are built and published to their respective registries.
+Images and charts are treated as immutable artifacts.
+
+#### Environment adaptation
+A dedicated Flux Git repository defines the desired state for each environment (staging, pre‑production, production).
+In this repository, the released chart version is referenced and configured for the target environment (values, secrets, ingress, resources, etc.).
+
+#### Deployment trigger
+Deployment is triggered only by committing changes to the Flux repository.
+FluxCD detects the change and reconciles the cluster to match the declared state.
+No manual `helm install` or `kubectl apply` is used in production.
+
+This approach ensures:
+- Reproducible deployments across environments
+- Full traceability of what is running
+- Safe and auditable promotion from staging to production
+- Clear separation between application release and environment configuration
+
+
+## Alternative manual deployment (deprecated)
+
+> [!WARNING]
+> 
+> Manual deployment described below using systemd + Nginx is deprecated.
+> It is not tested in CI, or recommended for new deployments.
+> The section below is kept for reference only, mainly to document historical setups or for troubleshooting legacy installations.
+> New deployments should use Kubernetes + Helm.
 
 ### Server layout (example)
 
