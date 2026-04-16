@@ -95,9 +95,6 @@ k8s-upgrade-integration-tests:
     # fix for new ingress controller
     BASE_REF_PATCH_FILES: pre-upgrade.patch
 
-build-docs:
-  rules:
-    - when: never
 
 deploy_docs_env:
   rules:
@@ -106,6 +103,34 @@ deploy_docs_env:
 pypi:
   rules:
     - when: never
+
+
+build-docs:
+  stage: build
+  needs: []
+  dependencies: []
+  image: $PYTHON_IMAGE
+  script:
+    - pip install -r requirements-docs.txt
+    - mkdocs build --strict --site-dir public
+  artifacts:
+    paths:
+      - public
+
+publish-mr-docs:
+  stage: publish
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  needs:
+    - job: build-docs
+      artifacts: true
+
+  script:
+    - echo "Docs available via artifacts"
+
+  environment:
+    name: review-docs/mr-$CI_MERGE_REQUEST_IID
+    url: $CI_PROJECT_URL/-/jobs/$CI_JOB_ID/artifacts/public/index.html
 
 pages:
   stage: publish
