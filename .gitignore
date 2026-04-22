@@ -51,7 +51,6 @@ js/.env
 # Environment file
 .env
 
-
 # CTAO AIV Toolkit files
 .toolkit
 
@@ -91,5 +90,9 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-Mkdocs build directory
+# Mkdocs build directory
 public/
+
+# Sphinx documentation
+docs/_build/
+docs/api
