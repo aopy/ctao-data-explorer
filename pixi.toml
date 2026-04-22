@@ -48,5 +48,22 @@ pytest-cov = "*"
 [feature.test.tasks]
 test = "pytest"
 
+[feature.docs.dependencies]
+sphinx = ">=8.1,<9"
+sphinx-autodoc-typehints = "*"
+sphinx-design = "*"
+towncrier = "==24.8.0"
+setuptools-scm = "*"
+
+[feature.docs.pypi-dependencies]
+sphinx-changelog = ">=1.6.0"
+ctao-sphinx-theme = ">=0.1.2,<0.2"
+
+[feature.docs.tasks]
+clean-docs = "rm -rf docs/build"
+doc = "sphinx-build -W -b html docs docs/build/html"
+build-changelog = "towncrier build --yes --version $(python -m setuptools_scm)"
+
 [environments]
 test = ["test"]
+doc = ["docs"]

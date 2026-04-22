@@ -1,4 +1,6 @@
-# Credits
+=========
+Credits
+=========
 
 - **CTAO Data Explorer** — Paris Observatory / PADC & collaborators
 - Uses **React**, **FastAPI**, **PyVO**, **Astropy**, **Gammapy** (preview analysis via OPUS)
