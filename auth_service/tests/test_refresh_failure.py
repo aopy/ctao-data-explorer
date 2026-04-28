@@ -4,7 +4,6 @@ from unittest.mock import patch
 
 import pytest
 from authlib.integrations.base_client.errors import OAuthError
-from ctao_shared.config import get_settings
 from ctao_shared.constants import (
     COOKIE_NAME_MAIN_SESSION,
     SESSION_ACCESS_TOKEN_EXPIRY_KEY,
@@ -12,9 +11,11 @@ from ctao_shared.constants import (
     SESSION_KEY_PREFIX,
     SESSION_REFRESH_TOKEN_KEY,
 )
-from ctao_shared.db import encrypt_token
 
-settings = get_settings()
+from auth_service.config import get_auth_settings
+from auth_service.crypto import encrypt_token
+
+settings = get_auth_settings()
 
 
 @pytest.mark.anyio

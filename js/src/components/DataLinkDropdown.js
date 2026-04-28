@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import axios from 'axios';
+import { apiClient } from "../apiClients";
 
 const DataLinkDropdown = ({ datalink_url, isOpen, onToggle }) => {
   const [services, setServices] = useState([]);
@@ -13,7 +13,8 @@ const DataLinkDropdown = ({ datalink_url, isOpen, onToggle }) => {
     if (isOpen) {
       if (services.length === 0) {
         setLoading(true);
-        axios
+        // axios
+        apiClient
           .get(datalink_url, { responseType: 'text' })
           .then((res) => {
             const parser = new DOMParser();

@@ -77,7 +77,7 @@ Redis host
 Database URL
 */}}
 {{- define "ctao-data-explorer.databaseUrl" -}}
-{{- printf "postgresql+asyncpg://%s:%s@%s:%d/%s" .Values.backend.env.POSTGRES_USER .Values.backend.env.POSTGRES_PASSWORD (include "ctao-data-explorer.postgresql.host" .) (int .Values.postgresql.service.port) .Values.backend.env.POSTGRES_DB }}
+{{- printf "postgresql+asyncpg://%s:%s@%s:%d/%s" .Values.postgresql.auth.username .Values.postgresql.auth.password (include "ctao-data-explorer.postgresql.host" .) (int .Values.postgresql.service.port) .Values.postgresql.auth.database -}}
 {{- end }}
 
 {{/*
@@ -86,3 +86,11 @@ Redis URL
 {{- define "ctao-data-explorer.redisUrl" -}}
 {{- printf "redis://%s:%d/0" (include "ctao-data-explorer.redis.host" .) (int .Values.redis.service.port) }}
 {{- end }}
+
+{{- define "ctao-data-explorer.authSecretName" -}}
+{{- if .Values.auth.secrets.existingSecret -}}
+{{- .Values.auth.secrets.existingSecret -}}
+{{- else -}}
+{{- printf "%s-auth-secrets" (include "ctao-data-explorer.fullname" .) -}}
+{{- end -}}
+{{- end -}}

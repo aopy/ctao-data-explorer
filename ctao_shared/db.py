@@ -1,82 +1,12 @@
-import logging
-from collections.abc import AsyncGenerator
-
-import redis.asyncio as redis
-from cryptography.fernet import Fernet
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import DeclarativeBase
-
-from ctao_shared.config import get_settings
-
-logger = logging.getLogger(__name__)
-settings = get_settings()
-
-DATABASE_URL = settings.DATABASE_URL
-engine = create_async_engine(DATABASE_URL, echo=True)  # echo=False for production
-
-AsyncSessionLocal = async_sessionmaker(
-    bind=engine, expire_on_commit=False, autoflush=False, class_=AsyncSession
-)
-
-
-class Base(DeclarativeBase):
-    """Typed declarative base for SQLAlchemy 2.0."""
-
-    pass
-
-
-# The dependency function
-async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
-    async with AsyncSessionLocal() as session:
-        yield session
-
-
-# Redis Setup
-REDIS_URL = settings.REDIS_URL
-redis_pool = None
-
-
-def get_redis_pool() -> redis.ConnectionPool:
-    global redis_pool
-    if redis_pool is None:
-        redis_pool = redis.ConnectionPool.from_url(REDIS_URL, decode_responses=True)
-    return redis_pool
-
-
-def get_redis_client() -> redis.Redis:
-    pool = get_redis_pool()
-    return redis.Redis(connection_pool=pool, decode_responses=True)
-
-
-# Encryption Setup for Refresh Tokens
-ENCRYPTION_KEY_STR = settings.REFRESH_TOKEN_ENCRYPTION_KEY
-if not ENCRYPTION_KEY_STR:
-    logger.warning(
-        "REFRESH_TOKEN_ENCRYPTION_KEY is not set. Refresh token storage will be insecure."
+def _deprecated(*_a, **_kw):  # pragma: no cover
+    raise RuntimeError(
+        "ctao_shared.db is deprecated. Use api.db / api.redis_client or "
+        "auth_service.db / auth_service.redis_client / auth_service.crypto."
     )
-    fernet_cipher = None
-else:
-    try:
-        fernet_cipher = Fernet(ENCRYPTION_KEY_STR.encode())
-    except Exception as e:
-        logger.error(
-            "Invalid REFRESH_TOKEN_ENCRYPTION_KEY: %s. Refresh token storage will fail.",
-            e,
-        )
-        fernet_cipher = None
 
 
-def encrypt_token(token: str) -> str | None:
-    if fernet_cipher and token:
-        return fernet_cipher.encrypt(token.encode()).decode()
-    return None
-
-
-def decrypt_token(encrypted_token: str) -> str | None:
-    if fernet_cipher and encrypted_token:
-        try:
-            return fernet_cipher.decrypt(encrypted_token.encode()).decode()
-        except Exception as e:
-            logger.exception("Failed to decrypt refresh token: %s", e)
-            return None
-    return None
+get_async_session = _deprecated
+get_redis_pool = _deprecated
+get_redis_client = _deprecated
+encrypt_token = _deprecated
+decrypt_token = _deprecated

@@ -1,13 +1,14 @@
 import secrets
+from functools import lru_cache
 
-from ctao_shared.config import get_settings
+from auth_service.config import get_auth_settings
 from ctao_shared.constants import COOKIE_NAME_XSRF, HEADER_NAME_XSRF
 from fastapi import HTTPException, Request, Response, status
 
-# COOKIE_NAME_XSRF = "XSRF-TOKEN"
-# HEADER_NAME_XSRF = "X-XSRF-TOKEN"
 
-settings = get_settings()
+@lru_cache
+def _settings():
+    return get_auth_settings()
 
 
 def _new_token() -> str:
@@ -26,7 +27,7 @@ def ensure_xsrf_cookie(request: Request, response: Response) -> str:
 
     token = _new_token()
 
-    base = dict(settings.cookie_params)
+    base = dict(_settings().cookie_params)
 
     # XSRF must be readable by JS:
     base["httponly"] = False
@@ -37,7 +38,7 @@ def ensure_xsrf_cookie(request: Request, response: Response) -> str:
     response.set_cookie(
         key=COOKIE_NAME_XSRF,
         value=token,
-        max_age=settings.SESSION_DURATION_SECONDS,
+        max_age=_settings().SESSION_DURATION_SECONDS,
         **base,
     )
     return token

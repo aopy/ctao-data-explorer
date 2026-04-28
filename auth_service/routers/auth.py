@@ -3,12 +3,13 @@ import json
 import logging
 import time
 import traceback
+from functools import lru_cache
 from typing import Any
 
 import httpx
 import redis.asyncio as redis
 from authlib.integrations.base_client.errors import OAuthError
-from ctao_shared.config import get_settings
+from authlib.integrations.starlette_client import OAuth
 from ctao_shared.constants import (
     COOKIE_NAME_MAIN_SESSION,
     SESSION_ACCESS_TOKEN_EXPIRY_KEY,
@@ -17,14 +18,30 @@ from ctao_shared.constants import (
     SESSION_REFRESH_TOKEN_KEY,
     SESSION_USER_ID_KEY,
 )
-from ctao_shared.db import decrypt_token, encrypt_token, get_redis_client
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi_users import schemas
 from pydantic import BaseModel, ConfigDict
 
+from auth_service.config import get_auth_settings
+from auth_service.crypto import decrypt_token, encrypt_token
 from auth_service.metrics import TOKEN_REFRESH_FAILURES
-from auth_service.oauth_client import oauth
+from auth_service.oauth_client import get_oauth
+from auth_service.redis_client import get_redis_client
 from auth_service.security.csrf import ensure_xsrf_cookie, require_xsrf
+
+
+class _OAuthProxy:
+    def __getattr__(self, name: str) -> Any:
+        return getattr(get_oauth(), name)
+
+
+oauth = _OAuthProxy()
+
+
+@lru_cache
+def _oauth() -> OAuth:
+    return get_oauth()
+
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +80,7 @@ class ReauthRequired(Exception):
 
 
 def _settings():
-    return get_settings()
+    return get_auth_settings()
 
 
 def _refresh_fail_reason(exc: Exception) -> str:
@@ -131,7 +148,7 @@ def _needs_refresh(expiry: float) -> bool:
 
 
 async def _attempt_refresh_once(refresh_token: str) -> dict[str, Any]:
-    return await oauth.ctao.fetch_access_token(
+    return await _oauth().ctao.fetch_access_token(
         grant_type="refresh_token",
         refresh_token=refresh_token,
     )
@@ -361,7 +378,7 @@ async def logout_session(
     # Clear cookies: session + xsrf
     response.delete_cookie(
         key=COOKIE_NAME_MAIN_SESSION,
-        **get_settings().cookie_params,
+        **get_auth_settings().cookie_params,
     )
     delete_kwargs = {"path": "/"}
     if _settings().COOKIE_DOMAIN:
