@@ -2,7 +2,6 @@ import json
 import time
 
 import pytest
-from ctao_shared.config import get_settings
 from ctao_shared.constants import (
     COOKIE_NAME_MAIN_SESSION,
     SESSION_ACCESS_TOKEN_EXPIRY_KEY,
@@ -12,6 +11,7 @@ from ctao_shared.constants import (
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from auth_service.config import get_auth_settings
 from auth_service.routers import token_relay as relay_mod
 
 
@@ -35,7 +35,8 @@ async def test_token_relay_injects_bearer(auth_client, as_user, monkeypatch):
 
     monkeypatch.setenv("TOKEN_RELAY_TARGETS_JSON", '{"whoami":"asgi://whoami"}')
     monkeypatch.setenv("TOKEN_RELAY_TIMEOUT_SECONDS", "5")
-    get_settings.cache_clear()
+    # get_settings.cache_clear()
+    get_auth_settings.cache_clear()
 
     # create session with access token
     _, session_id = await as_user(access_token="AT-123", refresh_token_plain="RT-xyz")
@@ -67,9 +68,10 @@ async def test_token_relay_no_access_token_is_distinguishable(
     # Point relay target to the ASGI app
     monkeypatch.setenv("TOKEN_RELAY_TARGETS_JSON", '{"whoami":"asgi://whoami"}')
     monkeypatch.setenv("TOKEN_RELAY_TIMEOUT_SECONDS", "5")
-    from ctao_shared.config import get_settings
+    from auth_service.config import get_auth_settings
 
-    get_settings.cache_clear()
+    # get_settings.cache_clear()
+    get_auth_settings.cache_clear()
 
     # Create session but remove access token
     _, session_id = await as_user(access_token="AT-123", refresh_token_plain="RT-xyz")

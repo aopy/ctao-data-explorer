@@ -3,7 +3,6 @@ import time
 from unittest.mock import patch
 
 import pytest
-from ctao_shared.config import get_settings
 from ctao_shared.constants import (
     COOKIE_NAME_MAIN_SESSION,
     COOKIE_NAME_XSRF,
@@ -13,11 +12,14 @@ from ctao_shared.constants import (
     SESSION_KEY_PREFIX,
     SESSION_REFRESH_TOKEN_KEY,
 )
-from ctao_shared.db import decrypt_token, encrypt_token
 
-from auth_service.oauth_client import oauth
+from auth_service.config import get_auth_settings
+from auth_service.crypto import decrypt_token, encrypt_token
+from auth_service.oauth_client import get_oauth
 
-settings = get_settings()
+oauth = get_oauth()
+
+settings = get_auth_settings()
 REFRESH_BUFFER_SECONDS = settings.REFRESH_BUFFER_SECONDS
 
 

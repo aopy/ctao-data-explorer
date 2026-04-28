@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import DataTable from 'react-data-table-component';
 import axios from 'axios';
+import { apiClient } from "../apiClients";
 import DataLinkDropdown from './DataLinkDropdown';
 import { API_PREFIX } from '../index';
 import { getColumnDisplayInfo } from './columnConfig';
@@ -163,7 +164,7 @@ export default function ResultsTable({
     }));
 
     try {
-      const res = await axios.post(`${API_PREFIX}/basket/items/bulk`, {
+      const res = await apiClient.post(`/basket/items/bulk`, {
         basket_group_id: activeBasketGroupId,
         items,
       });
@@ -205,7 +206,7 @@ export default function ResultsTable({
         dataset_dict: rowData,
         basket_group_id: activeBasketGroupId,
       };
-      const response = await axios.post(`${API_PREFIX}/basket/items`, payload);
+      const response = await apiClient.post(`/basket/items`, payload);
       setAlertMessage(`Added obs_id=${rowData.obs_id} to active basket successfully!`);
       onAddedBasketItem?.(response.data, activeBasketGroupId);
     } catch (error) {

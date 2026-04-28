@@ -1,9 +1,22 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import axios from "axios";
 import BasketPage from "./BasketPage";
+import { apiClient } from "../apiClients";
 
-jest.mock("axios");
+
+jest.mock("../apiClients", () => {
+  const mk = () => ({
+    interceptors: { response: { use: jest.fn() } },
+    get: jest.fn(),
+    post: jest.fn(),
+    delete: jest.fn(),
+  });
+  return {
+    authClient: mk(),
+    apiClient: mk(),
+    publicApiClient: mk(),
+  };
+});
 
 jest.mock("../index", () => ({
   API_PREFIX: "/api",
@@ -36,7 +49,7 @@ describe("BasketPage", () => {
   });
 
   test("fetches basket groups on mount", async () => {
-    axios.get.mockResolvedValueOnce({
+    apiClient.get.mockResolvedValueOnce({
       data: [
         {
           id: 1,
@@ -49,7 +62,7 @@ describe("BasketPage", () => {
     render(<BasketPage {...baseProps} />);
 
     await waitFor(() => {
-      expect(axios.get).toHaveBeenCalledWith("/api/basket/groups");
+      expect(apiClient.get).toHaveBeenCalledWith("/basket/groups");
     });
 
     expect(baseProps.onBasketGroupsChange).toHaveBeenCalledWith([
@@ -61,9 +74,9 @@ describe("BasketPage", () => {
   test("creates a new basket", async () => {
     const user = userEvent.setup();
 
-    axios.get.mockResolvedValueOnce({ data: [] });
-    axios.post.mockResolvedValueOnce({});
-    axios.get.mockResolvedValueOnce({
+    apiClient.get.mockResolvedValueOnce({ data: [] });
+    apiClient.post.mockResolvedValueOnce({});
+    apiClient.get.mockResolvedValueOnce({
       data: [{ id: 2, name: "New Basket", saved_datasets: [] }],
     });
 
@@ -77,7 +90,7 @@ describe("BasketPage", () => {
     await user.click(screen.getByRole("button", { name: /Create/i }));
 
     await waitFor(() => {
-      expect(axios.post).toHaveBeenCalledWith("/api/basket/groups", { name: "New Basket" });
+      expect(apiClient.post).toHaveBeenCalledWith("/basket/groups", { name: "New Basket" });
     });
   });
 
@@ -96,9 +109,9 @@ describe("BasketPage", () => {
     activeBasketGroupId: "1",
   };
 
-  axios.get.mockResolvedValueOnce({ data: [] });
-  axios.delete.mockResolvedValueOnce({});
-  axios.get.mockResolvedValueOnce({ data: [] });
+  apiClient.get.mockResolvedValueOnce({ data: [] });
+  apiClient.delete.mockResolvedValueOnce({});
+  apiClient.get.mockResolvedValueOnce({ data: [] });
 
   render(<BasketPage {...props} />);
 
@@ -110,7 +123,7 @@ describe("BasketPage", () => {
   await user.click(screen.getByRole("button", { name: /Yes, delete/i }));
 
   await waitFor(() => {
-    expect(axios.delete).toHaveBeenCalledWith("/api/basket/groups/1");
+    expect(apiClient.delete).toHaveBeenCalledWith("/basket/groups/1");
   });
 });
 });

@@ -1,73 +1,47 @@
-import axios from "axios";
 import { toast } from "react-toastify";
 
-// Always send cookies (needed for session-cookie auth)
-axios.defaults.withCredentials = true;
+/**
+ * mode:
+ *  - "default": show session-expired toast on generic 401s
+ *  - "public": do not show session-expired toast (public endpoints may be used by anon users)
+ */
+export function installAuthInterceptors(client, { mode = "default" } = {}) {
+  if (!client || !client.interceptors?.response?.use) return;
 
-// detect the new relay "reauth required" response
-function isReauthRequired(response) {
-  if (!response) return false;
-  // { detail: "reauth_required", reason: "no_access_token" }
-  if (response.status === 401 && response.data?.detail === "reauth_required") {
-    return true;
-  }
-  // fallback: detect via WWW-Authenticate header
-  const www =
-    response.headers?.["www-authenticate"] || response.headers?.["WWW-Authenticate"];
-  if (
-    response.status === 401 &&
-    typeof www === "string" &&
-    www.includes("reauth_required")
-  ) {
-    return true;
-  }
-  return false;
-}
+  client.interceptors.response.use(
+    (r) => r,
+    (error) => {
+      const { response, config } = error || {};
 
-// Intercept all responses
-axios.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    const response = error?.response;
-    const config = error?.config;
+      if (config?.skipAuthErrorHandling) return Promise.reject(error);
 
-    // Allow callers to opt out
-    if (config?.skipAuthErrorHandling) {
-      return Promise.reject(error);
-    }
+      if (response?.status === 401) {
+        const detail = response?.data?.detail;
 
-    // logged-in session exists but IAM token missing -> reauth-required
-    if (isReauthRequired(response)) {
-      toast.dismiss("reauth-required");
+        // Special relay signal: session exists but must reauth
+        if (detail === "reauth_required") {
+          window.dispatchEvent(new Event("reauth-required"));
+          return Promise.reject(error);
+        }
 
-      toast.error(
-        "Your IAM token expired — please click Login to sign in again.",
-        { toastId: "reauth-required", autoClose: false }
-      );
+        // For public clients: don't show "session expired" toast
+        if (mode === "public") return Promise.reject(error);
 
-      localStorage.removeItem("hadSession");
-      window.dispatchEvent(new Event("reauth-required"));
-      return Promise.reject(error);
-    }
+        const hadSession = localStorage.getItem("hadSession") === "true";
+        const hasCookie = document.cookie.includes("ctao_session_main=");
 
-    // Generic 401 handling
-    if (response?.status === 401) {
-      const hadSession = localStorage.getItem("hadSession") === "true";
-      const hasCookie = document.cookie.includes("ctao_session_main=");
-
-      if (hadSession || hasCookie) {
-        toast.dismiss("session-expired");
-
-        toast.error(
-          "Your session expired — please click the Login button to sign in again.",
-          { toastId: "session-expired", autoClose: false }
-        );
-
-        localStorage.removeItem("hadSession");
-        window.dispatchEvent(new Event("session-lost"));
+        if (hadSession || hasCookie) {
+          toast.dismiss("session-expired");
+          toast.error(
+            "Your session expired — please click the Login button to sign in again.",
+            { toastId: "session-expired", autoClose: false }
+          );
+          localStorage.removeItem("hadSession");
+          window.dispatchEvent(new Event("session-lost"));
+        }
       }
-    }
 
-    return Promise.reject(error);
-  }
-);
+      return Promise.reject(error);
+    }
+  );
+}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import axios from "axios";
+import { apiClient } from "../apiClients";
 import { AUTH_PREFIX, API_PREFIX } from "../index";
 import { mjdToDate, formatDateTimeStrings } from "./datetimeUtils";
 import QuickLookModal from "./QuickLookModal";
@@ -174,7 +174,7 @@ export default function BasketPage({
     setError(null);
 
     try {
-      const res = await axios.get(`${API_PREFIX}/basket/groups`);
+      const res = await apiClient.get(`/basket/groups`);
       const rawGroups = res.data || [];
 
       // normalize IDs to string in the objects we send upward
@@ -229,7 +229,7 @@ export default function BasketPage({
       try {
         const pairs = await Promise.all(
           uniqueMjds.map(async (m) => {
-            const resp = await axios.post("/api/convert_time", {
+            const resp = await apiClient.post("/convert_time", {
               value: String(m),
               input_format: "mjd",
               input_scale: "tt",
@@ -260,7 +260,7 @@ export default function BasketPage({
     setError(null);
 
     try {
-      await axios.post(`${API_PREFIX}/basket/groups`, { name });
+      await apiClient.post(`/basket/groups`, { name });
       setNewGroupName("");
       await fetchBasketGroups();
     } catch (err) {
@@ -281,7 +281,7 @@ export default function BasketPage({
 
     setError(null);
     try {
-      await axios.put(`${API_PREFIX}/basket/groups/${id}`, { name: trimmedName });
+      await apiClient.put(`/basket/groups/${id}`, { name: trimmedName });
       await fetchBasketGroups();
     } catch (err) {
       console.error("Error renaming basket group", err);
@@ -298,7 +298,7 @@ export default function BasketPage({
     setError(null);
 
     try {
-      await axios.delete(`${API_PREFIX}/basket/groups/${activeGroup.id}`);
+      await apiClient.delete(`/basket/groups/${activeGroup.id}`);
       setShowDeleteModal(false);
       await fetchBasketGroups();
     } catch (err) {
@@ -317,7 +317,7 @@ export default function BasketPage({
     setError(null);
 
     try {
-      await axios.delete(`${API_PREFIX}/basket/groups/${activeGroup.id}/items/${itemId}`);
+      await apiClient.delete(`/basket/groups/${activeGroup.id}/items/${itemId}`);
       await fetchBasketGroups();
     } catch (err) {
       if (err.response && err.response.status === 404) {
@@ -335,7 +335,7 @@ export default function BasketPage({
     setError(null);
 
     try {
-      await axios.post(`${API_PREFIX}/basket/groups/${activeGroup.id}/duplicate`);
+      await apiClient.post(`/basket/groups/${activeGroup.id}/duplicate`);
       await fetchBasketGroups();
     } catch (err) {
       console.error("Error duplicating basket group", err);

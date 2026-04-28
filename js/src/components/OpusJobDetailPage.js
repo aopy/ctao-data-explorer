@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { jobDetails, jobResults } from "./opusApi";
+import { DATAACCESS_PREFIX } from "../config";
 import AladinFitsViewer from "./AladinFitsViewer";
 import { toast } from "react-toastify";
 
@@ -68,7 +69,15 @@ function opusProxy(jobId, href, { inline = false, filename, id } = {}) {
   if (inline) q.set("inline", "1");
   if (filename) q.set("filename", filename);
   if (id) q.set("rid", id);
-  return `/api/opus/jobs/${encodeURIComponent(jobId)}/fetch?${q.toString()}`;
+  return `${DATAACCESS_PREFIX}/opus/jobs/${encodeURIComponent(jobId)}/fetch?${q.toString()}`;
+}
+
+function opusProxyPath(jobId, href, { inline = false, filename, id } = {}) {
+  const q = new URLSearchParams({ href });
+  if (inline) q.set("inline", "1");
+  if (filename) q.set("filename", filename);
+  if (id) q.set("rid", id);
+  return `/opus/jobs/${encodeURIComponent(jobId)}/fetch?${q.toString()}`;
 }
 
 function errorSummaryToText(e) {
@@ -350,6 +359,9 @@ export default function OpusJobDetailPage() {
                     const previewUrl = r.href
                       ? opusProxy(jobId, r.href, { inline: true, filename: downloadName, id: rid })
                       : null;
+                    const previewPath = r.href
+                      ? opusProxyPath(jobId, r.href, { inline: true, filename: downloadName, id: rid })
+                      : null;
 
                     return (
                       <React.Fragment key={rid}>
@@ -390,7 +402,7 @@ export default function OpusJobDetailPage() {
                                   </div>
                                 ) : kind === "fits" ? (
                                   <div className="p-2">
-                                    <AladinFitsViewer fitsUrl={previewUrl} height={560} fov={1.0} />
+                                    <AladinFitsViewer fitsPath={previewPath} height={560} fov={1.0} />
                                   </div>
                                 ) : (
                                   <div className="p-2">

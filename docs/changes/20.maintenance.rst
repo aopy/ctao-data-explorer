@@ -1,0 +1,1 @@
+- Refactored CTAO shared components into per-service config/db/redis modules; added BFF token relay routing for authenticated data endpoints and updated frontend clients/tests accordingly.

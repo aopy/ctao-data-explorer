@@ -2,16 +2,18 @@ import base64
 import mimetypes
 import time
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import urlparse
 
 import httpx
 import xmltodict
-from ctao_shared.config import get_settings
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from starlette.responses import Response
+
+from api.config import get_api_settings
 
 from .deps import get_current_user_with_iam_sub
 from .metrics import (
@@ -20,29 +22,42 @@ from .metrics import (
     opus_record_submit_failure,
 )
 
-settings = get_settings()
+
+@lru_cache
+def _settings() -> Any:
+    return get_api_settings()
+
+
+@lru_cache
+def _opus_cfg() -> dict[str, str]:
+    s = _settings()
+    raw_root = s.OPUS_ROOT.rstrip("/")
+    opus_base = raw_root[:-5] if raw_root.endswith("/rest") else raw_root
+    opus_rest_base = f"{opus_base}/rest"
+    raw_service = s.OPUS_SERVICE.strip()
+    return {
+        "OPUS_BASE": opus_base,
+        "OPUS_REST_BASE": opus_rest_base,
+        "OPUS_ROOT": opus_base,
+        "OPUS_SERVICE": raw_service,
+    }
+
 
 router = APIRouter(prefix="/api/opus", tags=["opus"])
 
-# OPUS configuration
-_raw_root = settings.OPUS_ROOT.rstrip("/")
-OPUS_BASE = _raw_root[:-5] if _raw_root.endswith("/rest") else _raw_root
-OPUS_REST_BASE = f"{OPUS_BASE}/rest"
 
-OPUS_ROOT = OPUS_BASE
-
-_raw_service = settings.OPUS_SERVICE.strip()
+_raw_service = _settings().OPUS_SERVICE.strip()
 if _raw_service.lower().startswith("http"):
     OPUS_SERVICE_URL = _raw_service.rstrip("/")
     OPUS_SERVICE_NAME = OPUS_SERVICE_URL.rsplit("/", 1)[-1]
 else:
     OPUS_SERVICE_NAME = _raw_service.strip("/")
-    OPUS_SERVICE_URL = f"{OPUS_REST_BASE}/{OPUS_SERVICE_NAME}"
+    OPUS_SERVICE_URL = f"{_opus_cfg()['OPUS_REST_BASE']}/{OPUS_SERVICE_NAME}"
 
-OPUS_APP_TOKEN = settings.OPUS_APP_TOKEN
+OPUS_APP_TOKEN = _settings().OPUS_APP_TOKEN
 
 try:
-    _host_netloc = urlparse(OPUS_BASE).netloc
+    _host_netloc = urlparse(_opus_cfg()["OPUS_BASE"]).netloc
 except Exception:
     _host_netloc = ""
 try:
@@ -55,7 +70,7 @@ OPUS_ALLOWED_NETLOCS: set[str] = {n for n in {_host_netloc, _svc_netloc} if n}
 # helpers
 def _rest_url(*parts: str) -> str:
     """Join parts under the REST root (legacy endpoints)."""
-    base = OPUS_REST_BASE.rstrip("/")
+    base = _opus_cfg()["OPUS_REST_BASE"].rstrip("/")
     path = "/".join(str(p).strip("/") for p in parts if p is not None)
     return f"{base}/{path}"
 
@@ -100,11 +115,7 @@ def _extract_job_id_from_doc(doc: dict[str, Any]) -> str | None:
 
 def _extract_uid(user: Any) -> str:
     """Get IAM subject id from `user` or raise 401."""
-    uid = (
-        getattr(user, "iam_subject_id", None)
-        if not isinstance(user, dict)
-        else user.get("iam_subject_id")
-    )
+    uid = getattr(user, "sub", None) if not isinstance(user, dict) else user.get("sub")
     if not uid:
         raise HTTPException(401, "Not authenticated")
     return str(uid)
@@ -182,18 +193,14 @@ class OpusJobCreateResponse(BaseModel):
 # Debug
 @router.get("/_debug_base")
 async def debug_base(user: Any = Depends(get_current_user_with_iam_sub)) -> dict[str, Any]:
-    uid = (
-        getattr(user, "iam_subject_id", None)
-        if not isinstance(user, dict)
-        else user.get("iam_subject_id")
-    )
+    uid = getattr(user, "sub", None) if not isinstance(user, dict) else user.get("sub")
     return {
-        "OPUS_BASE": OPUS_BASE,
-        "OPUS_REST_BASE": OPUS_REST_BASE,
+        "OPUS_BASE": _opus_cfg()["OPUS_BASE"],
+        "OPUS_REST_BASE": _opus_cfg()["OPUS_REST_BASE"],
         "OPUS_SERVICE_URL": OPUS_SERVICE_URL,
         "OPUS_SERVICE_NAME": OPUS_SERVICE_NAME,
         "has_app_token": bool(OPUS_APP_TOKEN),
-        "iam_subject_id": uid or None,
+        "sub": uid or None,
     }
 
 
@@ -204,7 +211,7 @@ async def list_jobs(
     user: Any = Depends(get_current_user_with_iam_sub),
     days: int = 30,  # how far back to look
 ) -> dict[str, Any]:
-    uid = user.iam_subject_id
+    uid = user.sub
     headers = _basic_headers(uid)
     headers.update(
         {
@@ -279,7 +286,7 @@ async def list_jobs(
 async def get_job(
     job_id: str, request: Request, user: Any = Depends(get_current_user_with_iam_sub)
 ) -> dict[str, Any]:
-    uid = user.iam_subject_id
+    uid = user.sub
     headers = _basic_headers(uid)
 
     url = _service_url(job_id)
@@ -305,7 +312,7 @@ async def get_job(
 async def list_results(
     job_id: str, user: Any = Depends(get_current_user_with_iam_sub)
 ) -> dict[str, Any]:
-    uid = user.iam_subject_id
+    uid = user.sub
     headers = _basic_headers(uid)
 
     url = _service_url(job_id, "results")
@@ -392,7 +399,7 @@ async def fetch_by_href(
     user: Any = Depends(get_current_user_with_iam_sub),
 ) -> Response:
     _ = request
-    uid = user.iam_subject_id
+    uid = user.sub
     headers = _basic_headers(uid)
 
     parsed = urlparse(href)
