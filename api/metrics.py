@@ -2,11 +2,12 @@ import secrets
 from typing import Any
 from urllib.parse import urlparse
 
-from ctao_shared.config import get_settings
 from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from prometheus_fastapi_instrumentator import Instrumentator
+
+from api.config import get_api_settings as get_settings
 
 # HTTP instrumentation
 _security = HTTPBasic()
@@ -32,8 +33,13 @@ def setup_metrics(app: FastAPI) -> None:
     s = get_settings()
     if not s.METRICS_ENABLED:
         return
-
-    # Instrument all endpoints (excluding health + metrics)
+    app.router.routes = [
+        r
+        for r in app.router.routes
+        if not (
+            getattr(r, "path", None) == s.METRICS_ROUTE and "GET" in getattr(r, "methods", set())
+        )
+    ]
     instr = Instrumentator(
         should_group_status_codes=True,
         should_ignore_untemplated=True,

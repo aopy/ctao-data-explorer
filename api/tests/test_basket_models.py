@@ -1,33 +1,30 @@
 import uuid
 
 import pytest
-from auth_service.models import UserTable
+from sqlalchemy import select
 from sqlalchemy.orm import attributes
 
-from api.models import BasketGroup, SavedDataset
+from api.models import BasketGroup, SavedDataset, basket_items_association
 
 
 @pytest.mark.anyio
 async def test_basket_group_adds_items(db_session):
-    u = UserTable(iam_subject_id=f"sub-{uuid.uuid4().hex[:6]}", hashed_password="")
-    db_session.add(u)
+    sub = f"sub-{uuid.uuid4().hex[:6]}"
+
+    g = BasketGroup(user_sub=sub, name="My Basket")
+    db_session.add(g)
     await db_session.flush()
 
-    g = BasketGroup(user_id=u.id, name="My Basket")
-    d1 = SavedDataset(user_id=u.id, obs_id="obs-001", dataset_json='{"a":1}')
-    d2 = SavedDataset(user_id=u.id, obs_id="obs-002", dataset_json='{"a":2}')
-    db_session.add_all([g, d1, d2])
+    d1 = SavedDataset(user_sub=sub, obs_id="obs1", dataset_json="{}")
+    d2 = SavedDataset(user_sub=sub, obs_id="obs2", dataset_json="{}")
+    db_session.add_all([d1, d2])
     await db_session.flush()
 
-    # Prevent async lazy-load: mark collection as initialized (empty)
+    # Prevent async lazy-load of relationship collection
     attributes.set_committed_value(g, "saved_datasets", [])
     g.saved_datasets.extend([d1, d2])
-    await db_session.flush()
 
-    # Verify via association table
-    from sqlalchemy import select
-
-    from api.models import basket_items_association
+    await db_session.commit()
 
     rows = (
         await db_session.execute(
@@ -36,4 +33,5 @@ async def test_basket_group_adds_items(db_session):
             )
         )
     ).fetchall()
+
     assert len(rows) == 2

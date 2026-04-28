@@ -26,7 +26,6 @@ spec:
       {{- end }}
 
       serviceAccountName: {{ include "ctao-data-explorer.serviceAccountName" . }}
-
       automountServiceAccountToken: false
 
       securityContext:
@@ -57,20 +56,34 @@ spec:
           image: "{{ .Values.global.imageRegistry }}/{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
           workingDir: /app
-          command: ["sh", "-c", "pixi run alembic upgrade head"]
+          command: ["sh", "-lc", "cd /app && pixi run alembic -c alembic.ini upgrade head"]
           env:
-            # Alembic MUST use sync driver
+            - name: PYTHONPATH
+              value: /app
+            - name: API_DATABASE_URL
+              value: {{ include "ctao-data-explorer.databaseUrl" . | quote }}
+            - name: DATABASE_URL
+              value: {{ include "ctao-data-explorer.databaseUrl" . | quote }}
+            - name: REDIS_URL
+              value: {{ include "ctao-data-explorer.redisUrl" . | quote }}
+            - name: API_REDIS_URL
+              value: {{ include "ctao-data-explorer.redisUrl" . | quote }}
+
             - name: DB_URL
-              value: "postgresql://{{ .Values.postgresql.auth.username }}:{{ .Values.postgresql.auth.password }}@{{ include "ctao-data-explorer.postgresql.host" . }}:{{ .Values.postgresql.service.port }}/{{ .Values.postgresql.auth.database }}"
-            # REQUIRED by Settings()
-            - name: OPUS_SERVICE
-              value: {{ .Values.backend.env.OPUS_SERVICE | quote }}
-            - name: OPUS_APP_TOKEN
-              value: {{ .Values.backend.env.OPUS_APP_TOKEN | quote }}
-              {{- range $key, $value := .Values.backend.env }}
+              {{ if .Values.backend.databaseUrlSecret.name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.backend.databaseUrlSecret.name | quote }}
+                  key: {{ .Values.backend.databaseUrlSecret.key | default "url" | quote }}
+              {{ else }}
+              value: {{ include "ctao-data-explorer.databaseUrl" . | quote }}
+              {{ end }}
+
+            {{- range $key, $value := .Values.backend.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
+
           {{- with .Values.backend.envFrom }}
           envFrom:
             {{- toYaml . | nindent 12 }}
@@ -90,19 +103,36 @@ spec:
               protocol: TCP
 
           env:
-            - name: DATABASE_URL
+            - name: API_DATABASE_URL
+              {{ if .Values.backend.databaseUrlSecret.name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.backend.databaseUrlSecret.name | quote }}
+                  key: {{ .Values.backend.databaseUrlSecret.key | default "url" | quote }}
+              {{ else }}
               value: {{ include "ctao-data-explorer.databaseUrl" . | quote }}
+              {{ end }}
+
+            - name: DATABASE_URL
+              {{ if .Values.backend.databaseUrlSecret.name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.backend.databaseUrlSecret.name | quote }}
+                  key: {{ .Values.backend.databaseUrlSecret.key | default "url" | quote }}
+              {{ else }}
+              value: {{ include "ctao-data-explorer.databaseUrl" . | quote }}
+              {{ end }}
+
+            - name: API_REDIS_URL
+              value: {{ include "ctao-data-explorer.redisUrl" . | quote }}
+
             - name: REDIS_URL
               value: {{ include "ctao-data-explorer.redisUrl" . | quote }}
+
             {{- range $key, $value := .Values.backend.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
-
-          {{- with .Values.backend.envFrom }}
-          envFrom:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
 
           livenessProbe:
             httpGet:

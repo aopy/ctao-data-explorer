@@ -1,21 +1,33 @@
-jest.mock("./index", () => ({
-  AUTH_PREFIX: "/auth",
-  API_PREFIX: "/api",
+import React from "react";
+import { render, screen, waitFor, act } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+
+jest.mock("./components/axiosSetup", () => ({
+  __esModule: true,
+  installAuthInterceptors: jest.fn(),
 }));
 
-import { render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
-import axios from "axios";
-import App from "./App";
+jest.mock("./apiClients", () => {
+  const mkAxiosInstance = () => {
+    const inst = jest.fn(() => Promise.resolve({ status: 401, data: {} }));
+    inst.get = jest.fn(() => Promise.resolve({ status: 401, data: {} }));
+    inst.post = jest.fn(() => Promise.resolve({ data: {} }));
+    inst.delete = jest.fn(() => Promise.resolve({ data: {} }));
+    inst.interceptors = { response: { use: jest.fn() } };
+    return inst;
+  };
 
-jest.mock("axios");
+  return {
+    authClient: mkAxiosInstance(),
+    apiClient: mkAxiosInstance(),
+    publicApiClient: mkAxiosInstance(),
+  };
+});
 
 jest.mock("./components/SearchForm", () => {
   const React = require("react");
-  return React.forwardRef(function MockSearchForm(props, ref) {
-    React.useImperativeHandle(ref, () => ({
-      saveState: jest.fn(),
-    }));
+  return React.forwardRef(function MockSearchForm(_props, ref) {
+    React.useImperativeHandle(ref, () => ({ saveState: jest.fn() }));
     return <div>Cone Search</div>;
   });
 });
@@ -47,22 +59,34 @@ jest.mock("./components/UserProfilePage", () => () => <div>Mock User Profile</di
 
 describe("App", () => {
   beforeEach(() => {
+    jest.useFakeTimers();
     jest.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
+    document.cookie = "";
+  });
 
-    axios.get.mockImplementation((url) => {
-      if (String(url).includes("/me")) {
-        return Promise.resolve({ status: 401, data: {} });
-      }
-      return Promise.resolve({ data: [] });
-    });
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   test("renders search page", async () => {
+    const App = require("./App").default;
+
+    const { authClient } = require("./apiClients");
+    authClient.get.mockResolvedValueOnce({ status: 401, data: {} });
+
     render(
       <MemoryRouter initialEntries={["/search"]}>
         <App />
       </MemoryRouter>
     );
+
+    await act(async () => {
+      jest.advanceTimersByTime(150); // triggers the 100ms setTimeout
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     await waitFor(() => {
       expect(screen.getByText("Cone Search")).toBeInTheDocument();

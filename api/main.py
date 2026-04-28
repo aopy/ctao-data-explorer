@@ -10,19 +10,18 @@ import math
 import os
 import re
 import time
-import traceback
 import urllib.parse
 from collections.abc import (
     AsyncIterator,
-    Awaitable,
-    Callable,
     Iterable,
     Iterator,
     Mapping,
     Sequence,
 )
 from contextlib import asynccontextmanager, suppress
+from dataclasses import dataclass
 from datetime import datetime
+from functools import lru_cache
 from io import BytesIO
 from typing import (
     Any,
@@ -39,20 +38,23 @@ from astropy.coordinates import SkyCoord
 from astropy.io.votable import parse_single_table
 from astropy.table import Table
 from astropy.time import Time
-from ctao_shared.config import get_settings
 from ctao_shared.constants import (
-    COOKIE_NAME_MAIN_SESSION,
     COORD_SYS_EQ_DEG,
     COORD_SYS_EQ_HMS,
     COORD_SYS_GAL,
 )
-from ctao_shared.db import get_async_session, get_redis_pool
 from ctao_shared.logging_config import setup_logging
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.staticfiles import StaticFiles
+
+from api.auth.deps_optional import get_optional_identity
+from api.auth.jwt_verifier import VerifiedIdentity
+from api.config import get_api_settings
+from api.db import close_engine, get_async_session
+from api.redis_client import close_redis, get_api_redis_pool
 
 from .basket import basket_router
 from .coords import coord_router
@@ -64,7 +66,6 @@ from .query_history import (
     _internal_create_query_history,
     query_history_router,
 )
-from .session_auth import get_optional_session_user
 from .tap import (
     astropy_table_to_list,
     build_select_query,
@@ -85,19 +86,22 @@ COORD_SYS_ALIASES: dict[str, str] = {
     "gal": COORD_SYS_GAL,
 }
 
-settings = get_settings()
+
+@lru_cache
+def _settings() -> Any:
+    return get_api_settings()
+
 
 setup_logging(
-    level=settings.LOG_LEVEL,
-    include_access=settings.LOG_INCLUDE_ACCESS,
-    json=settings.LOG_JSON,
+    level=_settings().LOG_LEVEL,
+    include_access=_settings().LOG_INCLUDE_ACCESS,
+    json=_settings().LOG_JSON,
 )
 
 logger = logging.getLogger(__name__)
 
-SIMBAD_TAP_SYNC = settings.SIMBAD_TAP_SYNC
-OBJECT_LOOKUP_URL = settings.NED_OBJECT_LOOKUP_URL
-cookie_params = settings.cookie_params
+SIMBAD_TAP_SYNC = _settings().SIMBAD_TAP_SYNC
+OBJECT_LOOKUP_URL = _settings().NED_OBJECT_LOOKUP_URL
 
 
 def _is_testing_env() -> bool:
@@ -113,7 +117,7 @@ def _init_redis_for_app(app: FastAPI) -> redis.ConnectionPool | None:
         logger.info("Using in-memory FakeRedis for tests.")
         return None
 
-    pool = get_redis_pool()
+    pool = get_api_redis_pool()
     app.state.redis = redis.Redis(connection_pool=pool, decode_responses=True)
     logger.info("Redis pool initialised.")
     return pool
@@ -150,7 +154,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("Redis resources closed.")
 
 
-docs_enabled = settings.ENABLE_DOCS
+docs_enabled = _settings().ENABLE_DOCS
 
 app = FastAPI(
     title="CTAO Data Explorer API",
@@ -161,6 +165,16 @@ app = FastAPI(
     redoc_url=None,
     openapi_url="/openapi.json" if docs_enabled else None,
 )
+
+
+@app.on_event("shutdown")
+async def _shutdown() -> None:
+    r = getattr(app.state, "redis", None)
+    if r is not None:
+        await _safe_close(r)
+
+    await close_redis()
+    await close_engine()
 
 
 @app.get("/health/live", include_in_schema=False)
@@ -193,30 +207,6 @@ app.add_middleware(
     allow_methods=["*"],  # Allow all HTTP methods
     allow_headers=["*"],  # Allow all headers
 )
-
-
-@app.middleware("http")
-async def rolling_session_cookie(
-    request: Request,
-    call_next: Callable[[Request], Awaitable[Response]],
-) -> Response:
-    response = await call_next(request)
-
-    existing = response.headers.getlist("set-cookie")
-    if any(f"{COOKIE_NAME_MAIN_SESSION}=" in hdr for hdr in existing):
-        return response
-
-    cookie_name: str = COOKIE_NAME_MAIN_SESSION or "ctao_session_main"
-    session_id = request.cookies.get(cookie_name)
-
-    if session_id:
-        response.set_cookie(
-            cookie_name,
-            session_id,
-            max_age=settings.SESSION_DURATION_SECONDS,
-            **cookie_params,
-        )
-    return response
 
 
 class ConvertReq(BaseModel):
@@ -256,7 +246,7 @@ def convert_time(req: ConvertReq) -> ConvertResp:
         # epoch = Time(req.met_epoch_isot, format="isot", scale=req.met_epoch_scale or "utc")
         try:
             seconds = float(str(req.value).replace(",", "."))
-        except Exception as e:
+        except (ValueError, TypeError) as e:
             raise HTTPException(
                 status_code=400, detail="MET value must be numeric (seconds)."
             ) from e
@@ -264,7 +254,7 @@ def convert_time(req: ConvertReq) -> ConvertResp:
     elif req.input_format == "mjd":
         try:
             mjd = float(str(req.value).replace(",", "."))
-        except Exception as e:
+        except (ValueError, TypeError) as e:
             raise HTTPException(status_code=400, detail="MJD value must be numeric.") from e
         t = Time(mjd, format="mjd", scale=req.input_scale)
     else:  # "isot"
@@ -540,286 +530,654 @@ async def object_suggest(
     return {"results": results}
 
 
-@app.get("/api/search_coords", response_model=SearchResult, tags=["search"])
-async def search_coords(
-    request: Request,
-    # Coordinate Params
-    coordinate_system: str | None = None,
-    ra: float | None = None,
-    dec: float | None = None,
-    l_deg: float | None = Query(None, alias="l"),
-    b_deg: float | None = Query(None, alias="b"),
-    search_radius: float = 5.0,
-    # Time Params
-    obs_start: str | None = None,
-    obs_end: str | None = None,
-    mjd_start: float | None = Query(None),
-    mjd_end: float | None = Query(None),
-    time_scale: str | None = Query("tt"),
-    # Energy Search (TeV)
-    energy_min: float | None = Query(None),
-    energy_max: float | None = Query(None),
-    # Observation Configuration
-    tracking_mode: str | None = Query(None),
-    pointing_mode: str | None = Query(None),
-    obs_mode: str | None = Query(None),
-    # Observation Program
-    proposal_id: str | None = Query(None),
-    proposal_title: str | None = Query(None),
-    proposal_contact: str | None = Query(None),
-    proposal_type: str | None = Query(None),
-    # Observation Conditions
-    moon_level: str | None = Query(None),
-    sky_brightness: str | None = Query(None),
-    # TAP Params
-    tap_url: str = settings.DEFAULT_TAP_URL,
-    obscore_table: str = settings.DEFAULT_OBSCORE_TABLE,
-    # Auth
-    user_session_data: dict[str, Any] | None = Depends(get_optional_session_user),
-    db_session: AsyncSession = Depends(get_async_session),
-) -> SearchResult:
-    redis_client = getattr(app.state, "redis", None)
-    CACHE_TTL = 3600
+class SearchCoordsParams(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
 
-    base_api_url = str(request.base_url).rstrip("/")
+    coordinate_system: str | None = None
+    ra: float | None = None
+    dec: float | None = None
+    l_deg: float | None = Field(default=None, alias="l")
+    b_deg: float | None = Field(default=None, alias="b")
+    search_radius: float = 5.0
 
-    fields: dict[str, Any] = {
-        "tap_url": {"value": tap_url},
-        "obscore_table": {"value": obscore_table},
-        "search_radius": {"value": search_radius},
-    }
+    obs_start: str | None = None
+    obs_end: str | None = None
+    mjd_start: float | None = None
+    mjd_end: float | None = None
+    time_scale: str = "tt"
 
-    if coordinate_system is not None:
-        coordinate_system = COORD_SYS_ALIASES.get(coordinate_system, coordinate_system)
+    energy_min: float | None = None
+    energy_max: float | None = None
 
-    coords_present = False
-    time_filter_present = False
+    tracking_mode: str | None = None
+    pointing_mode: str | None = None
+    obs_mode: str | None = None
 
-    where_conditions: list[str] = []
+    proposal_id: str | None = None
+    proposal_title: str | None = None
+    proposal_contact: str | None = None
+    proposal_type: str | None = None
 
-    # TAP_SCHEMA discovery
-    ignored_optional_filters: list[str] = []
-    try:
-        tap_cols = await get_tap_table_columns(tap_url, obscore_table)
-    except Exception as e:
-        logger.warning(
-            "search_coords: TAP_SCHEMA lookup failed (%s). Optional filters may require fallback probing.",
-            e,
+    moon_level: str | None = None
+    sky_brightness: str | None = None
+
+    tap_url: str
+    obscore_table: str
+
+    @field_validator(
+        "proposal_id",
+        "proposal_title",
+        "proposal_contact",
+        "proposal_type",
+        "tracking_mode",
+        "pointing_mode",
+        "obs_mode",
+        "moon_level",
+        "sky_brightness",
+        mode="before",
+    )
+    @classmethod
+    def _strip_optional(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s or None
+
+
+# helpers
+
+
+def get_search_coords_params(request: Request) -> SearchCoordsParams:
+    raw = dict(request.query_params)
+
+    tap_url = (raw.get("tap_url") or "").strip()
+    obscore = (raw.get("obscore_table") or "").strip()
+
+    if not tap_url:
+        raw["tap_url"] = _settings().DEFAULT_TAP_URL
+    if not obscore:
+        raw["obscore_table"] = _settings().DEFAULT_OBSCORE_TABLE
+
+    return SearchCoordsParams.model_validate(raw)
+
+
+def _esc_adql_str(s: str) -> str:
+    return (s or "").replace("'", "''")
+
+
+def _norm_opt(s: str | None) -> str | None:
+    v = (s or "").strip()
+    return v or None
+
+
+@dataclass
+class _TimeInfo:
+    present: bool
+    mjd_start_tt: float | None = None
+    mjd_end_tt: float | None = None
+
+
+def _process_mjd_range(params: SearchCoordsParams) -> _TimeInfo | None:
+    if params.mjd_start is None or params.mjd_end is None:
+        return None
+
+    min_mjd, max_mjd = 0, 100000
+    if not (min_mjd <= params.mjd_start <= max_mjd and min_mjd <= params.mjd_end <= max_mjd):
+        raise HTTPException(
+            status_code=400,
+            detail=f"MJD values out of expected range ({min_mjd}-{max_mjd}).",
         )
-        tap_cols = set()
+    if params.mjd_end <= params.mjd_start:
+        raise HTTPException(status_code=400, detail="mjd_end must be greater than mjd_start.")
 
-    tap_schema_available = bool(tap_cols)
+    scale = (params.time_scale or "tt").lower()
+    if scale not in ("tt", "utc"):
+        scale = "tt"
 
-    # Per-request cache for fallback probing of optional columns
-    optional_cols_probe_cache: dict[str, bool] = {}
+    if scale == "utc":
+        start_tt = Time(params.mjd_start, format="mjd", scale="utc").tt.mjd
+        end_tt = Time(params.mjd_end, format="mjd", scale="utc").tt.mjd
+    else:
+        start_tt, end_tt = params.mjd_start, params.mjd_end
 
-    def col_exists(col: str) -> bool:
-        """TAP_SCHEMA-only check."""
-        if not tap_schema_available:
-            return False
-        return col.lower() in tap_cols
+    return _TimeInfo(True, float(start_tt), float(end_tt))
 
-    async def optional_col_exists(col: str) -> bool:
-        """Return True if optional column exists.
-        Use TAP_SCHEMA when available; otherwise probe actual table (cached per request).
-        """
-        if tap_schema_available:
-            return col.lower() in tap_cols
 
-        if col in optional_cols_probe_cache:
-            return optional_cols_probe_cache[col]
+def _process_obs_range(params: SearchCoordsParams) -> _TimeInfo | None:
+    if not params.obs_start and not params.obs_end:
+        return None
+    if not (params.obs_start and params.obs_end):
+        raise HTTPException(status_code=400, detail="Both obs_start and obs_end are required.")
 
-        try:
-            exists = await tap_supports_columns(tap_url, obscore_table, [col])
-            optional_cols_probe_cache[col] = bool(exists)
-            return bool(exists)
-        except Exception as e:
-            logger.warning(
-                "Optional column probe failed for tap_url=%s table=%s col=%s (%s)",
-                tap_url,
-                obscore_table,
-                col,
-                e,
-                exc_info=True,
-            )
-            raise
+    try:
+        dt_start = datetime.strptime(params.obs_start, "%d/%m/%Y %H:%M:%S")
+        dt_end = datetime.strptime(params.obs_end, "%d/%m/%Y %H:%M:%S")
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid date/time format or value: {e}"
+        ) from e
 
-    def esc(s: str) -> str:
-        return (s or "").replace("'", "''")
+    if dt_end <= dt_start:
+        raise HTTPException(status_code=400, detail="obs_end must be after obs_start.")
 
-    requested_optional_filters: list[str] = []
-    applied_optional_filters: list[str] = []
-    optional_filter_probe_failed = False
+    scale = (params.time_scale or "tt").lower()
+    if scale not in ("tt", "utc"):
+        raise HTTPException(status_code=400, detail=f"Unsupported time_scale '{params.time_scale}'")
 
-    async def add_optional_enum_eq(col: str, val: str | None) -> None:
-        nonlocal optional_filter_probe_failed
-        if not val:
-            return
-        requested_optional_filters.append(col)
-        try:
-            if await optional_col_exists(col):
-                where_conditions.append(f"{col} = '{esc(val)}'")
-                applied_optional_filters.append(col)
-            else:
-                ignored_optional_filters.append(col)
-        except Exception:
-            optional_filter_probe_failed = True
-            ignored_optional_filters.append(col)
-
-    async def add_optional_text_eq(col: str, val: str | None) -> None:
-        nonlocal optional_filter_probe_failed
-        if not val:
-            return
-        v = val.strip()
-        if not v:
-            return
-        requested_optional_filters.append(col)
-        try:
-            if await optional_col_exists(col):
-                where_conditions.append(f"{col} = '{esc(v)}'")
-                applied_optional_filters.append(col)
-            else:
-                ignored_optional_filters.append(col)
-        except Exception:
-            optional_filter_probe_failed = True
-            ignored_optional_filters.append(col)
-
-    async def add_optional_text_like(col: str, val: str | None) -> None:
-        nonlocal optional_filter_probe_failed
-        if not val:
-            return
-        v = val.strip()
-        if not v:
-            return
-        requested_optional_filters.append(col)
-        try:
-            if await optional_col_exists(col):
-                where_conditions.append(f"ivo_nocasematch({col}, '%{esc(v)}%') = 1")
-                applied_optional_filters.append(col)
-            else:
-                ignored_optional_filters.append(col)
-        except Exception:
-            optional_filter_probe_failed = True
-            ignored_optional_filters.append(col)
-
-    # Time processing (normalize to TT MJD)
-    if mjd_start is not None and mjd_end is not None:
-        MIN_VALID_MJD = 0
-        MAX_VALID_MJD = 100000
-        if not (
-            MIN_VALID_MJD <= mjd_start <= MAX_VALID_MJD
-            and MIN_VALID_MJD <= mjd_end <= MAX_VALID_MJD
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail=f"MJD values out of expected range ({MIN_VALID_MJD}-{MAX_VALID_MJD}).",
-            )
-        if mjd_end <= mjd_start:
-            raise HTTPException(status_code=400, detail="mjd_end must be greater than mjd_start.")
-
-        scale = (time_scale or "tt").lower()
-        if scale not in ("tt", "utc"):
-            scale = "tt"
-
+    try:
         if scale == "utc":
-            mjd_start_tt = Time(mjd_start, format="mjd", scale="utc").tt.mjd
-            mjd_end_tt = Time(mjd_end, format="mjd", scale="utc").tt.mjd
+            t_start_tt = Time(dt_start, format="datetime", scale="utc").tt
+            t_end_tt = Time(dt_end, format="datetime", scale="utc").tt
         else:
-            mjd_start_tt = mjd_start
-            mjd_end_tt = mjd_end
+            t_start_tt = Time(dt_start, format="datetime", scale="tt")
+            t_end_tt = Time(dt_end, format="datetime", scale="tt")
+    except (ValueError, TypeError) as e:
+        logger.error("Unexpected error during time processing.")
+        raise HTTPException(status_code=500, detail="Error processing time parameters.") from e
 
-        fields["search_mjd_start"] = {"value": float(mjd_start_tt)}
-        fields["search_mjd_end"] = {"value": float(mjd_end_tt)}
-        time_filter_present = True
+    return _TimeInfo(True, float(t_start_tt.mjd), float(t_end_tt.mjd))
 
-    elif obs_start and obs_end:
-        try:
-            dt_start = datetime.strptime(obs_start, "%d/%m/%Y %H:%M:%S")
-            dt_end = datetime.strptime(obs_end, "%d/%m/%Y %H:%M:%S")
-            if dt_end <= dt_start:
-                raise HTTPException(status_code=400, detail="obs_end must be after obs_start.")
 
-            scale = (time_scale or "tt").lower()
-            if scale not in ("tt", "utc"):
-                raise HTTPException(
-                    status_code=400, detail=f"Unsupported time_scale '{time_scale}'"
-                )
+def _process_time(params: SearchCoordsParams) -> _TimeInfo:
+    out = _process_mjd_range(params)
+    if out is not None:
+        return out
+    out = _process_obs_range(params)
+    if out is not None:
+        return out
+    return _TimeInfo(False)
 
-            if scale == "utc":
-                t_start_tt = Time(dt_start, format="datetime", scale="utc").tt
-                t_end_tt = Time(dt_end, format="datetime", scale="utc").tt
-            else:
-                t_start_tt = Time(dt_start, format="datetime", scale="tt")
-                t_end_tt = Time(dt_end, format="datetime", scale="tt")
 
-            fields["search_mjd_start"] = {"value": float(t_start_tt.mjd)}
-            fields["search_mjd_end"] = {"value": float(t_end_tt.mjd)}
-            time_filter_present = True
-        except ValueError as e:
-            raise HTTPException(
-                status_code=400, detail=f"Invalid date/time format or value: {e}"
-            ) from e
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error("Unexpected error during time processing: %s", e)
-            raise HTTPException(status_code=500, detail="Error processing time parameters.") from e
+@dataclass
+class _CoordInfo:
+    present: bool
+    ra_deg: float | None = None
+    dec_deg: float | None = None
+    coordinate_system: str | None = None
 
-    # Coordinate processing
-    if coordinate_system in (COORD_SYS_EQ_DEG, COORD_SYS_EQ_HMS):
-        if ra is not None and dec is not None:
-            fields["target_raj2000"] = {"value": ra}
-            fields["target_dej2000"] = {"value": dec}
-            coords_present = True
-    elif coordinate_system == COORD_SYS_GAL:
-        if l_deg is not None and b_deg is not None:
+
+def _process_coords(params: SearchCoordsParams) -> _CoordInfo:
+    cs = params.coordinate_system
+    if cs is not None:
+        cs = COORD_SYS_ALIASES.get(cs, cs)
+
+    if cs in (COORD_SYS_EQ_DEG, COORD_SYS_EQ_HMS):
+        if params.ra is not None and params.dec is not None:
+            return _CoordInfo(True, float(params.ra), float(params.dec), cs)
+        return _CoordInfo(False, None, None, cs)
+
+    if cs == COORD_SYS_GAL:
+        if params.l_deg is not None and params.b_deg is not None:
             try:
-                c_gal = SkyCoord(l_deg * u.deg, b_deg * u.deg, frame="galactic")
+                c_gal = SkyCoord(params.l_deg * u.deg, params.b_deg * u.deg, frame="galactic")
                 c_icrs = c_gal.icrs
-                fields["target_raj2000"] = {"value": c_icrs.ra.deg}
-                fields["target_dej2000"] = {"value": c_icrs.dec.deg}
-                coords_present = True
+                return _CoordInfo(True, float(c_icrs.ra.deg), float(c_icrs.dec.deg), cs)
             except Exception as e:
                 logger.error("Galactic conversion failed: %s", e)
                 raise HTTPException(
                     status_code=400, detail="Invalid galactic coordinates provided."
                 ) from e
+        return _CoordInfo(False, None, None, cs)
 
-    # Normalization (treat empty strings as None)
-    proposal_id = (proposal_id or "").strip() or None
-    proposal_title = (proposal_title or "").strip() or None
-    proposal_contact = (proposal_contact or "").strip() or None
-    proposal_type = (proposal_type or "").strip() or None
+    return _CoordInfo(False, None, None, cs)
 
-    tracking_mode = (tracking_mode or "").strip() or None
-    pointing_mode = (pointing_mode or "").strip() or None
-    obs_mode = (obs_mode or "").strip() or None
 
-    moon_level = (moon_level or "").strip() or None
-    sky_brightness = (sky_brightness or "").strip() or None
+def _validate_at_least_one_criterion(
+    coords_present: bool,
+    time_present: bool,
+    energy_filter_requested: bool,
+    other_filter_requested: bool,
+) -> None:
+    if not (coords_present or time_present or energy_filter_requested or other_filter_requested):
+        raise HTTPException(status_code=400, detail="Provide at least one search criterion.")
 
-    # Determine whether any criteria were provided
-    energy_filter_requested = (energy_min is not None) or (energy_max is not None)
 
-    other_filter_requested = any(
-        v is not None
-        for v in [
-            tracking_mode,
-            pointing_mode,
-            obs_mode,
-            proposal_id,
-            proposal_title,
-            proposal_contact,
-            proposal_type,
-            moon_level,
-            sky_brightness,
-        ]
+def _build_fields_base(params: SearchCoordsParams) -> dict[str, Any]:
+    return {
+        "tap_url": {"value": params.tap_url},
+        "obscore_table": {"value": params.obscore_table},
+        "search_radius": {"value": params.search_radius},
+    }
+
+
+def _build_cache_key_from_adql(adql_query_str: str) -> str:
+    return "search:" + hashlib.sha256(adql_query_str.encode()).hexdigest()
+
+
+async def _redis_get_cached(redis_client: Any, cache_key: str) -> SearchResult | None:
+    t0 = time.perf_counter()
+    ok = False
+    cached: str | None
+    try:
+        cached = await redis_client.get(cache_key)
+        ok = True
+    except Exception:
+        cached = None
+        logger.warning("Redis get failed for key=%s", cache_key, exc_info=True)
+    finally:
+        observe_redis("get", time.perf_counter() - t0, ok)
+
+    if cached:
+        cache_hit("search")
+        return SearchResult.model_validate_json(cached)
+
+    cache_miss("search")
+    return None
+
+
+async def _redis_set_cached(redis_client: Any, cache_key: str, obj: SearchResult, ttl: int) -> None:
+    t0 = time.perf_counter()
+    ok = False
+    try:
+        await redis_client.set(cache_key, obj.model_dump_json(), ex=ttl)
+        ok = True
+    except Exception:
+        logger.warning("Redis set failed for key=%s", cache_key, exc_info=True)
+    finally:
+        observe_redis("set", time.perf_counter() - t0, ok)
+
+
+def _augment_with_datalink(
+    base_api_url: str, columns: list[str], data: list[list[Any]]
+) -> tuple[list[str], list[list[Any]]]:
+    if "obs_publisher_did" not in columns:
+        return columns, data
+
+    datalink_col = "datalink_url"
+    columns_with = columns[:]
+    if datalink_col not in columns_with:
+        columns_with.append(datalink_col)
+
+    did_idx = columns_with.index("obs_publisher_did")
+    datalink_idx = columns_with.index(datalink_col)
+
+    new_rows: list[list[Any]] = []
+    for original_row in data:
+        new_row = original_row[:]
+        while len(new_row) < len(columns_with):
+            new_row.append(None)
+
+        did = new_row[did_idx] if did_idx < len(new_row) else None
+        if did:
+            encoded_did = urllib.parse.quote(str(did), safe="")
+            new_row[datalink_idx] = f"{base_api_url}/api/datalink?ID={encoded_did}"
+        new_rows.append(new_row)
+
+    return columns_with, new_rows
+
+
+def _add_if(dst: dict[str, Any], key: str, val: Any) -> None:
+    if val is not None and val != "":
+        dst[key] = val
+
+
+def _build_history_params(params: SearchCoordsParams, coord: _CoordInfo) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "tap_url": params.tap_url,
+        "obscore_table": params.obscore_table,
+        "search_radius": params.search_radius,
+        "coordinate_system": coord.coordinate_system,
+    }
+
+    # coords
+    if coord.coordinate_system in (COORD_SYS_EQ_DEG, COORD_SYS_EQ_HMS):
+        _add_if(out, "ra", params.ra)
+        _add_if(out, "dec", params.dec)
+    elif coord.coordinate_system == COORD_SYS_GAL:
+        _add_if(out, "l", params.l_deg)
+        _add_if(out, "b", params.b_deg)
+
+    # time
+    _add_if(out, "obs_start_input", params.obs_start)
+    _add_if(out, "obs_end_input", params.obs_end)
+    _add_if(out, "mjd_start", params.mjd_start)
+    _add_if(out, "mjd_end", params.mjd_end)
+    _add_if(out, "time_scale", params.time_scale)
+
+    # energy
+    _add_if(out, "energy_min", params.energy_min)
+    _add_if(out, "energy_max", params.energy_max)
+
+    # other filters
+    _add_if(out, "tracking_mode", params.tracking_mode)
+    _add_if(out, "pointing_mode", params.pointing_mode)
+    _add_if(out, "obs_mode", params.obs_mode)
+    _add_if(out, "proposal_id", params.proposal_id)
+    _add_if(out, "proposal_title", params.proposal_title)
+    _add_if(out, "proposal_contact", params.proposal_contact)
+    _add_if(out, "proposal_type", params.proposal_type)
+    _add_if(out, "moon_level", params.moon_level)
+    _add_if(out, "sky_brightness", params.sky_brightness)
+
+    return out
+
+
+async def _save_history_if_any(
+    *,
+    identity: VerifiedIdentity | None,
+    params: SearchCoordsParams,
+    coord: _CoordInfo,
+    db_session: AsyncSession,
+    search_result_obj: SearchResult,
+) -> None:
+    if not identity:
+        return
+    user_sub = identity.sub
+    try:
+        params_to_save = _build_history_params(params, coord)
+        history_payload = QueryHistoryCreate(
+            query_params=params_to_save,
+            results=search_result_obj.model_dump(),
+        )
+        await _internal_create_query_history(
+            history=history_payload, user_sub=user_sub, session=db_session
+        )
+    except Exception:
+        logger.exception("saving query history failed")
+
+
+# Optional filter + TAP column handling
+
+
+@dataclass
+class _TapColumnContext:
+    tap_schema_available: bool
+    tap_cols: set[str]
+    ignored_optional_filters: list[str]
+    requested_optional_filters: list[str]
+    applied_optional_filters: list[str]
+    optional_filter_probe_failed: bool
+    probe_cache: dict[str, bool]
+
+
+async def _discover_tap_columns(tap_url: str, obscore_table: str) -> tuple[bool, set[str]]:
+    try:
+        cols = await get_tap_table_columns(tap_url, obscore_table)
+        cols_norm = {c.lower() for c in cols} if cols else set()
+        return bool(cols_norm), cols_norm
+    except Exception as e:
+        logger.warning(
+            "search_coords: TAP_SCHEMA lookup failed (%s). Optional filters may require fallback probing.",
+            e,
+        )
+        return False, set()
+
+
+async def _optional_col_exists(
+    *,
+    ctx: _TapColumnContext,
+    tap_url: str,
+    obscore_table: str,
+    col: str,
+) -> bool:
+    # Use TAP_SCHEMA when available; otherwise probe actual table (cached per request).
+    if ctx.tap_schema_available:
+        return col.lower() in ctx.tap_cols
+
+    if col in ctx.probe_cache:
+        return ctx.probe_cache[col]
+
+    try:
+        exists = await tap_supports_columns(tap_url, obscore_table, [col])
+        ctx.probe_cache[col] = bool(exists)
+        return bool(exists)
+    except Exception as e:
+        logger.warning(
+            "Optional column probe failed for tap_url=%s table=%s col=%s (%s)",
+            tap_url,
+            obscore_table,
+            col,
+            e,
+            exc_info=True,
+        )
+        raise
+
+
+async def _add_optional_enum_eq(
+    *,
+    ctx: _TapColumnContext,
+    where_conditions: list[str],
+    tap_url: str,
+    obscore_table: str,
+    col: str,
+    val: str | None,
+) -> None:
+    if not val:
+        return
+    ctx.requested_optional_filters.append(col)
+    try:
+        if await _optional_col_exists(
+            ctx=ctx, tap_url=tap_url, obscore_table=obscore_table, col=col
+        ):
+            where_conditions.append(f"{col} = '{_esc_adql_str(val)}'")
+            ctx.applied_optional_filters.append(col)
+        else:
+            ctx.ignored_optional_filters.append(col)
+    except Exception:
+        ctx.optional_filter_probe_failed = True
+        ctx.ignored_optional_filters.append(col)
+
+
+async def _add_optional_text_eq(
+    *,
+    ctx: _TapColumnContext,
+    where_conditions: list[str],
+    tap_url: str,
+    obscore_table: str,
+    col: str,
+    val: str | None,
+) -> None:
+    v = _norm_opt(val)
+    if not v:
+        return
+    ctx.requested_optional_filters.append(col)
+    try:
+        if await _optional_col_exists(
+            ctx=ctx, tap_url=tap_url, obscore_table=obscore_table, col=col
+        ):
+            where_conditions.append(f"{col} = '{_esc_adql_str(v)}'")
+            ctx.applied_optional_filters.append(col)
+        else:
+            ctx.ignored_optional_filters.append(col)
+    except Exception:
+        ctx.optional_filter_probe_failed = True
+        ctx.ignored_optional_filters.append(col)
+
+
+async def _add_optional_text_like(
+    *,
+    ctx: _TapColumnContext,
+    where_conditions: list[str],
+    tap_url: str,
+    obscore_table: str,
+    col: str,
+    val: str | None,
+) -> None:
+    v = _norm_opt(val)
+    if not v:
+        return
+    ctx.requested_optional_filters.append(col)
+    try:
+        if await _optional_col_exists(
+            ctx=ctx, tap_url=tap_url, obscore_table=obscore_table, col=col
+        ):
+            where_conditions.append(f"ivo_nocasematch({col}, '%{_esc_adql_str(v)}%') = 1")
+            ctx.applied_optional_filters.append(col)
+        else:
+            ctx.ignored_optional_filters.append(col)
+    except Exception:
+        ctx.optional_filter_probe_failed = True
+        ctx.ignored_optional_filters.append(col)
+
+
+async def _apply_energy_filter(
+    *,
+    params: SearchCoordsParams,
+    tap_schema_available: bool,
+    tap_cols: set[str],
+    where_conditions: list[str],
+) -> None:
+    energy_filter_requested = (params.energy_min is not None) or (params.energy_max is not None)
+    if not energy_filter_requested:
+        return
+
+    have_energy_cols = False
+    if tap_schema_available:
+        have_energy_cols = ("energy_min" in tap_cols) and ("energy_max" in tap_cols)
+    else:
+        try:
+            have_energy_cols = await tap_supports_columns(
+                params.tap_url, params.obscore_table, ["energy_min", "energy_max"]
+            )
+        except Exception as e:
+            logger.warning("Energy column probe failed (tap service error).", exc_info=True)
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Energy filtering could not be validated because the TAP service returned an error while "
+                    "checking column availability. Please try again later or choose another TAP table."
+                ),
+            ) from e
+
+    if not have_energy_cols:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Energy filtering requires columns 'energy_min' and 'energy_max' to be present in '{params.obscore_table}', "
+                "but they were not found. Please choose a table that provides energy columns, or disable Energy Search."
+            ),
+        )
+
+    # Overlap logic
+    # Energy filtering (UI inputs are TeV, hess_dr.obscore energy_* columns are eV)
+    TEV_TO_EV = 1e12
+    if params.energy_min is not None:
+        where_conditions.append(f"energy_max >= {float(params.energy_min) * TEV_TO_EV:g}")
+    if params.energy_max is not None:
+        where_conditions.append(f"energy_min <= {float(params.energy_max) * TEV_TO_EV:g}")
+
+
+def _validate_optional_filters_outcome(
+    *,
+    coords_present: bool,
+    time_present: bool,
+    energy_filter_requested: bool,
+    ctx: _TapColumnContext,
+) -> None:
+    if ctx.ignored_optional_filters:
+        logger.info(
+            "search_coords: Ignored optional filters (missing columns or probe failure): %s",
+            sorted(set(ctx.ignored_optional_filters)),
+        )
+
+    if (
+        ctx.requested_optional_filters
+        and ctx.applied_optional_filters
+        and not ctx.tap_schema_available
+    ):
+        logger.info(
+            "search_coords: Applied optional filters via fallback column probe (TAP_SCHEMA unavailable): %s",
+            sorted(set(ctx.applied_optional_filters)),
+        )
+
+    only_optional_filters_requested = not (
+        coords_present or time_present or energy_filter_requested
     )
 
-    if not (
-        coords_present or time_filter_present or energy_filter_requested or other_filter_requested
+    if (
+        ctx.requested_optional_filters
+        and not ctx.applied_optional_filters
+        and only_optional_filters_requested
     ):
-        raise HTTPException(status_code=400, detail="Provide at least one search criterion.")
+        if ctx.optional_filter_probe_failed:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "The requested optional filters could not be validated because the TAP service returned an error "
+                    "while checking column availability. Please try again later, choose another table/service, or add "
+                    "coordinates/time criteria to narrow the search."
+                ),
+            )
+
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "The requested optional filters could not be applied because the selected table does not "
+                f"provide the required columns: {', '.join(sorted(set(ctx.ignored_optional_filters)))}."
+            ),
+        )
+
+
+def _apply_time_coord_fields(
+    fields: dict[str, Any],
+    time_info: _TimeInfo,
+    coord: _CoordInfo,
+) -> tuple[bool, bool]:
+    """Apply processed time/coord info into fields and return (coords_present, time_present)."""
+    if time_info.present:
+        if time_info.mjd_start_tt is None or time_info.mjd_end_tt is None:
+            raise HTTPException(status_code=500, detail="Internal error: time range is incomplete.")
+        fields["search_mjd_start"] = {"value": float(time_info.mjd_start_tt)}
+        fields["search_mjd_end"] = {"value": float(time_info.mjd_end_tt)}
+
+    if coord.present:
+        if coord.ra_deg is None or coord.dec_deg is None:
+            raise HTTPException(
+                status_code=500, detail="Internal error: coordinates are incomplete."
+            )
+        fields["target_raj2000"] = {"value": float(coord.ra_deg)}
+        fields["target_dej2000"] = {"value": float(coord.dec_deg)}
+
+    return coord.present, time_info.present
+
+
+# implementation function for search_coords
+
+
+async def search_coords_impl(
+    *,
+    request: Request,
+    params: SearchCoordsParams,
+    identity: VerifiedIdentity | None,
+    db_session: AsyncSession,
+    redis_client: Any,
+) -> SearchResult:
+    CACHE_TTL = 3600
+    base_api_url = str(request.base_url).rstrip("/")
+
+    fields: dict[str, Any] = _build_fields_base(params)
+
+    # TAP columns
+    tap_schema_available, tap_cols = await _discover_tap_columns(
+        params.tap_url, params.obscore_table
+    )
+
+    # Time + coords (normalized)
+    time_info = _process_time(params)
+    coord = _process_coords(params)
+    coords_present, time_present = _apply_time_coord_fields(fields, time_info, coord)
+
+    # Determine whether any criteria were provided
+    energy_filter_requested = (params.energy_min is not None) or (params.energy_max is not None)
+    other_filter_requested = any(
+        v is not None
+        for v in (
+            params.tracking_mode,
+            params.pointing_mode,
+            params.obs_mode,
+            params.proposal_id,
+            params.proposal_title,
+            params.proposal_contact,
+            params.proposal_type,
+            params.moon_level,
+            params.sky_brightness,
+        )
+    )
+    _validate_at_least_one_criterion(
+        coords_present, time_present, energy_filter_requested, other_filter_requested
+    )
+
+    where_conditions: list[str] = []
 
     # Spatial / time WHERE clauses
     if coords_present:
@@ -831,7 +1189,7 @@ async def search_coords(
             )
         )
 
-    if time_filter_present:
+    if time_present:
         where_conditions.append(
             build_time_overlap_condition(
                 float(fields["search_mjd_start"]["value"]),
@@ -839,132 +1197,87 @@ async def search_coords(
             )
         )
 
-    # Energy filtering (TeV)
-    if energy_filter_requested:
-        have_energy_cols = False
-
-        if tap_schema_available:
-            have_energy_cols = col_exists("energy_min") and col_exists("energy_max")
-        else:
-            # Fallback probe against the actual table
-            try:
-                have_energy_cols = await tap_supports_columns(
-                    tap_url, obscore_table, ["energy_min", "energy_max"]
-                )
-            except Exception as e:
-                logger.warning(
-                    "Energy column probe failed for tap_url=%s table=%s (%s)",
-                    tap_url,
-                    obscore_table,
-                    e,
-                    exc_info=True,
-                )
-                raise HTTPException(
-                    status_code=503,
-                    detail=(
-                        "Energy filtering could not be validated because the TAP service returned an error while "
-                        "checking column availability. Please try again later or choose another TAP table."
-                    ),
-                ) from e
-
-        if not have_energy_cols:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Energy filtering requires columns 'energy_min' and 'energy_max' to be present in '{obscore_table}', "
-                    "but they were not found. Please choose a table that provides energy columns, or disable Energy Search."
-                ),
-            )
-
-        # Overlap logic
-        if energy_min is not None:
-            where_conditions.append(f"energy_max >= {float(energy_min)}")
-        if energy_max is not None:
-            where_conditions.append(f"energy_min <= {float(energy_max)}")
-
-    # Other optional filters
-    await add_optional_enum_eq("tracking_type", tracking_mode)
-    await add_optional_enum_eq("pointing_mode", pointing_mode)
-    await add_optional_enum_eq("obs_mode", obs_mode)
-
-    await add_optional_text_eq("proposal_id", proposal_id)
-    await add_optional_text_like("proposal_title", proposal_title)
-    await add_optional_text_like("proposal_contact", proposal_contact)
-    await add_optional_enum_eq("proposal_type", proposal_type)
-
-    await add_optional_enum_eq("moon_level", moon_level)
-    await add_optional_enum_eq("sky_brightness", sky_brightness)
-
-    if ignored_optional_filters:
-        logger.info(
-            "search_coords: Ignored optional filters (missing columns or probe failure): %s",
-            sorted(set(ignored_optional_filters)),
-        )
-
-    if requested_optional_filters and applied_optional_filters and not tap_schema_available:
-        logger.info(
-            "search_coords: Applied optional filters via fallback column probe (TAP_SCHEMA unavailable): %s",
-            sorted(set(applied_optional_filters)),
-        )
-
-    only_optional_filters_requested = not (
-        coords_present or time_filter_present or energy_filter_requested
+    # Energy filter
+    await _apply_energy_filter(
+        params=params,
+        tap_schema_available=tap_schema_available,
+        tap_cols=tap_cols,
+        where_conditions=where_conditions,
     )
 
-    if (
-        requested_optional_filters
-        and not applied_optional_filters
-        and only_optional_filters_requested
-    ):
-        # If probe failed, this is a service validation problem (503)
-        if optional_filter_probe_failed:
-            raise HTTPException(
-                status_code=503,
-                detail=(
-                    "The requested optional filters could not be validated because the TAP service returned an error "
-                    "while checking column availability. Please try again later, choose another table/service, or add "
-                    "coordinates/time criteria to narrow the search."
-                ),
-            )
+    # Optional filters
+    ctx = _TapColumnContext(
+        tap_schema_available=tap_schema_available,
+        tap_cols=tap_cols,
+        ignored_optional_filters=[],
+        requested_optional_filters=[],
+        applied_optional_filters=[],
+        optional_filter_probe_failed=False,
+        probe_cache={},
+    )
 
-        # Otherwise, validation succeeded and columns are simply missing (400)
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "The requested optional filters could not be applied because the selected table does not "
-                f"provide the required columns: {', '.join(sorted(set(ignored_optional_filters)))}."
-            ),
+    enum_filters: list[tuple[str, str | None]] = [
+        ("tracking_type", params.tracking_mode),
+        ("pointing_mode", params.pointing_mode),
+        ("obs_mode", params.obs_mode),
+        ("proposal_type", params.proposal_type),
+        ("moon_level", params.moon_level),
+        ("sky_brightness", params.sky_brightness),
+    ]
+    for col, val in enum_filters:
+        await _add_optional_enum_eq(
+            ctx=ctx,
+            where_conditions=where_conditions,
+            tap_url=params.tap_url,
+            obscore_table=params.obscore_table,
+            col=col,
+            val=val,
         )
+
+    await _add_optional_text_eq(
+        ctx=ctx,
+        where_conditions=where_conditions,
+        tap_url=params.tap_url,
+        obscore_table=params.obscore_table,
+        col="proposal_id",
+        val=params.proposal_id,
+    )
+    await _add_optional_text_like(
+        ctx=ctx,
+        where_conditions=where_conditions,
+        tap_url=params.tap_url,
+        obscore_table=params.obscore_table,
+        col="proposal_title",
+        val=params.proposal_title,
+    )
+    await _add_optional_text_like(
+        ctx=ctx,
+        where_conditions=where_conditions,
+        tap_url=params.tap_url,
+        obscore_table=params.obscore_table,
+        col="proposal_contact",
+        val=params.proposal_contact,
+    )
+
+    _validate_optional_filters_outcome(
+        coords_present=coords_present,
+        time_present=time_present,
+        energy_filter_requested=energy_filter_requested,
+        ctx=ctx,
+    )
 
     # Build ADQL once
     where_sql = build_where_clause(where_conditions)
     adql_query_str = build_select_query(str(fields["obscore_table"]["value"]), where_sql, limit=100)
-
-    cache_key = "search:" + hashlib.sha256(adql_query_str.encode()).hexdigest()
+    cache_key = _build_cache_key_from_adql(adql_query_str)
 
     # Redis cache GET (instrumented)
     if redis_client:
-        t0 = time.perf_counter()
-        ok = False
-        cached: str | None
-        try:
-            cached = await redis_client.get(cache_key)
-            ok = True
-        except Exception:
-            cached = None
-            logger.warning("Redis get failed for key=%s", cache_key, exc_info=True)
-        finally:
-            observe_redis("get", time.perf_counter() - t0, ok)
-
-        if cached:
-            cache_hit("search")
-            return SearchResult.model_validate_json(cached)
-
-        cache_miss("search")
+        cached_obj = await _redis_get_cached(redis_client, cache_key)
+        if cached_obj is not None:
+            return cached_obj
 
     # Execute query
-    res_table: Table | None = None
-    error: str | None = None
     try:
         error, res_table, _ = perform_query_with_conditions(fields, where_conditions, limit=100)
     except Exception as e:
@@ -978,128 +1291,22 @@ async def search_coords(
     # Results processing + datalink + Redis SET + history
     try:
         columns, data = astropy_table_to_list(res_table)
+        columns_list = list(columns) if columns else []
+        data_list = [list(row) for row in data] if data else []
 
-        columns = list(columns) if columns else []
-        data = [list(row) for row in data] if data else []
+        columns_with, data_with = _augment_with_datalink(base_api_url, columns_list, data_list)
+        search_result_obj = SearchResult(columns=columns_with, data=data_with)
 
-        # Add datalink_url column if obs_publisher_did present
-        columns_with_datalink = columns[:]
-        data_with_datalink = data
-
-        if "obs_publisher_did" in columns_with_datalink:
-            datalink_col = "datalink_url"
-            if datalink_col not in columns_with_datalink:
-                columns_with_datalink.append(datalink_col)
-
-            did_idx = columns_with_datalink.index("obs_publisher_did")
-            datalink_idx = columns_with_datalink.index(datalink_col)
-
-            new_rows: list[list[Any]] = []
-            for original_row in data:
-                new_row = original_row[:]
-                # ensure slot
-                while len(new_row) < len(columns_with_datalink):
-                    new_row.append(None)
-
-                did = new_row[did_idx] if did_idx < len(new_row) else None
-                if did:
-                    encoded_did = urllib.parse.quote(str(did), safe="")
-                    new_row[datalink_idx] = f"{base_api_url}/api/datalink?ID={encoded_did}"
-                new_rows.append(new_row)
-
-            data_with_datalink = new_rows
-
-        search_result_obj = SearchResult(columns=columns_with_datalink, data=data_with_datalink)
-
-        # Redis SET (instrumented)
         if redis_client:
-            t0 = time.perf_counter()
-            ok = False
-            try:
-                await redis_client.set(cache_key, search_result_obj.model_dump_json(), ex=CACHE_TTL)
-                ok = True
-            except Exception:
-                logger.warning("Redis set failed for key=%s", cache_key, exc_info=True)
-            finally:
-                observe_redis("set", time.perf_counter() - t0, ok)
+            await _redis_set_cached(redis_client, cache_key, search_result_obj, CACHE_TTL)
 
-        # Save history (optional)
-        if user_session_data:
-            app_user_id = user_session_data["app_user_id"]
-            try:
-                params_to_save: dict[str, Any] = {
-                    "tap_url": tap_url,
-                    "obscore_table": obscore_table,
-                    "search_radius": search_radius,
-                    "coordinate_system": coordinate_system,
-                }
-
-                # coords
-                if coordinate_system in (COORD_SYS_EQ_DEG, COORD_SYS_EQ_HMS):
-                    if ra is not None:
-                        params_to_save["ra"] = ra
-                    if dec is not None:
-                        params_to_save["dec"] = dec
-                elif coordinate_system == COORD_SYS_GAL:
-                    if l_deg is not None:
-                        params_to_save["l"] = l_deg
-                    if b_deg is not None:
-                        params_to_save["b"] = b_deg
-
-                # time
-                if obs_start:
-                    params_to_save["obs_start_input"] = obs_start
-                if obs_end:
-                    params_to_save["obs_end_input"] = obs_end
-                if mjd_start is not None:
-                    params_to_save["mjd_start"] = mjd_start
-                if mjd_end is not None:
-                    params_to_save["mjd_end"] = mjd_end
-                if time_scale:
-                    params_to_save["time_scale"] = time_scale
-
-                # energy
-                if energy_min is not None:
-                    params_to_save["energy_min"] = energy_min
-                if energy_max is not None:
-                    params_to_save["energy_max"] = energy_max
-
-                # other filters
-                if tracking_mode:
-                    params_to_save["tracking_mode"] = tracking_mode
-                if pointing_mode:
-                    params_to_save["pointing_mode"] = pointing_mode
-                if obs_mode:
-                    params_to_save["obs_mode"] = obs_mode
-
-                if proposal_id:
-                    params_to_save["proposal_id"] = proposal_id
-                if proposal_title:
-                    params_to_save["proposal_title"] = proposal_title
-                if proposal_contact:
-                    params_to_save["proposal_contact"] = proposal_contact
-                if proposal_type:
-                    params_to_save["proposal_type"] = proposal_type
-
-                if moon_level:
-                    params_to_save["moon_level"] = moon_level
-                if sky_brightness:
-                    params_to_save["sky_brightness"] = sky_brightness
-
-                history_payload = QueryHistoryCreate(
-                    query_params=params_to_save,
-                    results=search_result_obj.model_dump(),
-                )
-                await _internal_create_query_history(
-                    history=history_payload,
-                    app_user_id=app_user_id,
-                    session=db_session,
-                )
-            except Exception as history_error:
-                logger.error(
-                    "saving query history for user app_id=%s: %s", app_user_id, history_error
-                )
-                traceback.print_exc()
+        await _save_history_if_any(
+            identity=identity,
+            params=params,
+            coord=coord,
+            db_session=db_session,
+            search_result_obj=search_result_obj,
+        )
 
         return search_result_obj
 
@@ -1107,10 +1314,29 @@ async def search_coords(
         raise
     except Exception as e:
         logger.error("ERROR search_coords: Exception during results processing: %s", e)
-        traceback.print_exc()
         raise HTTPException(
             status_code=500, detail="Internal error processing search results."
         ) from e
+
+
+# Public route (thin wrapper)
+
+
+@app.get("/api/search_coords", response_model=SearchResult, tags=["search"])
+async def search_coords(
+    request: Request,
+    params: SearchCoordsParams = Depends(get_search_coords_params),
+    identity: VerifiedIdentity | None = Depends(get_optional_identity),
+    db_session: AsyncSession = Depends(get_async_session),
+) -> SearchResult:
+    redis_client = getattr(app.state, "redis", None)
+    return await search_coords_impl(
+        request=request,
+        params=params,
+        identity=identity,
+        db_session=db_session,
+        redis_client=redis_client,
+    )
 
 
 def _simbad_search_aliases(
@@ -1189,7 +1415,7 @@ async def object_resolve(data: dict = Body(...)) -> dict[str, list[dict[str, Any
     results: list[dict[str, Any]] = []
 
     if use_simbad:
-        results.extend(_resolve_via_simbad(object_name, settings.SIMBAD_TAP_BASE))
+        results.extend(_resolve_via_simbad(object_name, _settings().SIMBAD_TAP_BASE))
 
     if use_ned:
         resolved = await _ned_resolve_via_objectlookup(object_name)
@@ -1204,7 +1430,7 @@ def _run_ned_sync_query(adql_query: str) -> list[dict[str, Any]]:
     Helper function to run a synchronous NED TAP query (returns a list of dict).
     By default, NED returns a VOTable. Parse it with astropy.io.votable.
     """
-    url = settings.NED_TAP_SYNC_URL
+    url = _settings().NED_TAP_SYNC_URL
     params: dict[str, str | int] = {
         "QUERY": adql_query,
         "LANG": "ADQL",
@@ -1300,19 +1526,11 @@ async def datalink_endpoint(
     return Response(content=votable_xml, media_type="application/x-votable+xml")
 
 
-# @app.get("/api/_debug_auth_header", include_in_schema=False)
-# async def debug_auth_header(request: Request):
-#    return {"authorization": request.headers.get("authorization")}
-
-
 app.include_router(basket_router)
 app.include_router(opus_router)
 app.include_router(query_history_router)
 app.include_router(coord_router)
 
-# alias mounts
-app.include_router(basket_router, prefix="/api", include_in_schema=False)
-app.include_router(query_history_router, prefix="/api", include_in_schema=False)
 
 # Mount the React build folder
 # app.mount("/", StaticFiles(directory="./js/build", html=True), name="js")

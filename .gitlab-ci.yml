@@ -35,7 +35,24 @@ build:
 unit-test:
   stage: tests
   image: ghcr.io/prefix-dev/pixi:0.66.0-noble
-
+  services:
+    - name: redis:7-alpine
+      alias: redis
+    - name: postgres:16-alpine
+      alias: postgres
+  variables:
+    # Test-only defaults to satisfy Settings validation during import/collection.
+    # Real deployments set these via Helm/CI variables.
+    POSTGRES_DB: testdb
+    POSTGRES_USER: user
+    POSTGRES_PASSWORD: pass
+    API_DATABASE_URL: "postgresql+asyncpg://user:pass@postgres:5432/testdb"
+    AUTH_DATABASE_URL: "postgresql+asyncpg://user:pass@postgres:5432/testdb"
+    API_REDIS_URL: "redis://redis:6379/1"
+    AUTH_REDIS_URL: "redis://redis:6379/0"
+    OIDC_ISSUER: "https://example.invalid"
+    OIDC_REDIRECT_URI: "http://localhost/auth/callback"
+    OIDC_SERVER_METADATA_URL: "https://example.invalid/.well-known/openid-configuration"
   script:
     - pixi run test
   artifacts:

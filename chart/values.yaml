@@ -35,6 +35,10 @@ dev:
 backend:
   enabled: true
   replicaCount: 1
+
+  databaseUrlSecret:
+    name: ""
+    key: "url"
   
   image:
     repository: suss/ctao-data-explorer-backend
@@ -61,10 +65,6 @@ backend:
     targetCPUUtilizationPercentage: 80
   
   env:
-    # Database configuration
-    POSTGRES_USER: ao
-    POSTGRES_PASSWORD: password
-    POSTGRES_DB: fastapi_db
     # These will be constructed from postgres service
     # DATABASE_URL: constructed in template
     # REDIS_URL: constructed in template
@@ -76,8 +76,8 @@ backend:
     # REDIS_URL: redis://redis:6379/0
 
     # # OPUS
-    OPUS_ROOT: https://voparis-uws-test.obspm.fr
-    OPUS_SERVICE: gammapy_source_analysis
+    OPUS_ROOT: "https://voparis-uws-test.obspm.fr"
+    OPUS_SERVICE: "gammapy_source_analysis"
 
     # # Cookies
     # COOKIE_SAMESITE: None
@@ -125,7 +125,7 @@ auth:
     clientId: ""
     clientSecret: ""
     refreshTokenEncryptionKey: ""
-    sessionSecretKeyOidc: ""
+    sessionSecretKeyOidc: "change-me"
 
   env:
     BASE_URL: "https://ctao-data-explorer.test.example"
@@ -133,8 +133,9 @@ auth:
     OIDC_REDIRECT_URI: "https://ctao-data-explorer.test.example/auth/oidc/callback"
     COOKIE_DOMAIN: "ctao-data-explorer.test.example"
     OIDC_SERVER_METADATA_URL: "https://majestix-vm15.zeuthen.desy.de/.well-known/openid-configuration"
-    COOKIE_SECURE: True
-    COOKIE_SAMESITE: Lax
+    OIDC_ISSUER: "https://majestix-vm15.zeuthen.desy.de"
+    COOKIE_SECURE: true
+    COOKIE_SAMESITE: "Lax"
 
 # Frontend configuration
 frontend:

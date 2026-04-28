@@ -1,7 +1,9 @@
 import React, {
   useState, useEffect, useCallback, forwardRef, useImperativeHandle, useRef
 } from 'react';
-import axios from 'axios';
+import { apiClient } from "../apiClients";
+import { publicApiClient } from "../apiClients";
+import { saveQueryHistoryIfLoggedIn } from "./history";
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
 import {
@@ -337,6 +339,7 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
   const handleFormKeyDownCapture = (e) => {
     if (e.key !== 'Enter') return;
+    const target = e.target;
     if (isSubmitting) {
       e.preventDefault();
       return;
@@ -348,7 +351,6 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
       submitViaEnter(); // after blur, state will be updated
       return;
     }
-    const target = e.target;
 
     if (target === objectNameInputRef.current) {
       if (suggestions.length > 0 && highlight >= 0) return;
@@ -498,7 +500,8 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
 
   async function convertMetTo(targetScale, seconds) {
-  const { data } = await axios.post('/api/convert_time', {
+  // const { data } = await apiClient.post('/convert_time', {
+  const { data } = await publicApiClient.post('/convert_time', {
     value: String(seconds),
     input_format: 'met',
     input_scale: 'utc',
@@ -600,7 +603,8 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
   try {
     // Convert from current system to all representations
-    const { data } = await axios.post('/api/convert_coords', {
+    // const { data } = await apiClient.post('/convert_coords', {
+    const { data } = await publicApiClient.post('/convert_coords', {
       coord1: c1,
       coord2: c2,
       system: systemForBackend(coordinateSystem),
@@ -620,7 +624,8 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
   async function convertIsoToScaleMjd(iso, scale) {
     // iso like "YYYY-MM-DDThh:mm:ss"
-    const { data } = await axios.post('/api/convert_time', {
+    // const { data } = await apiClient.post('/convert_time', {
+    const { data } = await publicApiClient.post('/convert_time', {
       value: iso, input_format: 'isot', input_scale: scale
     });
     return {
@@ -629,7 +634,8 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     };
   }
   async function convertMjdToScaleIso(mjd, scale) {
-    const { data } = await axios.post('/api/convert_time', {
+    // const { data } = await apiClient.post('/convert_time', {
+    const { data } = await publicApiClient.post('/convert_time', {
       value: String(mjd), input_format: 'mjd', input_scale: scale
     });
     return {
@@ -654,7 +660,8 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
         const d = String(srcDate.getDate()).padStart(2, '0');
         const iso = `${y}-${m}-${d}T${(srcTime || '00:00:00')}`;
 
-        const { data } = await axios.post('/api/convert_time', {
+        // const { data } = await apiClient.post('/convert_time', {
+        const { data } = await publicApiClient.post('/convert_time', {
           value: iso, input_format: 'isot', input_scale: inputScale
         });
 
@@ -699,7 +706,8 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
           return;
         }
 
-        const { data } = await axios.post('/api/convert_time', {
+        // const { data } = await apiClient.post('/convert_time', {
+        const { data } = await publicApiClient.post('/convert_time', {
           value: String(mjdNum), input_format: 'mjd', input_scale: inputScale
         });
 
@@ -762,7 +770,8 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   };
 
   async function syncFromMet(rawSec, epochIso, targetScale='tt') {
-    const { data } = await axios.post('/api/convert_time', {
+    // const { data } = await apiClient.post('/convert_time', {
+    const { data } = await publicApiClient.post('/convert_time', {
       value: String(rawSec),
       input_format: 'met',
       input_scale: 'utc',
@@ -873,7 +882,8 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
     // convert current start fields
     if (obsStartMJD) {
-      const { data } = await axios.post('/api/convert_time', {
+      // const { data } = await apiClient.post('/convert_time', {
+      const { data } = await publicApiClient.post('/convert_time', {
         value: String(parseMjdInput(obsStartMJD)),
         input_format: 'mjd',
         input_scale: prev
@@ -890,7 +900,8 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     } else if (obsStartDateObj && obsStartTime) {
       await syncFromCalendar('start', obsStartDateObj, obsStartTime, prev, next);
       // syncFromCalendar writes MJD in the target scale
-      const { data } = await axios.post('/api/convert_time', {
+      // const { data } = await apiClient.post('/convert_time', {
+      const { data } = await publicApiClient.post('/convert_time', {
         value: `${ymdFromDate(obsStartDateObj)}T${obsStartTime}`,
         input_format: 'isot',
         input_scale: next
@@ -900,7 +911,8 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
     // convert current END fields
     if (obsEndMJD) {
-      const { data } = await axios.post('/api/convert_time', {
+      // const { data } = await apiClient.post('/convert_time', {
+      const { data } = await publicApiClient.post('/convert_time', {
         value: String(parseMjdInput(obsEndMJD)),
         input_format: 'mjd',
         input_scale: prev
@@ -916,7 +928,8 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
       setMetEndSeconds(formatSecs(ttMjdToMetSeconds(data.tt_mjd)));
     } else if (obsEndDateObj && obsEndTime) {
       await syncFromCalendar('end', obsEndDateObj, obsEndTime, prev, next);
-      const { data } = await axios.post('/api/convert_time', {
+      // const { data } = await apiClient.post('/convert_time', {
+      const { data } = await publicApiClient.post('/convert_time', {
         value: `${ymdFromDate(obsEndDateObj)}T${obsEndTime}`,
         input_format: 'isot',
         input_scale: next
@@ -943,7 +956,8 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     clearTimeout(debounceRef.current);
     if (plain === lastAccepted.current) { setSuggestions([]); return; }
     debounceRef.current = setTimeout(() => {
-      axios.get('/api/object_suggest', {
+      //apiClient.get('/object_suggest', {
+      publicApiClient.get('/object_suggest', {
         params: { q: objectName.trim(), use_simbad: useSimbad, use_ned: useNed, limit: 15 }
       })
         .then(res => setSuggestions(res.data.results || []))
@@ -982,7 +996,8 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   const mySeq = ++latestSeq.current;
 
   try {
-    const res = await axios.post('/api/object_resolve', {
+    // const res = await apiClient.post('/object_resolve', {
+    const res = await publicApiClient.post('/object_resolve', {
       object_name: target,
       use_simbad: overrideService ? (overrideService === 'SIMBAD') : useSimbad,
       use_ned: overrideService ? (overrideService === 'NED') : useNed
@@ -993,7 +1008,8 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     const first = res.data?.results?.[0];
     if (first?.ra != null && first?.dec != null) {
       try {
-        const convRes = await axios.post('/api/convert_coords', {
+        // const convRes = await apiClient.post('/convert_coords', {
+        const convRes = await publicApiClient.post('/convert_coords', {
           coord1: String(first.ra),
           coord2: String(first.dec),
           system: 'deg',
@@ -1054,7 +1070,8 @@ const handleStartMjdChange = (e) => {
 const handleStartMjdBlur = async () => {
   const mjdNum = parseMjdInput(obsStartMJD);
   if (!Number.isFinite(mjdNum)) return;
-  const { data } = await axios.post('/api/convert_time', {
+  // const { data } = await apiClient.post('/convert_time', {
+  const { data } = await publicApiClient.post('/convert_time', {
     value: String(mjdNum), input_format: 'mjd', input_scale: timeScale
   });
   const out = pickOut(data, timeScale);
@@ -1086,7 +1103,8 @@ const handleEndMjdChange = (e) => {
 const handleEndMjdBlur = async () => {
   const mjdNum = parseMjdInput(obsEndMJD);
   if (!Number.isFinite(mjdNum)) return;
-  const { data } = await axios.post('/api/convert_time', {
+  // const { data } = await apiClient.post('/convert_time', {
+  const { data } = await publicApiClient.post('/convert_time', {
     value: String(mjdNum), input_format: 'mjd', input_scale: timeScale
   });
   const out = pickOut(data, timeScale);
@@ -1189,7 +1207,8 @@ const handleClearForm = () => {
         const systemForBackend =
           (coordinateSystem === COORD_SYS_EQ_HMS) ? 'hmsdms' :
           (coordinateSystem === COORD_SYS_GAL)    ? 'gal'    : 'deg';
-        const parseResponse = await axios.post('/api/parse_coords', {
+        // const parseResponse = await apiClient.post('/parse_coords', {
+        const parseResponse = await publicApiClient.post('/parse_coords', {
           coord1: coord1Input, coord2: coord2Input, system: systemForBackend
         });
         if (parseResponse.data.error) throw new Error(parseResponse.data.error);
@@ -1287,7 +1306,8 @@ const handleClearForm = () => {
         }
 
         // Convert MET → TT MJD (query is in TT)
-        const startConv = await axios.post('/api/convert_time', {
+        // const startConv = await apiClient.post('/convert_time', {
+        const startConv = await publicApiClient.post('/convert_time', {
           value: metStartSeconds,
           input_format: 'met',
           input_scale: 'utc',
@@ -1295,7 +1315,8 @@ const handleClearForm = () => {
           met_epoch_scale: MET_EPOCH_SCALE,
         });
 
-        const endConv = await axios.post('/api/convert_time', {
+        // const endConv = await apiClient.post('/convert_time', {
+        const endConv = await publicApiClient.post('/convert_time', {
           value: metEndSeconds,
           input_format: 'met',
           input_scale: 'utc',
@@ -1388,13 +1409,21 @@ const handleClearForm = () => {
 
     // call API
     try {
-      const response = await axios.get('/api/search_coords', { params: finalReqParams });
+      // const response = await apiClient.get('/search_coords', { params: finalReqParams });
+      const response = await publicApiClient.get('/search_coords', { params: finalReqParams });
       const payload = response.data;
       const nRows = Array.isArray(payload?.data) ? payload.data.length : 0;
       if (nRows === 0) {
         setWarningMessage('No results were found for the given search criteria.');
       } else {
         setResults(payload);
+      }
+      if (nRows > 0) {
+        await saveQueryHistoryIfLoggedIn({
+        isLoggedIn,
+        queryParams: finalReqParams,
+        results: payload,
+        });
       }
     } catch (error) {
       const errorDetail = error.response?.data?.detail || error.message || 'Unknown search error.';

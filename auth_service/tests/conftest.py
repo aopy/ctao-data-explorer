@@ -14,13 +14,16 @@ from ctao_shared.constants import (
     SESSION_KEY_PREFIX,
     SESSION_REFRESH_TOKEN_KEY,
 )
-from ctao_shared.db import Base, encrypt_token, get_async_session, get_redis_client
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from api.tests.fakeredis import FakeRedis
+from auth_service.crypto import encrypt_token
+from auth_service.db import get_async_session
+from auth_service.db_base import Base
 from auth_service.models import UserTable
+from auth_service.redis_client import get_redis_client
 
 try:
     from starlette.testclient import LifespanManager

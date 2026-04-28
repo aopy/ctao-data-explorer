@@ -42,16 +42,26 @@ spec:
             - containerPort: {{ .Values.auth.service.port }}
               name: http
 
+          {{ $_ := required "auth.env.OIDC_ISSUER is required" (index .Values.auth.env "OIDC_ISSUER") }}
+
           env:
+            - name: AUTH_REDIS_URL
+              value: {{ include "ctao-data-explorer.redisUrl" . | quote }}
+            - name: AUTH_DATABASE_URL
+              value: {{ include "ctao-data-explorer.databaseUrl" . | quote }}
             - name: REDIS_URL
               value: {{ include "ctao-data-explorer.redisUrl" . | quote }}
             - name: DATABASE_URL
               value: {{ include "ctao-data-explorer.databaseUrl" . | quote }}
-            {{- with .Values.auth.env }}
-            {{- range $k, $v := . }}
+            - name: SESSION_SECRET_KEY_OIDC
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ctao-data-explorer.authSecretName" . }}
+                  key: SESSION_SECRET_KEY_OIDC
+
+            {{- range $k, $v := .Values.auth.env }}
             - name: {{ $k }}
-              value: "{{ $v }}"
-            {{- end }}
+              value: {{ $v | quote }}
             {{- end }}
           envFrom:
             - secretRef:

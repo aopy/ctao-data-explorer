@@ -1,5 +1,6 @@
 import React, { useMemo, useEffect, useState, useRef } from "react";
-import axios from "axios";
+import { apiClient } from "../apiClients";
+import { publicApiClient } from "../apiClients";
 import { palette, rgba } from "./chartColours";
 import Plot from "react-plotly.js";
 
@@ -19,7 +20,8 @@ async function convertMjdTT(mjdVal) {
   const key = String(mjdVal);
   if (convCache.has(key)) return convCache.get(key);
 
-  const resp = await axios.post("/api/convert_time", {
+  // const resp = await apiClient.post("/convert_time", {
+  const resp = await publicApiClient.post("/convert_time", {
     value: key,
     input_format: "mjd",
     input_scale: "tt", // t_min/t_max are TT in ObsCore

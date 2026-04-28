@@ -1,21 +1,25 @@
 import inspect
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
+from functools import lru_cache
 
 import redis.asyncio as redis
-from ctao_shared.config import get_settings
-from ctao_shared.db import get_redis_pool
 from ctao_shared.logging_config import setup_logging
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.middleware.sessions import SessionMiddleware
 
+from auth_service.config import get_auth_settings
+from auth_service.redis_client import get_redis_pool
 from auth_service.routers.auth import auth_api_router
 from auth_service.routers.oidc import oidc_router
 from auth_service.routers.token_relay import router as token_relay_router
 
-settings = get_settings()
+
+@lru_cache
+def _settings():
+    return get_auth_settings()
 
 
 def _init_redis_for_app(app: FastAPI) -> redis.ConnectionPool | None:
@@ -52,12 +56,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 setup_logging(
-    level=settings.LOG_LEVEL,
-    include_access=settings.LOG_INCLUDE_ACCESS,
-    json=settings.LOG_JSON,
+    level=_settings().LOG_LEVEL,
+    include_access=_settings().LOG_INCLUDE_ACCESS,
+    json=_settings().LOG_JSON,
 )
 
-docs_enabled = settings.ENABLE_DOCS
+docs_enabled = _settings().ENABLE_DOCS
 
 app = FastAPI(
     title="CTAO Auth Service",
@@ -69,11 +73,11 @@ app = FastAPI(
     swagger_ui_oauth2_redirect_url="/auth/docs/oauth2-redirect" if docs_enabled else None,
 )
 
-if settings.METRICS_ENABLED:
+if _settings().METRICS_ENABLED:
     from fastapi import Response
     from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
-    @app.get(settings.METRICS_ROUTE, include_in_schema=False)
+    @app.get(_settings().METRICS_ROUTE, include_in_schema=False)
     def metrics() -> Response:
         return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
@@ -105,7 +109,7 @@ app.add_middleware(
 
 app.add_middleware(
     SessionMiddleware,
-    secret_key=settings.SESSION_SECRET_KEY_OIDC,
+    secret_key=_settings().SESSION_SECRET_KEY_OIDC,
     session_cookie="ctao_oidc_state_session",
     https_only=False,
     max_age=600,
