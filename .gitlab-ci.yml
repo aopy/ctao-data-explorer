@@ -10,7 +10,7 @@ pytest:
   variables:
     PIP_DISABLE_PIP_VERSION_CHECK: "1"
     PIP_NO_CACHE_DIR: "1"
-    PYTHONPATH: "$CI_PROJECT_DIR:$CI_PROJECT_DIR/api"
+    PYTHONPATH: "$CI_PROJECT_DIR:$CI_PROJECT_DIR/api:$CI_PROJECT_DIR/auth_service"
   before_script:
     - set -euo pipefail
     - python -V
@@ -34,10 +34,31 @@ pytest:
     - python -c "import pkg_resources; print('pkg_resources still OK after deps')"
 
     # Create a throwaway .env.ci with safe defaults
-    - printf "OPUS_SERVICE=%s\nOPUS_APP_TOKEN=%s\nOPUS_APP_USER=%s\n" \
-        "${OPUS_SERVICE:-https://example.invalid/opus}" \
-        "${OPUS_APP_TOKEN:-dummy-ci-token}" \
-        "${OPUS_APP_USER:-ci}" > .env.ci
+    - |
+      cat > .env.ci <<EOF
+      OPUS_SERVICE=${OPUS_SERVICE:-https://example.invalid/opus}
+      OPUS_APP_TOKEN=${OPUS_APP_TOKEN:-dummy-ci-token}
+      OPUS_APP_USER=${OPUS_APP_USER:-ci}
+
+      API_DATABASE_URL=sqlite+aiosqlite:///./test.db
+      API_REDIS_URL=redis://localhost:6379/0
+
+      AUTH_DATABASE_URL=sqlite+aiosqlite:///./test_auth.db
+      AUTH_REDIS_URL=redis://localhost:6379/1
+
+      CTAO_CLIENT_ID=dummy-client-id
+      CTAO_CLIENT_SECRET=dummy-client-secret
+      OIDC_ISSUER=https://example.invalid/issuer
+
+      BASE_URL=http://localhost:8000
+      FRONTEND_BASE_URL=http://localhost:3000
+      OIDC_REDIRECT_URI=http://localhost:8001/auth/oidc/callback
+
+      COOKIE_NAME_MAIN_SESSION=ctao_session_main
+      COOKIE_SAMESITE=lax
+      COOKIE_SECURE=false
+      COOKIE_DOMAIN=
+      EOF
 
     # Append a generated encryption key, then make it the active .env
     - |
@@ -54,7 +75,7 @@ pytest:
 
   script:
     - . .venv/bin/activate
-    - python -m pytest api --maxfail=1 --disable-warnings --cov=api --cov-report=xml:coverage.xml
+    - python -m pytest api auth_service/tests --maxfail=1 --disable-warnings --cov=api --cov=auth_service --cov-report=xml:coverage.xml
 
   artifacts:
     when: always
