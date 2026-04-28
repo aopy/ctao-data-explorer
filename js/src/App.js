@@ -13,8 +13,11 @@ import UserProfilePage from "./components/UserProfilePage";
 import QueryStorePage from "./components/QueryStorePage";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
-import { AUTH_PREFIX } from "./index";
+import { AUTH_PREFIX } from "./config";
 import { launchOidcLogin } from "./components/oidcHelper";
+import { authClient, apiClient, publicApiClient } from "./apiClients";
+import { installAuthInterceptors } from "./components/axiosSetup";
+
 
 /* Guards */
 
@@ -264,6 +267,12 @@ function TabsApp() {
     );
   };
 
+  useEffect(() => {
+    installAuthInterceptors(authClient);
+    installAuthInterceptors(apiClient);
+    installAuthInterceptors(publicApiClient, { mode: "public" });
+  }, []);
+
   // Restore after OIDC roundtrip
   useEffect(() => {
     try {
@@ -324,8 +333,8 @@ function TabsApp() {
     setIsLoadingUser(true);
 
     const timer = setTimeout(() => {
-      axios
-        .get(`${AUTH_PREFIX}/me`, {
+      authClient
+          .get(`/me`, {
           skipAuthErrorHandling: true,
           validateStatus: (s) => s === 200 || s === 401,
           withCredentials: true,
@@ -380,9 +389,9 @@ function TabsApp() {
 
   const handleLogout = () => {
     const xsrf = getCookie("XSRF-TOKEN");
-    axios
+    authClient
       .post(
-        `${AUTH_PREFIX}/logout_session`,
+        `/logout_session`,
         null,
         {
           headers: xsrf ? { "X-XSRF-TOKEN": xsrf } : {},

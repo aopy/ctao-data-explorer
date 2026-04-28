@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from collections.abc import Iterable
 
@@ -14,6 +15,16 @@ _TAP_COL_CACHE: dict[tuple[str, str], tuple[float, set[str], bool]] = {}
 _TTL_OK_SECONDS = 3600
 _TTL_ERR_SECONDS = 60
 _MAX_CACHE = 256
+
+_MISSING_COL_PATTERNS = (
+    r"no such field",
+    r"unknown column",
+    r"could not be located",
+    r"unknown identifier",
+    r"column .* does not exist",
+)
+
+TAP_QUERY_STATUS_ERROR_MSG = "TAP query returned QUERY_STATUS=ERROR"
 
 
 def _split_table_name(table_fullname: str) -> tuple[str | None, str]:
@@ -52,6 +63,50 @@ def _cache_set(cache_key: tuple[str, str], cols: set[str], ok: bool) -> None:
         _TAP_COL_CACHE.pop(oldest_key, None)
 
 
+def _looks_like_missing_column(msg: str) -> bool:
+    s = (msg or "").lower()
+    return any(re.search(p, s) for p in _MISSING_COL_PATTERNS)
+
+
+def _extract_tap_error_message(body: str) -> str | None:
+    """
+    Detect a TAP/VOTable error returned with HTTP 200.
+    DaCHS commonly includes QUERY_STATUS value="ERROR" inside an <INFO> element.
+    """
+    if not body:
+        return None
+
+    b = body
+    # Quick pre-checks to keep it fast
+    if "QUERY_STATUS" not in b or 'value="ERROR"' not in b:
+        return None
+
+    # Find the error marker
+    pos = b.find('value="ERROR"')
+    if pos == -1:
+        return None
+
+    # Walk backwards to find the start of the INFO tag that contains it
+    info_open = b.rfind("<INFO", 0, pos)
+    if info_open == -1:
+        return TAP_QUERY_STATUS_ERROR_MSG
+
+    # Find end of opening tag
+    info_tag_end = b.find(">", info_open)
+    if info_tag_end == -1:
+        return TAP_QUERY_STATUS_ERROR_MSG
+
+    # Find closing tag
+    info_close = b.find("</INFO>", info_tag_end)
+    if info_close == -1:
+        return TAP_QUERY_STATUS_ERROR_MSG
+
+    # Extract and normalize whitespace
+    msg = b[info_tag_end + 1 : info_close]
+    msg = " ".join(msg.split())
+    return msg.strip() or TAP_QUERY_STATUS_ERROR_MSG
+
+
 async def tap_supports_columns(
     tap_url: str,
     table_fullname: str,
@@ -59,40 +114,94 @@ async def tap_supports_columns(
     *,
     client: httpx.AsyncClient | None = None,
 ) -> bool:
+
     base_url = tap_url.rstrip("/")
     sync_url = base_url + "/sync"
-
     cols = [c.strip() for c in columns if c and c.strip()]
+
     if not cols:
         return True
 
     select_list = ", ".join(cols)
     adql = f"SELECT TOP 1 {select_list} FROM {table_fullname}"
-
     own_client = client is None
     http: httpx.AsyncClient = client if client is not None else httpx.AsyncClient(timeout=20.0)
 
     try:
         r = await http.post(
             sync_url,
-            data={"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "json", "QUERY": adql},
+            data={
+                "REQUEST": "doQuery",
+                "LANG": "ADQL",
+                "FORMAT": "csv",
+                "QUERY": adql,
+            },
         )
-
+        body = r.text or ""
+        tap_err = _extract_tap_error_message(body)
+        if r.status_code == 200 and tap_err:
+            if _looks_like_missing_column(tap_err) or _looks_like_missing_column(body):
+                return False
+            raise httpx.HTTPStatusError(
+                f"TAP returned an error payload for column probe: {tap_err}",
+                request=r.request,
+                response=r,
+            )
         if r.status_code != 200:
-            txt = (r.text or "").lower()
-            if (
-                ("no such field" in txt)
-                or ("unknown column" in txt)
-                or ("could not be located" in txt)
-                or ("unknown identifier" in txt)
-            ):
+            if _looks_like_missing_column(body):
                 return False
             r.raise_for_status()
-
         return True
     finally:
         if own_client:
             await http.aclose()
+
+
+def _build_tap_schema_adql(schema_l: str | None, table_l: str) -> str:
+    if schema_l:
+        return (
+            "SELECT column_name FROM TAP_SCHEMA.columns "
+            f"WHERE lower(schema_name) = '{_adql_escape(schema_l)}' "
+            f"AND lower(table_name)  = '{_adql_escape(table_l)}'"
+        )
+    return (
+        "SELECT column_name FROM TAP_SCHEMA.columns "
+        f"WHERE lower(table_name) = '{_adql_escape(table_l)}'"
+    )
+
+
+def _parse_single_col_csv(text: str) -> set[str]:
+    """
+    Parse a CSV response that contains a single column header: column_name
+    and return a set of lowercased values.
+    """
+    raw = text or ""
+    lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+    if len(lines) <= 1:
+        return set()
+
+    out: set[str] = set()
+    for ln in lines[1:]:
+        v = ln.strip().strip('"').strip("'").strip()
+        if v:
+            out.add(v.lower())
+    return out
+
+
+async def _run_tap_schema_query(
+    http: httpx.AsyncClient, sync_url: str, adql_query: str
+) -> set[str]:
+    r = await http.post(
+        sync_url,
+        data={
+            "REQUEST": "doQuery",
+            "LANG": "ADQL",
+            "FORMAT": "csv",
+            "QUERY": adql_query,
+        },
+    )
+    r.raise_for_status()
+    return _parse_single_col_csv(r.text)
 
 
 async def get_tap_table_columns(
@@ -112,66 +221,31 @@ async def get_tap_table_columns(
     schema_l = schema.lower() if schema else None
     table_l = table.lower()
 
-    if schema_l:
-        adql = (
-            "SELECT column_name FROM TAP_SCHEMA.columns "
-            f"WHERE lower(schema_name) = '{_adql_escape(schema_l)}' "
-            f"AND lower(table_name)  = '{_adql_escape(table_l)}'"
-        )
-    else:
-        adql = (
-            "SELECT column_name FROM TAP_SCHEMA.columns "
-            f"WHERE lower(table_name) = '{_adql_escape(table_l)}'"
-        )
-
     sync_url = base_url + "/sync"
+    adql = _build_tap_schema_adql(schema_l, table_l)
+    fallback_adql = _build_tap_schema_adql(None, table_l) if schema_l else None
 
-    own_client = client is None
-    http: httpx.AsyncClient = client if client is not None else httpx.AsyncClient(timeout=20.0)
-
-    async def _run(adql_query: str) -> set[str]:
-        r = await http.post(
-            sync_url,
-            data={
-                "REQUEST": "doQuery",
-                "LANG": "ADQL",
-                "FORMAT": "json",
-                "QUERY": adql_query,
-            },
-        )
-        r.raise_for_status()
-        payload = r.json()
-
-        cols_out: set[str] = set()
-        for row in payload.get("data", []) or []:
-            if row and isinstance(row[0], str):
-                cols_out.add(row[0].strip().lower())
-        return cols_out
+    async def _execute(http: httpx.AsyncClient) -> set[str]:
+        cols = await _run_tap_schema_query(http, sync_url, adql)
+        if fallback_adql and not cols:
+            cols = await _run_tap_schema_query(http, sync_url, fallback_adql)
+        return cols
 
     try:
-        cols = await _run(adql)
-
-        if schema_l and not cols:
-            fallback_adql = (
-                "SELECT column_name FROM TAP_SCHEMA.columns "
-                f"WHERE lower(table_name) = '{_adql_escape(table_l)}'"
-            )
-            cols = await _run(fallback_adql)
+        if client is not None:
+            cols = await _execute(client)
+        else:
+            async with httpx.AsyncClient(timeout=20.0) as http:
+                cols = await _execute(http)
 
         _cache_set(cache_key, cols, ok=True)
         return cols
 
     except Exception as e:
         logger.warning(
-            "get_tap_table_columns: TAP_SCHEMA lookup failed for tap_url=%s table=%s (%s)",
-            tap_url,
-            table_fullname,
-            e,
+            "get_tap_table_columns: TAP_SCHEMA lookup failed (%s)",
+            repr(e),
             exc_info=True,
         )
         _cache_set(cache_key, set(), ok=False)
         return set()
-
-    finally:
-        if own_client:
-            await http.aclose()

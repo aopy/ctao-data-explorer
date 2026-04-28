@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { apiClient } from "../apiClients";
 import { API_PREFIX } from '../index';
 import {
     COORD_SYS_EQ_DEG,
@@ -64,7 +64,7 @@ function QueryStorePage({ onLoadHistory, isActive, isLoggedIn }) {
         console.log("QueryStorePage: Attempting to fetch history...");
         setIsLoading(true);
         setError(null);
-        axios.get(`${API_PREFIX}/query-history`)
+        apiClient.get(`/query-history`)
             .then(res => {
                 console.log("QueryStorePage: History data received raw:", res);
                 console.log("QueryStorePage: History data received:", res.data);
@@ -97,7 +97,7 @@ function QueryStorePage({ onLoadHistory, isActive, isLoggedIn }) {
             return;
         }
         setError(null);
-        axios.delete(`${API_PREFIX}/query-history/${historyId}`)
+        apiClient.delete(`/query-history/${historyId}`)
          .then(() => {
              console.log(`History item ${historyId} deleted successfully.`);
              fetchHistory();

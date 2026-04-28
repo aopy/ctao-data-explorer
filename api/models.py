@@ -2,13 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from ctao_shared.db import Base
-from ctao_shared.models_auth import UserTable  # noqa: F401
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Table, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-USER_ID_FK = "users.id"
+from api.db_base import Base
 
 basket_items_association = Table(
     "basket_items_association",
@@ -28,7 +26,8 @@ class SearchResult(BaseModel):
 class QueryHistory(Base):
     __tablename__ = "query_history"
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey(USER_ID_FK), nullable=False)
+    # user_id: Mapped[int] = mapped_column(ForeignKey(USER_ID_FK), nullable=False)
+    user_sub: Mapped[str] = mapped_column(String(128), index=True, nullable=False)
     query_date: Mapped[Any] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -39,7 +38,8 @@ class QueryHistory(Base):
 class BasketGroup(Base):
     __tablename__ = "basket_groups"
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey(USER_ID_FK), nullable=False)
+    # user_id: Mapped[int] = mapped_column(ForeignKey(USER_ID_FK), nullable=False)
+    user_sub: Mapped[str] = mapped_column(String(128), index=True, nullable=False)
     name: Mapped[str] = mapped_column(String, nullable=False, default="My Basket")
     created_at: Mapped[Any] = mapped_column(
         DateTime(timezone=True),
@@ -59,7 +59,8 @@ class BasketGroup(Base):
 class SavedDataset(Base):
     __tablename__ = "saved_datasets"
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey(USER_ID_FK), nullable=False)
+    # user_id: Mapped[int] = mapped_column(ForeignKey(USER_ID_FK), nullable=False)
+    user_sub: Mapped[str] = mapped_column(String(128), index=True, nullable=False)
     obs_id: Mapped[str] = mapped_column(String, nullable=False)
     dataset_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[Any | None] = mapped_column(
