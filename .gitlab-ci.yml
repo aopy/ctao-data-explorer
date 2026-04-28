@@ -46,10 +46,15 @@ pytest:
       AUTH_DATABASE_URL=sqlite+aiosqlite:///./test_auth.db
       AUTH_REDIS_URL=redis://localhost:6379/1
 
+      CTAO_CLIENT_ID=dummy-client-id
+      CTAO_CLIENT_SECRET=dummy-client-secret
+      OIDC_ISSUER=https://example.invalid/issuer
+
       BASE_URL=http://localhost:8000
       FRONTEND_BASE_URL=http://localhost:3000
       OIDC_REDIRECT_URI=http://localhost:8001/auth/oidc/callback
 
+      COOKIE_NAME_MAIN_SESSION=ctao_session_main
       COOKIE_SAMESITE=lax
       COOKIE_SECURE=false
       COOKIE_DOMAIN=
