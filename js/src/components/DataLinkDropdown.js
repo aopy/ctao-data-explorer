@@ -1,11 +1,24 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { apiClient } from "../apiClients";
+import { publicApiClient } from "../apiClients";
+
+
+function normalizeDatalinkPath(url) {
+  if (!url) return url;
+  try {
+    const u = new URL(url, window.location.origin);
+    const p = u.pathname.startsWith("/api/") ? u.pathname.slice(4) : u.pathname;
+    return p + (u.search || "");
+  } catch {
+    return url.startsWith("/api/") ? url.slice(4) : url;
+  }
+}
 
 const DataLinkDropdown = ({ datalink_url, isOpen, onToggle }) => {
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(false);
   const [openUp, setOpenUp] = useState(false);
   const containerRef = useRef(null);
+  const url = normalizeDatalinkPath(datalink_url);
 
   // When the dropdown becomes open, fetch the VOTable if not already loaded
   // determine if there is enough space below
@@ -14,8 +27,8 @@ const DataLinkDropdown = ({ datalink_url, isOpen, onToggle }) => {
       if (services.length === 0) {
         setLoading(true);
         // axios
-        apiClient
-          .get(datalink_url, { responseType: 'text' })
+        publicApiClient
+          .get(url, { responseType: 'text' })
           .then((res) => {
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString(res.data, "application/xml");

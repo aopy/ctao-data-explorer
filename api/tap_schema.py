@@ -159,11 +159,12 @@ async def tap_supports_columns(
 
 def _build_tap_schema_adql(schema_l: str | None, table_l: str) -> str:
     if schema_l:
+        full = f"{schema_l}.{table_l}"
         return (
             "SELECT column_name FROM TAP_SCHEMA.columns "
-            f"WHERE lower(schema_name) = '{_adql_escape(schema_l)}' "
-            f"AND lower(table_name)  = '{_adql_escape(table_l)}'"
+            f"WHERE lower(table_name) = '{_adql_escape(full)}'"
         )
+
     return (
         "SELECT column_name FROM TAP_SCHEMA.columns "
         f"WHERE lower(table_name) = '{_adql_escape(table_l)}'"
@@ -193,15 +194,20 @@ async def _run_tap_schema_query(
 ) -> set[str]:
     r = await http.post(
         sync_url,
-        data={
-            "REQUEST": "doQuery",
-            "LANG": "ADQL",
-            "FORMAT": "csv",
-            "QUERY": adql_query,
-        },
+        data={"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "csv", "QUERY": adql_query},
     )
     r.raise_for_status()
-    return _parse_single_col_csv(r.text)
+
+    body = r.text or ""
+    tap_err = _extract_tap_error_message(body)
+    if tap_err:
+        raise httpx.HTTPStatusError(
+            f"TAP_SCHEMA query returned error payload: {tap_err}",
+            request=r.request,
+            response=r,
+        )
+
+    return _parse_single_col_csv(body)
 
 
 async def get_tap_table_columns(

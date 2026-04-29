@@ -778,7 +778,7 @@ async def _redis_set_cached(redis_client: Any, cache_key: str, obj: SearchResult
 
 
 def _augment_with_datalink(
-    base_api_url: str, columns: list[str], data: list[list[Any]]
+    columns: list[str], data: list[list[Any]]
 ) -> tuple[list[str], list[list[Any]]]:
     if "obs_publisher_did" not in columns:
         return columns, data
@@ -800,7 +800,7 @@ def _augment_with_datalink(
         did = new_row[did_idx] if did_idx < len(new_row) else None
         if did:
             encoded_did = urllib.parse.quote(str(did), safe="")
-            new_row[datalink_idx] = f"{base_api_url}/api/datalink?ID={encoded_did}"
+            new_row[datalink_idx] = f"/datalink?ID={encoded_did}"
         new_rows.append(new_row)
 
     return columns_with, new_rows
@@ -1136,14 +1136,12 @@ def _apply_time_coord_fields(
 
 async def search_coords_impl(
     *,
-    request: Request,
     params: SearchCoordsParams,
     identity: VerifiedIdentity | None,
     db_session: AsyncSession,
     redis_client: Any,
 ) -> SearchResult:
     CACHE_TTL = 3600
-    base_api_url = str(request.base_url).rstrip("/")
 
     fields: dict[str, Any] = _build_fields_base(params)
 
@@ -1294,7 +1292,7 @@ async def search_coords_impl(
         columns_list = list(columns) if columns else []
         data_list = [list(row) for row in data] if data else []
 
-        columns_with, data_with = _augment_with_datalink(base_api_url, columns_list, data_list)
+        columns_with, data_with = _augment_with_datalink(columns_list, data_list)
         search_result_obj = SearchResult(columns=columns_with, data=data_with)
 
         if redis_client:
@@ -1324,14 +1322,12 @@ async def search_coords_impl(
 
 @app.get("/api/search_coords", response_model=SearchResult, tags=["search"])
 async def search_coords(
-    request: Request,
     params: SearchCoordsParams = Depends(get_search_coords_params),
     identity: VerifiedIdentity | None = Depends(get_optional_identity),
     db_session: AsyncSession = Depends(get_async_session),
 ) -> SearchResult:
     redis_client = getattr(app.state, "redis", None)
     return await search_coords_impl(
-        request=request,
         params=params,
         identity=identity,
         db_session=db_session,
