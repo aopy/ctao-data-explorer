@@ -1528,17 +1528,25 @@ app.include_router(query_history_router)
 app.include_router(coord_router)
 
 
-# Mount the React build folder
-# app.mount("/", StaticFiles(directory="./js/build", html=True), name="js")
-STATIC_DIR = os.getenv("STATIC_DIR", "./js/build")
-if os.path.isdir(STATIC_DIR):
-    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="js")
-else:
-    logger.warning("Static build dir '%s' not found; skipping static mount.", STATIC_DIR)
+def _env_truthy(name: str, default: str = "0") -> bool:
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
 
-    @app.get("/", include_in_schema=False)
-    def root() -> dict[str, str]:
-        return {"status": "ok", "app": "CTAO Data Explorer API"}
+SERVE_FRONTEND = _env_truthy("SERVE_FRONTEND", "0")
+STATIC_DIR = os.getenv("STATIC_DIR", "./js/build")
+
+if SERVE_FRONTEND:
+    if os.path.isdir(STATIC_DIR):
+        logger.info("SERVE_FRONTEND enabled: mounting static SPA from '%s' at '/'.", STATIC_DIR)
+        app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="js")
+    else:
+        logger.warning(
+            "SERVE_FRONTEND enabled but static build dir '%s' not found; not mounting SPA.",
+            STATIC_DIR,
+        )
+
+@app.get("/", include_in_schema=False)
+def root() -> dict[str, str]:
+    return {"status": "ok", "app": "CTAO Data Explorer API"}
 
 
 # Run the application
