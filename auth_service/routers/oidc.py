@@ -12,15 +12,7 @@ import redis.asyncio as redis
 from authlib.integrations.starlette_client import OAuth
 from ctao_shared.constants import (
     COOKIE_NAME_MAIN_SESSION,
-    SESSION_ACCESS_TOKEN_EXPIRY_KEY,
-    SESSION_ACCESS_TOKEN_KEY,
-    SESSION_IAM_EMAIL_KEY,
-    SESSION_IAM_FAMILY_NAME_KEY,
-    SESSION_IAM_GIVEN_NAME_KEY,
-    SESSION_IAM_SUB_KEY,
     SESSION_KEY_PREFIX,
-    SESSION_REFRESH_TOKEN_KEY,
-    SESSION_USER_ID_KEY,
 )
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -28,12 +20,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from starlette.responses import Response
 
-from auth_service.config import get_auth_settings
+from auth_service.config import AuthSettings, get_auth_settings
 from auth_service.crypto import encrypt_token
 from auth_service.db import get_async_session
 from auth_service.models import UserTable
 from auth_service.oauth_client import get_oauth
 from auth_service.redis_client import get_redis_client
+from auth_service.session_data import SessionData
 
 
 class _OAuthProxy:
@@ -45,7 +38,7 @@ oauth = _OAuthProxy()
 
 
 @lru_cache
-def _settings():
+def _settings() -> AuthSettings:
     return get_auth_settings()
 
 
@@ -180,21 +173,21 @@ async def auth_callback(
         logger.warning("No refresh token received from IAM for user_id=%s", app_user_id)
 
     session_id = str(uuid.uuid4())
-    session_data_to_store: dict[str, Any] = {
-        SESSION_USER_ID_KEY: app_user_id,
-        SESSION_IAM_SUB_KEY: iam_subject_id,
-        SESSION_IAM_EMAIL_KEY: email,
-        SESSION_IAM_GIVEN_NAME_KEY: given_name_to_store,
-        SESSION_IAM_FAMILY_NAME_KEY: family_name_to_store,
-        SESSION_ACCESS_TOKEN_KEY: iam_access_token,
-        SESSION_ACCESS_TOKEN_EXPIRY_KEY: iam_access_token_expiry,
-        SESSION_REFRESH_TOKEN_KEY: encrypted_rt,
-    }
+    session = SessionData(
+        app_user_id=app_user_id,
+        iam_sub=iam_subject_id,
+        iam_email=email,
+        first_name=given_name_to_store,
+        last_name=family_name_to_store,
+        iam_at=iam_access_token,
+        iam_at_exp=iam_access_token_expiry,
+        iam_rt=encrypted_rt,
+    )
 
     await redis.setex(
         f"{SESSION_KEY_PREFIX}{session_id}",
         _settings().SESSION_DURATION_SECONDS,
-        json.dumps(session_data_to_store),
+        json.dumps(session.to_redis_dict()),
     )
     logger.info("Created Redis session %s for user_id: %s", session_id, app_user_id)
 

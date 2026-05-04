@@ -1531,6 +1531,7 @@ app.include_router(coord_router)
 def _env_truthy(name: str, default: str = "0") -> bool:
     return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
 
+
 SERVE_FRONTEND = _env_truthy("SERVE_FRONTEND", "0")
 STATIC_DIR = os.getenv("STATIC_DIR", "./js/build")
 
@@ -1543,6 +1544,7 @@ if SERVE_FRONTEND:
             "SERVE_FRONTEND enabled but static build dir '%s' not found; not mounting SPA.",
             STATIC_DIR,
         )
+
 
 @app.get("/", include_in_schema=False)
 def root() -> dict[str, str]:

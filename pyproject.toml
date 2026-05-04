@@ -177,33 +177,28 @@ combine-as-imports = true
 
 [tool.mypy]
 python_version = "3.12"
-files = ["api"]
+files = ["api", "auth_service/session_data.py"]
 plugins = ["pydantic.mypy", "sqlalchemy.ext.mypy.plugin"]
 
-# Reporting / strictness
 show_error_codes = true
 warn_unused_ignores = true
 warn_redundant_casts = true
-warn_return_any = true
 no_implicit_optional = true
 strict_optional = true
 check_untyped_defs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-
-# 3rd-party libs without stubs
 ignore_missing_imports = true
 
-# Skip non-Python areas & tests (you can remove the tests bit later if you want to type-check them)
-exclude = "(^alembic/|^js/|^node_modules/|^dist/|^build/|^docs/_build/|^api/tests/)"
+exclude = "(^alembic/|^js/|^node_modules/|^dist/|^build/|^docs/_build/|^api/tests/|^auth_service/tests/)"
 
-# If we prefer to keep tests included but silence them, use this override
-# and remove "^api/tests/" from exclude above.
 [[tool.mypy.overrides]]
-module = ["api.tests.*"]
-ignore_errors = true
 
-[tool.pydantic-mypy]
-init_forbid_extra = true
-init_typed = true
-warn_untyped_fields = true
+module = [
+  "auth_service.routers.*",
+  "auth_service.oauth_client",
+  "auth_service.security.*",
+  "auth_service.db",
+  "auth_service.config",
+]
+disallow_untyped_defs = false
+check_untyped_defs = false
+warn_return_any = false

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable, MutableMapping
 from functools import lru_cache
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -69,10 +70,19 @@ def _join_url(base: str, path: str) -> str:
     return f"{base}/{path}" if path else base
 
 
-_ASGI_TARGETS: dict[str, object] = {}  # injected in tests
+ASGIApp = Callable[
+    [
+        MutableMapping[str, Any],
+        Callable[[], Awaitable[MutableMapping[str, Any]]],
+        Callable[[MutableMapping[str, Any]], Awaitable[None]],
+    ],
+    Awaitable[None],
+]
+
+_ASGI_TARGETS: dict[str, ASGIApp] = {}
 
 
-def register_asgi_target(name: str, app: object) -> None:
+def register_asgi_target(name: str, app: ASGIApp) -> None:
     _ASGI_TARGETS[name] = app
 
 
