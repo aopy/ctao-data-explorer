@@ -50,6 +50,7 @@ js/.env
 
 # Environment file
 .env
+.env.test
 
 # CTAO AIV Toolkit files
 .toolkit

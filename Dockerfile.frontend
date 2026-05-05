@@ -1,5 +1,5 @@
 # Frontend (Node.js)
-FROM harbor.cta-observatory.org/proxy_cache/node:24.2-alpine AS build
+FROM harbor.cta-observatory.org/proxy_cache/node:24.13-alpine AS build
 
 WORKDIR /frontend
 
@@ -13,7 +13,7 @@ COPY js .
 RUN npm run build
 
 # Runtime stage
-FROM harbor.cta-observatory.org/proxy_cache/nginx:alpine
+FROM harbor.cta-observatory.org/proxy_cache/nginx:1.30.0-alpine
 
 # Remove default nginx config
 RUN rm /etc/nginx/conf.d/default.conf
