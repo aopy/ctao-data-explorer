@@ -417,46 +417,60 @@ async def _simbad_suggest(prefix: str, limit: int) -> list[dict[str, Any]]:
     return [{"service": "SIMBAD", "name": n} for n in ordered]
 
 
+def _ned_extract_names(doc: dict[str, Any]) -> list[str]:
+    """Extract raw name strings from a NED ObjectLookup response."""
+    code = doc.get("ResultCode")
+    if code == 1:
+        out: list[str] = []
+        for entry in doc.get("FuzzyMatches", []) or []:
+            name = entry.get("Name")
+            if name:
+                out.append(str(name))
+        return out
+
+    if code == 3:
+        nm = (doc.get("Interpreted") or {}).get("Name")
+        return [str(nm)] if nm else []
+
+    return []
+
+
+def _dedupe_to_out(names: list[str], limit: int) -> list[dict[str, str]]:
+    seen: set[str] = set()
+    out: list[dict[str, str]] = []
+    for n in names:
+        if n in seen:
+            continue
+        seen.add(n)
+        out.append({"service": "NED", "name": n})
+        if len(out) >= limit:
+            break
+    return out
+
+
 async def _ned_suggest(prefix: str, limit: int) -> list[dict[str, str]]:
     """
     Returns up to `limit` suggestions via the ObjectLookup FuzzyMatches.
     """
     q = prefix.strip()
-    if len(q) < 2:
+    if len(q) < 2 or limit <= 0:
         return []
 
     form = {"json": json.dumps({"name": {"v": q}})}
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
+
     try:
         resp = await asyncio.to_thread(
             requests.post, OBJECT_LOOKUP_URL, data=form, headers=headers, timeout=5
         )
         resp.raise_for_status()
         doc = resp.json()
-    except Exception as e:
-        logger.exception("NED ObjectLookup failed: %s", e)
+    except Exception:
+        logger.exception("NED ObjectLookup failed")
         return []
 
-    suggestions = []
-    code = doc.get("ResultCode")
-    if code == 1:
-        for entry in doc.get("FuzzyMatches", []):
-            name = entry.get("Name")
-            if name:
-                suggestions.append(name)
-    elif code == 3:
-        nm = doc.get("Interpreted", {}).get("Name")
-        if nm:
-            suggestions.append(nm)
-
-    seen, out = set(), []
-    for n in suggestions:
-        if n not in seen:
-            seen.add(n)
-            out.append({"service": "NED", "name": n})
-            if len(out) >= limit:
-                break
-    return out
+    names = _ned_extract_names(doc if isinstance(doc, dict) else {})
+    return _dedupe_to_out(names, limit)
 
 
 class SuggestResult(TypedDict):
@@ -899,6 +913,7 @@ async def _discover_tap_columns(tap_url: str, obscore_table: str) -> tuple[bool,
         logger.warning(
             "search_coords: TAP_SCHEMA lookup failed (%s). Optional filters may require fallback probing.",
             e,
+            exc_info=True,
         )
         return False, set()
 
@@ -1279,7 +1294,7 @@ async def search_coords_impl(
     try:
         error, res_table, _ = perform_query_with_conditions(fields, where_conditions, limit=100)
     except Exception as e:
-        logger.error("search_coords: Exception during perform_query call: %s", e)
+        logger.error("search_coords: Exception during perform_query call: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed during query execution.") from e
 
     if error is not None:
@@ -1311,7 +1326,9 @@ async def search_coords_impl(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("ERROR search_coords: Exception during results processing: %s", e)
+        logger.error(
+            "ERROR search_coords: Exception during results processing: %s", e, exc_info=True
+        )
         raise HTTPException(
             status_code=500, detail="Internal error processing search results."
         ) from e
@@ -1456,8 +1473,9 @@ def _run_ned_sync_query(adql_query: str) -> list[dict[str, Any]]:
 
 @app.get("/api/datalink", tags=["datalink"])
 async def datalink_endpoint(
-    ID: list[str] = Query(
+    id_: list[str] = Query(
         ...,
+        alias="ID",
         description="One or more dataset identifiers (e.g., ivo://padc.obspm/hess#23523)",
     ),
 ) -> Response:
@@ -1465,7 +1483,7 @@ async def datalink_endpoint(
     DataLink endpoint that returns a VOTable containing links for each dataset ID.
     """
     rows = ""
-    for id_val in ID:
+    for id_val in id_:
         if id_val.lower().startswith("ivo://"):
             if "#" in id_val:
                 # Extract the portion after '#' (e.g. "23523")

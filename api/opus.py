@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, cast
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 import xmltodict
@@ -135,6 +135,15 @@ def _build_job_form(params: "QuickLookParams") -> dict[str, str]:
     if params.obsids:
         form["obsids"] = params.obsids
     return form
+
+
+def _validated_redirect_url(loc: str) -> str:
+    p = urlparse(loc)
+    if p.scheme not in {"https", "http"}:
+        raise HTTPException(400, "Redirect to disallowed scheme")
+    if p.netloc not in OPUS_ALLOWED_NETLOCS:
+        raise HTTPException(400, "Redirect to disallowed host")
+    return urlunparse((p.scheme, p.netloc, p.path, "", p.query, ""))
 
 
 async def _opus_create_job(form: dict[str, str], headers: dict[str, str]) -> tuple[str, str]:
@@ -377,14 +386,14 @@ def _guess_preview_mime(name: str, rid: str | None) -> str:
 async def _get_with_auth(url: str, headers: dict[str, str]) -> httpx.Response:
     async with httpx.AsyncClient(follow_redirects=False, timeout=30) as client:
         resp = await client.get(url, headers=headers)
+
         if 300 <= resp.status_code < 400:
             loc = resp.headers.get("Location") or resp.headers.get("location")
             if not loc:
                 return resp
-            p = urlparse(loc)
-            if p.netloc not in OPUS_ALLOWED_NETLOCS:
-                raise HTTPException(400, "Redirect to disallowed host")
-            return await client.get(loc, headers=headers)
+            safe = _validated_redirect_url(loc)
+            return await client.get(safe, headers=headers)
+
         return resp
 
 
