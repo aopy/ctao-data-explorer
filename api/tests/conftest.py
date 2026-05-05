@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import inspect
 import json
 import os
@@ -21,7 +22,9 @@ from ctao_shared.constants import (
     SESSION_KEY_PREFIX,
     SESSION_USER_ID_KEY,
 )
+from dotenv import load_dotenv
 from fastapi import FastAPI
+from prometheus_client import REGISTRY
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -31,6 +34,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import StaticPool
 
+import api.metrics as _metrics
 from api.auth.deps import get_required_identity
 from api.auth.deps_optional import get_optional_identity
 from api.auth.jwt_verifier import VerifiedIdentity
@@ -47,6 +51,8 @@ TEST_EMAIL = "u@example.org"
 TEST_GIVEN_NAME = "Ada"
 TEST_FAMILY_NAME = "Lovelace"
 TEST_NAME = "Ada Lovelace"
+
+load_dotenv(".env.test", override=False)
 
 
 @pytest.fixture(scope="session")
@@ -256,3 +262,29 @@ def as_user(db_session, fake_redis, client):
         return user, session_id
 
     return _maker
+
+
+@pytest.fixture(autouse=True)
+def reset_metrics():
+    """Cleans up Prometheus global registry and instrumentation state between tests.
+
+    setup_metrics() registers metrics into the global Prometheus registry.
+    Since tests create multiple FastAPI app instances, this leads to duplicate
+    metric registration unless cleaned up.
+
+    This fixture ensures isolation between tests without requiring a full
+    refactor to injected CollectorRegistry usage.
+    """
+    before = set(REGISTRY._names_to_collectors.keys())
+
+    _metrics._instrumented_apps.clear()  # reset instrumentation guard
+
+    yield
+
+    # remove collectors registered during the test
+    after = set(REGISTRY._names_to_collectors.keys())
+    for name in after - before:
+        collector = REGISTRY._names_to_collectors.get(name)
+        if collector:
+            with contextlib.suppress(Exception):
+                REGISTRY.unregister(collector)

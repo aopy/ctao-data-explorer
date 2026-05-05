@@ -1,0 +1,2 @@
+Update base images used in Dockerfiles, and update dependencies in requirements.txt, pyproject.toml,
+and pixi.toml to versions recommended by security scanning tools.
