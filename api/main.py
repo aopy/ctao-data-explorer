@@ -1463,7 +1463,7 @@ async def datalink_endpoint(
     ID: list[str] = Query(
         ...,
         description="One or more dataset identifiers (e.g., ivo://padc.obspm/hess#23523)",
-    )
+    ),
 ) -> Response:
     """
     DataLink endpoint that returns a VOTable containing links for each dataset ID.

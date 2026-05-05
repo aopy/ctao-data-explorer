@@ -67,7 +67,7 @@ documentation = "http://cta-computing.gitlab-pages.cta-observatory.org/suss/scie
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["api*"]
+include = ["api*", "auth_service*"]
 
 
 [tool.towncrier]
