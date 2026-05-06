@@ -19,14 +19,15 @@ const DataLinkDropdown = ({ datalink_url, isOpen, onToggle }) => {
   const [openUp, setOpenUp] = useState(false);
   const containerRef = useRef(null);
   const url = normalizeDatalinkPath(datalink_url);
+  const [error, setError] = useState(false);
 
   // When the dropdown becomes open, fetch the VOTable if not already loaded
   // determine if there is enough space below
   useEffect(() => {
     if (isOpen) {
       if (services.length === 0) {
+        setError(false);
         setLoading(true);
-        // axios
         publicApiClient
           .get(url, { responseType: 'text' })
           .then((res) => {
@@ -51,6 +52,7 @@ const DataLinkDropdown = ({ datalink_url, isOpen, onToggle }) => {
           })
           .catch((error) => {
             console.error("Error fetching DataLink services:", error);
+            setError(true);
           })
           .finally(() => {
             setLoading(false);
@@ -66,40 +68,50 @@ const DataLinkDropdown = ({ datalink_url, isOpen, onToggle }) => {
     }
   }, [isOpen, datalink_url, services.length]);
 
-  return (
-    <div style={{ position: 'relative' }} ref={containerRef}>
-      <button className="btn btn-ctao-galaxy btn-sm dropdown-toggle" onClick={onToggle}>
-        DataLink
-      </button>
-      {isOpen && (
-        <div
-          style={{
-            position: 'absolute',
-            top: openUp ? 'auto' : '100%',
-            bottom: openUp ? '100%' : 'auto',
-            left: 0,
-            background: 'white',
-            border: '1px solid #ccc',
-            zIndex: 1000,
-            padding: '5px'
-          }}
-        >
-          {loading && <div>Loading...</div>}
-          {(!loading && services.length === 0) && <div>No services available</div>}
-          {services.map((service, index) => (
+return (
+  <div style={{ position: "relative" }} ref={containerRef}>
+    <button
+      className="btn btn-ctao-galaxy btn-sm dropdown-toggle"
+      onClick={onToggle}
+    >
+      DataLink
+    </button>
+
+    {isOpen && (
+      <div
+        style={{
+          position: "absolute",
+          top: openUp ? "auto" : "100%",
+          bottom: openUp ? "100%" : "auto",
+          left: 0,
+          background: "white",
+          border: "1px solid #ccc",
+          zIndex: 1000,
+          padding: "5px",
+        }}
+      >
+        {loading ? (
+          <div>Loading...</div>
+        ) : error ? (
+          <div>Unable to load services.</div>
+        ) : services.length === 0 ? (
+          <div>No services available</div>
+        ) : (
+          services.map((service, index) => (
             <button
               key={index}
               className="btn btn-sm btn-primary d-block mb-1"
-              style={{ whiteSpace: 'nowrap' }}  // Ensures text stays on one line.
-              onClick={() => window.open(service.access_url, '_blank')}
+              style={{ whiteSpace: "nowrap" }}
+              onClick={() => window.open(service.access_url, "_blank")}
             >
               {service.label}
             </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+          ))
+        )}
+      </div>
+    )}
+  </div>
+);
 };
 
 export default DataLinkDropdown;

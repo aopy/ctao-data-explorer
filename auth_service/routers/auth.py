@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import time
-import traceback
 from functools import lru_cache
 from typing import Any, cast
 
@@ -307,8 +306,7 @@ async def get_me(
         validated_user = UserRead.model_validate(data_for_pydantic)
         return validated_user
     except Exception as e:
-        logger.exception("ERROR in get_me constructing UserRead: %s", e)
-        traceback.print_exc()
+        logger.error("ERROR in get_me constructing UserRead: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Error creating user response object.") from e
 
 

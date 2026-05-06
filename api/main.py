@@ -13,6 +13,7 @@ import time
 import urllib.parse
 from collections.abc import (
     AsyncIterator,
+    Awaitable,
     Iterable,
     Iterator,
     Mapping,
@@ -448,29 +449,36 @@ def _dedupe_to_out(names: list[str], limit: int) -> list[dict[str, str]]:
     return out
 
 
-async def _ned_suggest(prefix: str, limit: int) -> list[dict[str, str]]:
-    """
-    Returns up to `limit` suggestions via the ObjectLookup FuzzyMatches.
-    """
+async def _ned_suggest_raw(prefix: str) -> tuple[bool, list[str]]:
     q = prefix.strip()
-    if len(q) < 2 or limit <= 0:
-        return []
+    if len(q) < 2:
+        return True, []
 
     form = {"json": json.dumps({"name": {"v": q}})}
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
     try:
         resp = await asyncio.to_thread(
-            requests.post, OBJECT_LOOKUP_URL, data=form, headers=headers, timeout=5
+            requests.post,
+            OBJECT_LOOKUP_URL,
+            data=form,
+            headers=headers,
+            timeout=5,
         )
         resp.raise_for_status()
-        doc = resp.json()
+        doc = cast(dict[str, Any], resp.json())
     except Exception:
         logger.exception("NED ObjectLookup failed")
-        return []
+        return False, []
 
-    names = _ned_extract_names(doc if isinstance(doc, dict) else {})
-    return _dedupe_to_out(names, limit)
+    return True, _ned_extract_names(doc)
+
+
+async def _ned_suggest(prefix: str, limit: int) -> tuple[bool, list[dict[str, Any]]]:
+    ok, names = await _ned_suggest_raw(prefix)
+    if not ok:
+        return False, []
+    return True, _dedupe_to_out(names, limit)
 
 
 class SuggestResult(TypedDict):
@@ -507,34 +515,36 @@ async def object_suggest(
         else:
             cache_miss("suggest")
 
-    tasks = []
+    simbad_task: Awaitable[list[dict[str, Any]]]
+    ned_task: Awaitable[tuple[bool, list[dict[str, Any]]]]
     if use_simbad:
-        tasks.append(_simbad_suggest(q, limit))
+        simbad_task = _simbad_suggest(q, limit)
     else:
-        tasks.append(asyncio.sleep(0, result=[]))
+        simbad_task = asyncio.sleep(0, result=[])
     if use_ned:
-        tasks.append(_ned_suggest(q, limit))
+        ned_task = _ned_suggest(q, limit)
     else:
-        tasks.append(asyncio.sleep(0, result=[]))
+        ned_task = asyncio.sleep(0, result=(True, []))
+    simbad_list, (ned_ok, ned_list) = await asyncio.gather(simbad_task, ned_task)
 
-    simbad_list, ned_list = await asyncio.gather(*tasks)
-
-    # round-robin merge up to `limit` entries
-    merged = []
+    merged: list[dict[str, Any]] = []
     for sim, ned in itertools.zip_longest(simbad_list, ned_list, fillvalue=None):
-        if sim:
+        if sim is not None:
             merged.append(sim)
             if len(merged) >= limit:
                 break
-        if ned:
+        if ned is not None:
             merged.append(ned)
             if len(merged) >= limit:
                 break
+    results = merged[:limit]
 
-    results: list[dict[str, Any]] = merged[:limit]
+    should_cache = True
+    if use_ned and not ned_ok:
+        should_cache = False
 
     # store in redis for 24 h
-    if hasattr(app.state, "redis"):
+    if hasattr(app.state, "redis") and should_cache:
         t0 = time.perf_counter()
         ok = False
         await app.state.redis.set(cache_key, json.dumps({"results": results}), ex=86400)

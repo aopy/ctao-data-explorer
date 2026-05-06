@@ -184,22 +184,23 @@ async def auth_callback(
         iam_rt=encrypted_rt,
     )
 
-    await redis.setex(
-        f"{SESSION_KEY_PREFIX}{session_id}",
-        _settings().SESSION_DURATION_SECONDS,
-        json.dumps(session.to_redis_dict()),
-    )
-    logger.info("Created Redis session %s for user_id: %s", session_id, app_user_id)
-
     try:
         await db_session.commit()
     except Exception as err:
         await db_session.rollback()
-        logger.exception("Error committing user to DB: %s", err)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to finalize user session setup.",
-        ) from err
+        logger.exception("Error committing user to DB")
+        raise HTTPException(500, "Failed to finalize user session setup.") from err
+
+    try:
+        await redis.setex(
+            f"{SESSION_KEY_PREFIX}{session_id}",
+            _settings().SESSION_DURATION_SECONDS,
+            json.dumps(session.to_redis_dict()),
+        )
+        logger.info("Created Redis session %s for user_id=%s", session_id, app_user_id)
+    except Exception as err:
+        logger.exception("Failed writing session to Redis")
+        raise HTTPException(503, "Session store unavailable.") from err
 
     redirect_target = _settings().FRONTEND_BASE_URL or _settings().BASE_URL or "/"
     response: RedirectResponse = RedirectResponse(url=redirect_target)

@@ -18,7 +18,7 @@ async def test_object_suggest_merge_and_cache(app, client, monkeypatch):
         ]
 
     async def fake_ned(q, limit):
-        return [{"service": "NED", "name": "M31"}, {"service": "NED", "name": "M33"}]
+        return True, [{"service": "NED", "name": "M31"}, {"service": "NED", "name": "M33"}]
 
     monkeypatch.setattr("api.main._simbad_suggest", fake_simbad)
     monkeypatch.setattr("api.main._ned_suggest", fake_ned)
