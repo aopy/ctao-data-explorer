@@ -15,6 +15,10 @@ stages:
   - report
   - changelog
 
+pylint:
+  script:
+    - pylint --fail-under 5.0 api auth_service --output-format=json2:pylint.json,colorized
+
 build:
   tags:
     - desy-test-cluster
@@ -32,7 +36,7 @@ build:
     KUBERNETES_MEMORY_REQUEST: "16Gi"
     KUBERNETES_MEMORY_LIMIT: "64Gi"
 
-unit-test:
+unit-tests-backend:
   stage: tests
   image: ghcr.io/prefix-dev/pixi:0.66.0-noble
   services:
@@ -66,7 +70,7 @@ unit-test:
         coverage_format: cobertura
         path: test/coverage.xml
 
-frontend-test:
+unit-tests-frontend:
   stage: tests
   image: harbor.cta-observatory.org/proxy_cache/node:24.2-alpine
   cache:
@@ -75,16 +79,27 @@ frontend-test:
         - js/package-lock.json
     paths:
       - js/node_modules/
+  variables:
+    JEST_JUNIT_OUTPUT_DIR: coverage
+    JEST_JUNIT_OUTPUT_NAME: report.xml
   before_script:
     - npm ci --prefix js
+    - cat js/craco.config.js
+    - cat js/package.json | grep -A2 '"test"'
   script:
     - CI=true npm test --prefix js -- --watchAll=false --coverage
-  coverage: '/All files[^|]*\|[^|]*\s+([\d.]+)/'
+        --coverageReporters=text
+        --coverageReporters=lcov
+        --coverageReporters=cobertura
   artifacts:
     when: always
     paths:
       - js/coverage/
-    expire_in: 1 week
+    reports:
+      junit: js/coverage/report.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: js/coverage/cobertura-coverage.xml
 
 k8s-integration-tests:
   tags:
@@ -110,6 +125,35 @@ k8s-upgrade-integration-tests:
     UPGRADE_BASE_REF: "v0.9.2"
     # fix for new ingress controller
     BASE_REF_PATCH_FILES: pre-upgrade.patch
+
+collect-test-artifacts:
+  stage: tests
+  image: $PYTHON_IMAGE
+  needs:
+    # can add more jobs to combine
+    - job: collect-manual-tests
+      artifacts: true
+    - job: k8s-integration-tests
+      artifacts: true
+    - job: unit-tests-frontend
+      artifacts: true
+    - job: unit-tests-backend
+      artifacts: true
+  before_script:
+    - !reference [.install-kit, script]
+  script:
+    - find . -name "report.xml" -o -name "coverage.xml" | sort
+    - aiv-report -v merge-junit */report.xml js/coverage/report.xml --output report.xml
+    - cp -fv test/coverage.xml coverage.xml
+  artifacts:
+    paths:
+      - report.xml
+      - coverage.xml
+      # this is a temporary before https://gitlab.cta-observatory.org/cta-computing/common/aiv-toolkit/-/merge_requests/165
+      - "*/coverage.xml"
+      - js/coverage/cobertura-coverage.xml
+    reports:
+      junit: report.xml
 
 pypi:
   rules:
