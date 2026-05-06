@@ -72,6 +72,21 @@ documentation = "http://cta-computing.gitlab-pages.cta-observatory.org/suss/scie
 where = ["."]
 include = ["api*", "auth_service*"]
 
+# For coverage.py to find the source files when running from the project root
+# and better management therefore in SonarQube
+[tool.coverage.run]
+relative_files = true
+source = ["."]
+include = [
+    "api/**",
+    "auth_service/**",
+]
+
+[tool.coverage.report]
+include = [
+    "api/**",
+    "auth_service/**",
+]
 
 [tool.towncrier]
 package = "ctao-data-explorer"
