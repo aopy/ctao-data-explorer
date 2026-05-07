@@ -1,3 +1,4 @@
+{{- if and .Values.auth.enabled (not .Values.auth.secrets.existingSecret) }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -10,3 +11,4 @@ spec:
       protocol: TCP
   selector:
     app: {{ include "ctao-data-explorer.name" . }}-auth
+{{- end }}

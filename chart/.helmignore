@@ -16,6 +16,8 @@
 *.tmp
 *.orig
 *~
+cache.db
+*.db
 # Various IDEs
 .project
 .idea/

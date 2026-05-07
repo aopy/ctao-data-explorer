@@ -31,6 +31,7 @@ spec:
       http:
         paths:
           {{- range .paths }}
+          {{- if or (ne .backend "auth") ($.Values.auth.enabled) }}
           - path: {{ .path }}
             pathType: {{ .pathType }}
             backend:
@@ -39,5 +40,6 @@ spec:
                 port:
                   number: {{ index $.Values.servicePorts .backend }}
           {{- end }}
+          {{- end }}
     {{- end }}
-{{- end }}
+  {{- end }}
