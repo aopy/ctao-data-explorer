@@ -5,7 +5,7 @@ import json
 import os
 import time
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Generator
 
 import httpx
 import pytest
@@ -68,7 +68,7 @@ def event_loop():
 
 
 @pytest.fixture(scope="session")
-def engine() -> AsyncEngine:
+def engine() -> Generator[AsyncEngine, None, None]:
     eng = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
         connect_args={"check_same_thread": False},

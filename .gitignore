@@ -97,3 +97,5 @@ public/
 # Sphinx documentation
 docs/_build/
 docs/api
+
+scripts/

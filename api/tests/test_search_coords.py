@@ -46,7 +46,7 @@ async def test_search_coords_happy_path_adds_datalink(app, client, monkeypatch):
 
     # The datalink URL is our own endpoint with encoded DID
     encoded = urllib.parse.quote(row[did_idx], safe="")
-    assert row[dl_idx].endswith(f"/api/datalink?ID={encoded}")
+    assert row[dl_idx] == f"/datalink?ID={encoded}"
 
     # Response should be cached
     assert any(k.startswith("search:") for k in app.state.redis.store.keys())

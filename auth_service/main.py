@@ -16,6 +16,8 @@ from auth_service.routers.auth import auth_api_router
 from auth_service.routers.oidc import oidc_router
 from auth_service.routers.token_relay import router as token_relay_router
 
+AUTH_PREFIX = "/auth"
+
 
 @lru_cache
 def _settings():
@@ -116,7 +118,7 @@ app.add_middleware(
 )
 
 # auth service endpoints live under /auth/*
-app.include_router(oidc_router, prefix="/auth")
-app.include_router(auth_api_router, prefix="/auth")
+app.include_router(oidc_router, prefix=AUTH_PREFIX)
+app.include_router(auth_api_router, prefix=AUTH_PREFIX)
 # relay
-app.include_router(token_relay_router, prefix="/auth")
+app.include_router(token_relay_router, prefix=AUTH_PREFIX)

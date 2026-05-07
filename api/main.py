@@ -13,6 +13,7 @@ import time
 import urllib.parse
 from collections.abc import (
     AsyncIterator,
+    Awaitable,
     Iterable,
     Iterator,
     Mapping,
@@ -417,46 +418,67 @@ async def _simbad_suggest(prefix: str, limit: int) -> list[dict[str, Any]]:
     return [{"service": "SIMBAD", "name": n} for n in ordered]
 
 
-async def _ned_suggest(prefix: str, limit: int) -> list[dict[str, str]]:
-    """
-    Returns up to `limit` suggestions via the ObjectLookup FuzzyMatches.
-    """
+def _ned_extract_names(doc: dict[str, Any]) -> list[str]:
+    """Extract raw name strings from a NED ObjectLookup response."""
+    code = doc.get("ResultCode")
+    if code == 1:
+        out: list[str] = []
+        for entry in doc.get("FuzzyMatches", []) or []:
+            name = entry.get("Name")
+            if name:
+                out.append(str(name))
+        return out
+
+    if code == 3:
+        nm = (doc.get("Interpreted") or {}).get("Name")
+        return [str(nm)] if nm else []
+
+    return []
+
+
+def _dedupe_to_out(names: list[str], limit: int) -> list[dict[str, str]]:
+    seen: set[str] = set()
+    out: list[dict[str, str]] = []
+    for n in names:
+        if n in seen:
+            continue
+        seen.add(n)
+        out.append({"service": "NED", "name": n})
+        if len(out) >= limit:
+            break
+    return out
+
+
+async def _ned_suggest_raw(prefix: str) -> tuple[bool, list[str]]:
     q = prefix.strip()
     if len(q) < 2:
-        return []
+        return True, []
 
     form = {"json": json.dumps({"name": {"v": q}})}
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
+
     try:
         resp = await asyncio.to_thread(
-            requests.post, OBJECT_LOOKUP_URL, data=form, headers=headers, timeout=5
+            requests.post,
+            OBJECT_LOOKUP_URL,
+            data=form,
+            headers=headers,
+            timeout=5,
         )
         resp.raise_for_status()
-        doc = resp.json()
-    except Exception as e:
-        logger.exception("NED ObjectLookup failed: %s", e)
-        return []
+        doc = cast(dict[str, Any], resp.json())
+    except Exception:
+        logger.exception("NED ObjectLookup failed")
+        return False, []
 
-    suggestions = []
-    code = doc.get("ResultCode")
-    if code == 1:
-        for entry in doc.get("FuzzyMatches", []):
-            name = entry.get("Name")
-            if name:
-                suggestions.append(name)
-    elif code == 3:
-        nm = doc.get("Interpreted", {}).get("Name")
-        if nm:
-            suggestions.append(nm)
+    return True, _ned_extract_names(doc)
 
-    seen, out = set(), []
-    for n in suggestions:
-        if n not in seen:
-            seen.add(n)
-            out.append({"service": "NED", "name": n})
-            if len(out) >= limit:
-                break
-    return out
+
+async def _ned_suggest(prefix: str, limit: int) -> tuple[bool, list[dict[str, Any]]]:
+    ok, names = await _ned_suggest_raw(prefix)
+    if not ok:
+        return False, []
+    return True, _dedupe_to_out(names, limit)
 
 
 class SuggestResult(TypedDict):
@@ -493,34 +515,36 @@ async def object_suggest(
         else:
             cache_miss("suggest")
 
-    tasks = []
+    simbad_task: Awaitable[list[dict[str, Any]]]
+    ned_task: Awaitable[tuple[bool, list[dict[str, Any]]]]
     if use_simbad:
-        tasks.append(_simbad_suggest(q, limit))
+        simbad_task = _simbad_suggest(q, limit)
     else:
-        tasks.append(asyncio.sleep(0, result=[]))
+        simbad_task = asyncio.sleep(0, result=[])
     if use_ned:
-        tasks.append(_ned_suggest(q, limit))
+        ned_task = _ned_suggest(q, limit)
     else:
-        tasks.append(asyncio.sleep(0, result=[]))
+        ned_task = asyncio.sleep(0, result=(True, []))
+    simbad_list, (ned_ok, ned_list) = await asyncio.gather(simbad_task, ned_task)
 
-    simbad_list, ned_list = await asyncio.gather(*tasks)
-
-    # round-robin merge up to `limit` entries
-    merged = []
+    merged: list[dict[str, Any]] = []
     for sim, ned in itertools.zip_longest(simbad_list, ned_list, fillvalue=None):
-        if sim:
+        if sim is not None:
             merged.append(sim)
             if len(merged) >= limit:
                 break
-        if ned:
+        if ned is not None:
             merged.append(ned)
             if len(merged) >= limit:
                 break
+    results = merged[:limit]
 
-    results: list[dict[str, Any]] = merged[:limit]
+    should_cache = True
+    if use_ned and not ned_ok:
+        should_cache = False
 
     # store in redis for 24 h
-    if hasattr(app.state, "redis"):
+    if hasattr(app.state, "redis") and should_cache:
         t0 = time.perf_counter()
         ok = False
         await app.state.redis.set(cache_key, json.dumps({"results": results}), ex=86400)
@@ -778,7 +802,7 @@ async def _redis_set_cached(redis_client: Any, cache_key: str, obj: SearchResult
 
 
 def _augment_with_datalink(
-    base_api_url: str, columns: list[str], data: list[list[Any]]
+    columns: list[str], data: list[list[Any]]
 ) -> tuple[list[str], list[list[Any]]]:
     if "obs_publisher_did" not in columns:
         return columns, data
@@ -800,7 +824,7 @@ def _augment_with_datalink(
         did = new_row[did_idx] if did_idx < len(new_row) else None
         if did:
             encoded_did = urllib.parse.quote(str(did), safe="")
-            new_row[datalink_idx] = f"{base_api_url}/api/datalink?ID={encoded_did}"
+            new_row[datalink_idx] = f"/datalink?ID={encoded_did}"
         new_rows.append(new_row)
 
     return columns_with, new_rows
@@ -899,6 +923,7 @@ async def _discover_tap_columns(tap_url: str, obscore_table: str) -> tuple[bool,
         logger.warning(
             "search_coords: TAP_SCHEMA lookup failed (%s). Optional filters may require fallback probing.",
             e,
+            exc_info=True,
         )
         return False, set()
 
@@ -1136,14 +1161,12 @@ def _apply_time_coord_fields(
 
 async def search_coords_impl(
     *,
-    request: Request,
     params: SearchCoordsParams,
     identity: VerifiedIdentity | None,
     db_session: AsyncSession,
     redis_client: Any,
 ) -> SearchResult:
     CACHE_TTL = 3600
-    base_api_url = str(request.base_url).rstrip("/")
 
     fields: dict[str, Any] = _build_fields_base(params)
 
@@ -1281,7 +1304,7 @@ async def search_coords_impl(
     try:
         error, res_table, _ = perform_query_with_conditions(fields, where_conditions, limit=100)
     except Exception as e:
-        logger.error("search_coords: Exception during perform_query call: %s", e)
+        logger.error("search_coords: Exception during perform_query call: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed during query execution.") from e
 
     if error is not None:
@@ -1294,7 +1317,7 @@ async def search_coords_impl(
         columns_list = list(columns) if columns else []
         data_list = [list(row) for row in data] if data else []
 
-        columns_with, data_with = _augment_with_datalink(base_api_url, columns_list, data_list)
+        columns_with, data_with = _augment_with_datalink(columns_list, data_list)
         search_result_obj = SearchResult(columns=columns_with, data=data_with)
 
         if redis_client:
@@ -1313,7 +1336,9 @@ async def search_coords_impl(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("ERROR search_coords: Exception during results processing: %s", e)
+        logger.error(
+            "ERROR search_coords: Exception during results processing: %s", e, exc_info=True
+        )
         raise HTTPException(
             status_code=500, detail="Internal error processing search results."
         ) from e
@@ -1324,14 +1349,12 @@ async def search_coords_impl(
 
 @app.get("/api/search_coords", response_model=SearchResult, tags=["search"])
 async def search_coords(
-    request: Request,
     params: SearchCoordsParams = Depends(get_search_coords_params),
     identity: VerifiedIdentity | None = Depends(get_optional_identity),
     db_session: AsyncSession = Depends(get_async_session),
 ) -> SearchResult:
     redis_client = getattr(app.state, "redis", None)
     return await search_coords_impl(
-        request=request,
         params=params,
         identity=identity,
         db_session=db_session,
@@ -1460,8 +1483,9 @@ def _run_ned_sync_query(adql_query: str) -> list[dict[str, Any]]:
 
 @app.get("/api/datalink", tags=["datalink"])
 async def datalink_endpoint(
-    ID: list[str] = Query(
+    id_: list[str] = Query(
         ...,
+        alias="ID",
         description="One or more dataset identifiers (e.g., ivo://padc.obspm/hess#23523)",
     ),
 ) -> Response:
@@ -1469,7 +1493,7 @@ async def datalink_endpoint(
     DataLink endpoint that returns a VOTable containing links for each dataset ID.
     """
     rows = ""
-    for id_val in ID:
+    for id_val in id_:
         if id_val.lower().startswith("ivo://"):
             if "#" in id_val:
                 # Extract the portion after '#' (e.g. "23523")
@@ -1532,17 +1556,27 @@ app.include_router(query_history_router)
 app.include_router(coord_router)
 
 
-# Mount the React build folder
-# app.mount("/", StaticFiles(directory="./js/build", html=True), name="js")
-STATIC_DIR = os.getenv("STATIC_DIR", "./js/build")
-if os.path.isdir(STATIC_DIR):
-    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="js")
-else:
-    logger.warning("Static build dir '%s' not found; skipping static mount.", STATIC_DIR)
+def _env_truthy(name: str, default: str = "0") -> bool:
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
 
-    @app.get("/", include_in_schema=False)
-    def root() -> dict[str, str]:
-        return {"status": "ok", "app": "CTAO Data Explorer API"}
+
+SERVE_FRONTEND = _env_truthy("SERVE_FRONTEND", "0")
+STATIC_DIR = os.getenv("STATIC_DIR", "./js/build")
+
+if SERVE_FRONTEND:
+    if os.path.isdir(STATIC_DIR):
+        logger.info("SERVE_FRONTEND enabled: mounting static SPA from '%s' at '/'.", STATIC_DIR)
+        app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="js")
+    else:
+        logger.warning(
+            "SERVE_FRONTEND enabled but static build dir '%s' not found; not mounting SPA.",
+            STATIC_DIR,
+        )
+
+
+@app.get("/", include_in_schema=False)
+def root() -> dict[str, str]:
+    return {"status": "ok", "app": "CTAO Data Explorer API"}
 
 
 # Run the application
