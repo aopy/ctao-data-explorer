@@ -71,6 +71,7 @@ const DataLinkDropdown = ({ datalink_url, isOpen, onToggle }) => {
 return (
   <div style={{ position: "relative" }} ref={containerRef}>
     <button
+      data-testid="datalink-toggle"
       className="btn btn-ctao-galaxy btn-sm dropdown-toggle"
       onClick={onToggle}
     >
@@ -95,11 +96,12 @@ return (
         ) : error ? (
           <div>Unable to load services.</div>
         ) : services.length === 0 ? (
-          <div>No services available</div>
+          <div data-testid="datalink-no-services">No services available</div>
         ) : (
           services.map((service, index) => (
             <button
               key={index}
+              data-testid="datalink-url"
               className="btn btn-sm btn-primary d-block mb-1"
               style={{ whiteSpace: "nowrap" }}
               onClick={() => window.open(service.access_url, "_blank")}
