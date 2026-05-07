@@ -20,7 +20,7 @@ variables:
   CHART_LOCATION: chart
   # before future upgrades, uncomment
   # CHART_VALUES: chart/values-aiv.yaml
-  CHART_EXTRA_VALUES: >
+  CHART_EXTRA_VALUES: >-
     --set auth.secrets.refreshTokenEncryptionKey=${REFRESH_TOKEN_ENCRYPTION_KEY}
     --set auth.secrets.clientId=${CTAO_CLIENT_ID}
     --set auth.secrets.clientSecret=${CTAO_CLIENT_SECRET}
