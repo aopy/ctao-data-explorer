@@ -113,6 +113,8 @@ k8s-integration-tests:
       - test_frontend_screenshot_1_before.png
       - test_frontend_screenshot_2_resolve.png
       - test_frontend_screenshot_3_search.png
+      - test_frontend_screenshot_4_datalink_before_assert.png
+      - test_frontend_screenshot_5_datalink.png
     expose_as: "K8s Integration Test Results"
     reports:
       junit: test-in-k8s/report.xml
