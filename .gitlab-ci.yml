@@ -4,6 +4,12 @@ include:
     file: ci-functions.yml
   - aiv-config.yml
 
+variables:
+  AIV_DEPLOY_HELM_UPGRADE_CHART_EXTRA_VALUES: "--set auth.secrets.refreshTokenEncryptionKey=${REFRESH_TOKEN_ENCRYPTION_KEY}
+    --set auth.secrets.clientId=${CTAO_CLIENT_ID}
+    --set auth.secrets.clientSecret=${CTAO_CLIENT_SECRET}
+    --set auth.secrets.sessionSecretKeyOidc=${SESSION_SECRET_KEY_OIDC}"
+
 stages:
   - prepare
   - lint
