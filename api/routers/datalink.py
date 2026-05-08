@@ -20,8 +20,7 @@ def _build_datalink_row(id_val: str) -> str:
                 obs_id_int = int(obs_id_str)
                 formatted_id = f"{obs_id_int:06d}"
                 access_url = (
-                    "https://hess-dr.obspm.fr/retrieve/"
-                    f"hess_dl3_dr1_obs_id_{formatted_id}.fits.gz"
+                    f"https://hess-dr.obspm.fr/retrieve/hess_dl3_dr1_obs_id_{formatted_id}.fits.gz"
                 )
             except Exception:
                 error_message = f"NotFoundFault: Invalid numeric obs id in {id_val}"
