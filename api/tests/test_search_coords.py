@@ -18,7 +18,7 @@ async def test_search_coords_happy_path_adds_datalink(app, client, monkeypatch):
         assert any("CONTAINS" in w for w in where_conditions)
         return (None, tab, "SELECT ...")
 
-    monkeypatch.setattr("api.main.perform_query_with_conditions", fake_perform)
+    monkeypatch.setattr("api.services.search_coords.perform_query_with_conditions", fake_perform)
 
     # Ensure empty redis store
     app.state.redis.store.clear()
@@ -46,7 +46,7 @@ async def test_search_coords_happy_path_adds_datalink(app, client, monkeypatch):
 
     # The datalink URL is our own endpoint with encoded DID
     encoded = urllib.parse.quote(row[did_idx], safe="")
-    assert row[dl_idx] == f"/datalink?ID={encoded}"
+    assert row[dl_idx] == f"/api/datalink?ID={encoded}"
 
     # Response should be cached
     assert any(k.startswith("search:") for k in app.state.redis.store.keys())

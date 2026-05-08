@@ -66,7 +66,7 @@ const DataLinkDropdown = ({ datalink_url, isOpen, onToggle }) => {
         setOpenUp(spaceBelow < 150);
       }
     }
-  }, [isOpen, datalink_url, services.length]);
+  }, [isOpen, url, services.length]);
 
 return (
   <div style={{ position: "relative" }} ref={containerRef}>

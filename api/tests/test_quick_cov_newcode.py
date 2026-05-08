@@ -2,20 +2,24 @@ import numpy as np
 import pytest
 from astropy.table import Table
 
-from api.main import _adql_escape, _catalog_variants, _is_short_catalog
+from api.services.object_lookup import (
+    adql_escape,
+    catalog_variants,
+    is_short_catalog,
+)
 from api.tap import astropy_table_to_list
 
 
 def test_adql_escape_and_short_catalog():
-    assert _adql_escape("O'Hare") == "O''Hare"
-    assert _is_short_catalog("M42")
-    assert _is_short_catalog("NGC6543")
-    assert not _is_short_catalog("NotACatalog")
+    assert adql_escape("O'Hare") == "O''Hare"
+    assert is_short_catalog("M42")
+    assert is_short_catalog("NGC6543")
+    assert not is_short_catalog("NotACatalog")
 
 
 def test_catalog_variants_spacing():
     # M  42 / M   42 variants are generated
-    variants = list(_catalog_variants("M42"))
+    variants = list(catalog_variants("M42"))
     assert any(v.startswith("M ") for v in variants)
     assert any(v.startswith("M  ") for v in variants)
 

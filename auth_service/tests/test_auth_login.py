@@ -68,9 +68,9 @@ async def test_login_stores_encrypted_refresh_token_in_redis(
     # Refresh token must be present and encrypted
     enc_rt = session.get(SESSION_REFRESH_TOKEN_KEY)
     assert enc_rt is not None, "Refresh token missing from Redis session"
-    assert enc_rt != "real-refresh-token", (
-        "Refresh token must be stored encrypted, not as plaintext"
-    )
+    assert (
+        enc_rt != "real-refresh-token"
+    ), "Refresh token must be stored encrypted, not as plaintext"
     # Fernet-encrypted tokens always start with "gAAAAA"
     assert enc_rt.startswith("gAAAAA"), f"Unexpected encrypted RT format: {enc_rt[:10]}"
 
@@ -128,25 +128,25 @@ async def test_access_token_refresh_updates_session_in_redis(
     updated = json.loads(raw)
 
     # Access token must be updated
-    assert updated[SESSION_ACCESS_TOKEN_KEY] == "new-access-token", (
-        "Access token was not updated in Redis"
-    )
+    assert (
+        updated[SESSION_ACCESS_TOKEN_KEY] == "new-access-token"
+    ), "Access token was not updated in Redis"
 
     # Expiry must be pushed well into the future
-    assert updated[SESSION_ACCESS_TOKEN_EXPIRY_KEY] > time.time() + 60, (
-        "New expiry is not far enough in the future"
-    )
+    assert (
+        updated[SESSION_ACCESS_TOKEN_EXPIRY_KEY] > time.time() + 60
+    ), "New expiry is not far enough in the future"
 
     # Refresh token must be rotated and still encrypted
     new_enc_rt = updated.get(SESSION_REFRESH_TOKEN_KEY)
     assert new_enc_rt is not None, "Refresh token missing after rotation"
     assert new_enc_rt != old_enc_rt, "Refresh token was not rotated"
-    assert new_enc_rt != "new-refresh-token", (
-        "Rotated refresh token must be stored encrypted, not plaintext"
-    )
-    assert decrypt_token(new_enc_rt) == "new-refresh-token", (
-        "Decrypted rotated RT does not match expected value"
-    )
+    assert (
+        new_enc_rt != "new-refresh-token"
+    ), "Rotated refresh token must be stored encrypted, not plaintext"
+    assert (
+        decrypt_token(new_enc_rt) == "new-refresh-token"
+    ), "Decrypted rotated RT does not match expected value"
 
 
 @pytest.mark.anyio
@@ -161,9 +161,9 @@ async def test_logout_clears_redis_session_and_cookie(
     assert session_id is not None, "as_user did not set session cookie on client"
 
     # Confirm key exists before logout
-    assert await fake_redis.get(f"{SESSION_KEY_PREFIX}{session_id}") is not None, (
-        "Session should exist in Redis before logout"
-    )
+    assert (
+        await fake_redis.get(f"{SESSION_KEY_PREFIX}{session_id}") is not None
+    ), "Session should exist in Redis before logout"
 
     csrf_token = "test-csrf-token"
 
@@ -183,9 +183,9 @@ async def test_logout_clears_redis_session_and_cookie(
 
     # Cookie must be cleared via Set-Cookie header
     set_cookie = r.headers.get("set-cookie", "")
-    assert COOKIE_NAME_MAIN_SESSION in set_cookie, (
-        "Session cookie name not found in Set-Cookie header"
-    )
-    assert "max-age=0" in set_cookie.lower() or "max_age=0" in set_cookie.lower(), (
-        "Cookie was not expired (max-age=0 not found in Set-Cookie)"
-    )
+    assert (
+        COOKIE_NAME_MAIN_SESSION in set_cookie
+    ), "Session cookie name not found in Set-Cookie header"
+    assert (
+        "max-age=0" in set_cookie.lower() or "max_age=0" in set_cookie.lower()
+    ), "Cookie was not expired (max-age=0 not found in Set-Cookie)"
