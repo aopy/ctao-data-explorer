@@ -47,6 +47,8 @@ spec:
         - name: auth
           image: "{{ .Values.global.imageRegistry }}/{{ .Values.auth.image.repository }}:{{ .Values.auth.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.auth.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.auth.containerSecurityContext | nindent 12 }}
           ports:
             - containerPort: {{ .Values.auth.service.port }}
               name: http

@@ -122,12 +122,19 @@ auth:
       memory: 256Mi
       ephemeral-storage: 512Mi
 
+  containerSecurityContext:
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
   secrets:
     existingSecret: ""
-    clientId: ""
-    clientSecret: ""
-    refreshTokenEncryptionKey: ""
-    sessionSecretKeyOidc: "change-me"
+    clientId: ""  # Required
+    clientSecret: ""  # Required
+    refreshTokenEncryptionKey: ""  # Required
+    sessionSecretKeyOidc: ""  # Required, minimum 32 chars
 
   env:
     BASE_URL: "https://ctao-data-explorer.test.example"
