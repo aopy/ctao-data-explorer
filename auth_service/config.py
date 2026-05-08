@@ -28,7 +28,7 @@ class AuthSettings(BaseSettings):
     BASE_URL: str | None = None
     FRONTEND_BASE_URL: str | None = None
 
-    REFRESH_TOKEN_ENCRYPTION_KEY: str = ""
+    REFRESH_TOKEN_ENCRYPTION_KEY: str
     SESSION_DURATION_SECONDS: int = 3600 * 8
     REFRESH_BUFFER_SECONDS: int = 300
 
@@ -36,7 +36,7 @@ class AuthSettings(BaseSettings):
     COOKIE_SECURE: bool = False
     COOKIE_DOMAIN: str | None = None
 
-    SESSION_SECRET_KEY_OIDC: str = "change_me_in_prod"
+    SESSION_SECRET_KEY_OIDC: str
 
     # OIDC (auth-service only)
     CTAO_CLIENT_ID: str

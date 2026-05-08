@@ -113,7 +113,7 @@ app.add_middleware(
     SessionMiddleware,
     secret_key=_settings().SESSION_SECRET_KEY_OIDC,
     session_cookie="ctao_oidc_state_session",
-    https_only=False,
+    https_only=_settings().COOKIE_SECURE,
     max_age=600,
 )
 
