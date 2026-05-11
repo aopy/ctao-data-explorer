@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.staticfiles import StaticFiles
 
 from api.basket import basket_router
-from api.config import get_api_settings
+from api.config import ApiSettings, get_api_settings
 from api.coords import coord_router
 from api.db import close_engine
 from api.metrics import setup_metrics
@@ -30,7 +30,7 @@ from api.routers.time import router as time_router
 
 
 @lru_cache
-def _settings() -> Any:
+def _settings() -> ApiSettings:
     return get_api_settings()
 
 
@@ -146,24 +146,18 @@ def create_app() -> FastAPI:
     serve_frontend = _env_truthy("SERVE_FRONTEND", "0")
     static_dir = os.getenv("STATIC_DIR", "./js/build")
 
-    if serve_frontend:
-        if os.path.isdir(static_dir):
-            logger.info(
-                "SERVE_FRONTEND enabled: mounting static SPA from '%s' at '/'.",
-                static_dir,
-            )
-            app.mount("/", StaticFiles(directory=static_dir, html=True), name="js")
-        else:
+    if serve_frontend and os.path.isdir(static_dir):
+        logger.info(
+            "SERVE_FRONTEND enabled: mounting static SPA from '%s' at '/'.",
+            static_dir,
+        )
+        app.mount("/", StaticFiles(directory=static_dir, html=True), name="js")
+    else:
+        if serve_frontend:
             logger.warning(
                 "SERVE_FRONTEND enabled but static build dir '%s' not found; not mounting SPA.",
                 static_dir,
             )
-
-            @app.get("/", include_in_schema=False)
-            def root() -> dict[str, str]:
-                return {"status": "ok", "app": "CTAO Data Explorer API"}
-
-    else:
 
         @app.get("/", include_in_schema=False)
         def root() -> dict[str, str]:

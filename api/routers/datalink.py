@@ -12,22 +12,21 @@ def _build_datalink_row(id_val: str) -> str:
     service_def = ""
     error_message = ""
 
-    if id_val.lower().startswith("ivo://"):
-        if "#" in id_val:
-            obs_id_str = id_val.split("#", 1)[1]
-
-            try:
-                obs_id_int = int(obs_id_str)
-                formatted_id = f"{obs_id_int:06d}"
-                access_url = (
-                    f"https://hess-dr.obspm.fr/retrieve/hess_dl3_dr1_obs_id_{formatted_id}.fits.gz"
-                )
-            except Exception:
-                error_message = f"NotFoundFault: Invalid numeric obs id in {id_val}"
-        else:
-            error_message = f"NotFoundFault: Missing '#' in {id_val}"
-    else:
+    if not id_val.lower().startswith("ivo://"):
         error_message = f"NotFoundFault: {id_val} is not recognized as a valid ivo:// identifier"
+    elif "#" not in id_val:
+        error_message = f"NotFoundFault: Missing '#' in {id_val}"
+    else:
+        obs_id_str = id_val.split("#", 1)[1]
+
+        try:
+            obs_id_int = int(obs_id_str)
+            formatted_id = f"{obs_id_int:06d}"
+            access_url = (
+                f"https://hess-dr.obspm.fr/retrieve/hess_dl3_dr1_obs_id_{formatted_id}.fits.gz"
+            )
+        except ValueError:
+            error_message = f"NotFoundFault: Invalid numeric obs id in {id_val}"
 
     return (
         "                <TR>\n"

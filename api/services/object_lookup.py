@@ -16,7 +16,7 @@ import requests
 from astropy.io.votable import parse_single_table
 from astropy.table import Table
 
-from api.config import get_api_settings
+from api.config import ApiSettings, get_api_settings
 from api.metrics import vo_observe_call
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ class SuggestResult(TypedDict):
     results: list[dict[str, Any]]
 
 
-def _settings() -> Any:
+def _settings() -> ApiSettings:
     return get_api_settings()
 
 
