@@ -20,7 +20,7 @@ async def test_search_coords_writes_history(client, db_session, monkeypatch):
         assert any("CONTAINS" in w for w in where_conditions)
         return (None, tab, "SELECT ...")
 
-    monkeypatch.setattr("api.main.perform_query_with_conditions", fake_perform)
+    monkeypatch.setattr("api.services.search_coords.perform_query_with_conditions", fake_perform)
 
     # Force optional identity to be present (so history is written)
     fake_ident = VerifiedIdentity(

@@ -20,8 +20,8 @@ async def test_object_suggest_merge_and_cache(app, client, monkeypatch):
     async def fake_ned(q, limit):
         return True, [{"service": "NED", "name": "M31"}, {"service": "NED", "name": "M33"}]
 
-    monkeypatch.setattr("api.main._simbad_suggest", fake_simbad)
-    monkeypatch.setattr("api.main._ned_suggest", fake_ned)
+    monkeypatch.setattr("api.services.object_lookup.simbad_suggest", fake_simbad)
+    monkeypatch.setattr("api.services.object_lookup.ned_suggest", fake_ned)
 
     # First call -> cache miss then set
     r1 = await client.get("/api/object_suggest?q=M3&use_simbad=true&use_ned=true&limit=3")
@@ -38,8 +38,8 @@ async def test_object_suggest_merge_and_cache(app, client, monkeypatch):
     def boom(*args, **kwargs):
         raise AssertionError("Should not be called when cache is present")
 
-    monkeypatch.setattr("api.main._simbad_suggest", boom)
-    monkeypatch.setattr("api.main._ned_suggest", boom)
+    monkeypatch.setattr("api.services.object_lookup.simbad_suggest", boom)
+    monkeypatch.setattr("api.services.object_lookup.ned_suggest", boom)
 
     r2 = await client.get("/api/object_suggest?q=M3&use_simbad=true&use_ned=true&limit=3")
     assert r2.status_code == 200
