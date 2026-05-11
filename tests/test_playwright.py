@@ -1,12 +1,14 @@
 import logging
 import os
 
+import pytest
 from playwright.sync_api import Page, expect
 
 frontend_url = os.getenv("FRONTEND_URL")
 
 
-def test_frontend(page: Page):
+@pytest.mark.verifies_usecase("SUSS-UC-050-01")
+def test_query_by_object_name(page: Page):
     page.goto(frontend_url, wait_until="networkidle")
 
     logging.info(f"Page title: {page.title()}")
@@ -44,6 +46,13 @@ def test_frontend(page: Page):
     page.screenshot(path="test_frontend_screenshot_3_search.png")
 
 
+@pytest.mark.xfail
+@pytest.mark.verifies_usecase("SUSS-UC-050-02")
+def test_query_by_sky_coordinates():
+    raise NotImplementedError("Should be implemented for this release")
+
+
+@pytest.mark.verifies_usecase("SUSS-UC-050-14")
 def test_datalink_download_visible(page: Page):
     page.goto(frontend_url, wait_until="networkidle")
 
