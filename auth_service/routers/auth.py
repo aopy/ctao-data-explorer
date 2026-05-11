@@ -369,11 +369,11 @@ async def logout_session(
         path=cookie_params.get("path", "/"),
         domain=cookie_params.get("domain") or None,
     )
-    delete_kwargs: dict[str, object] = {"path": "/"}
-    domain = _settings().COOKIE_DOMAIN
-    if domain:
-        delete_kwargs["domain"] = domain
-    response.delete_cookie(key="XSRF-TOKEN", **delete_kwargs)
+    response.delete_cookie(
+        key="XSRF-TOKEN",
+        path="/",
+        domain=_settings().COOKIE_DOMAIN or None,
+    )
     return {"status": "logout successful"}
 
 

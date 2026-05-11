@@ -1,0 +1,1 @@
+Remove API test-suite coupling to ``auth_service`` user models by using Redis-only session fixture state.
