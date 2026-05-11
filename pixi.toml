@@ -49,6 +49,9 @@ pytest = "*"
 pytest-cov = "*"
 pytest-asyncio = "*"
 
+[feature.test.pypi-dependencies]
+pytest-requirements = ">=0.2.0, <0.3"
+
 [feature.test.tasks]
 test = "pytest"
 

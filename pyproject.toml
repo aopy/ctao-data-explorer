@@ -48,6 +48,11 @@ dependencies = [
 dynamic = ["version"]
 
 [project.optional-dependencies]
+test = [
+  "pytest",
+  "pytest-requirements",
+  "pytest-cov",
+]
 doc = [
     "sphinx",
     "sphinx-autodoc-typehints",
