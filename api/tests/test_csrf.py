@@ -29,6 +29,7 @@ async def test_query_history_post_accepts_matching_xsrf(client, force_api_identi
 
     assert r.status_code == 200
 
+
 @pytest.mark.anyio
 async def test_opus_create_job_requires_xsrf(client, force_api_identity):
     r = await client.post(
