@@ -25,6 +25,15 @@ pylint:
   script:
     - pylint --fail-under 5.0 api auth_service --output-format=json2:pylint.json,colorized
 
+pre-commit-hooks:
+  before_script:
+    - apt update && apt install -y --no-install-recommends git
+    - python --version
+    - pip install uv
+    - uv sync --locked --extra all
+  script:
+    - uv run prek run --all-files
+
 hadolint:
   script:
     - hadolint Dockerfile.auth Dockerfile.backend Dockerfile.frontend Dockerfile.playwright
