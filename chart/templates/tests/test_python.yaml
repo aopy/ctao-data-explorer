@@ -6,6 +6,9 @@ metadata:
   annotations:
     "helm.sh/hook": test
 spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
   volumes:
   - name: repo
     hostPath:
@@ -15,8 +18,26 @@ spec:
     - name: pytest
       # playwright requires ubuntu to run browser tests
       image: "{{ .Values.global.imageRegistry }}/{{ .Values.dev.test_pod.image.repository }}:{{ .Values.dev.test_pod.image.tag | default .Chart.AppVersion }}"
+      securityContext:
+        allowPrivilegeEscalation: false
       imagePullPolicy: IfNotPresent
-      workingDir: /repo
+      env:
+        - name: PLAYWRIGHT_BROWSERS_PATH
+          value: /opt/ms-playwright
+        # This will be required for tests that need to authenticate in IAM test instance.
+        - name: TEST_USER
+          valueFrom:
+            secretKeyRef:
+              name: "{{ .Release.Name }}-secrets"
+              key: testUser
+              optional: true
+        - name: TEST_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: "{{ .Release.Name }}-secrets"
+              key: testPassword
+              optional: true
+      workingDir: /tmp
       command:
         - /bin/bash
         - -c
@@ -28,14 +49,15 @@ spec:
           . /opt/venv/bin/activate
 
           {{ if .Values.dev.run_tests }}
-          pytest tests/test_playwright.py \
+          cp -r /repo/tests /tmp/tests
+          pytest /tmp/tests/test_playwright.py \
             -v --maxfail=1 --disable-warnings -o log-cli=true --log-cli-level=INFO \
             --cov \
             --cov-report=xml:/tmp/coverage.xml \
             --junitxml=/tmp/report.xml \
             --color=yes \
             --browser=firefox --base-url=$FRONTEND_URL
-
+          cp /tmp/screenshots/*.png /repo/ || true
           curl -T /tmp/coverage.xml http://testkit:8000/coverage.xml
           curl -T /tmp/report.xml http://testkit:8000/report.xml
           {{ end }}

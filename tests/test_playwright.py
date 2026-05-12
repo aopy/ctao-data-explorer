@@ -6,6 +6,9 @@ from playwright.sync_api import Page, expect
 
 frontend_url = os.getenv("FRONTEND_URL")
 
+SCREENSHOTS_DIR = "/tmp/screenshots"
+os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
+
 
 @pytest.mark.verifies_usecase("SUSS-UC-050-01")
 def test_query_by_object_name(page: Page):
@@ -14,7 +17,7 @@ def test_query_by_object_name(page: Page):
     logging.info(f"Page title: {page.title()}")
     assert "CTAO Data Explorer" in page.title()
 
-    page.screenshot(path="test_frontend_screenshot_1_before.png")
+    page.screenshot(path=f"{SCREENSHOTS_DIR}/test_frontend_screenshot_1_before.png")
 
     # Fill source name and resolve
     source_input = page.locator("#objectNameInput")
@@ -31,7 +34,7 @@ def test_query_by_object_name(page: Page):
     expect(coord1_input).not_to_have_value("")
     expect(coord2_input).not_to_have_value("")
 
-    page.screenshot(path="test_frontend_screenshot_2_resolve.png")
+    page.screenshot(path=f"{SCREENSHOTS_DIR}/test_frontend_screenshot_2_resolve.png")
 
     # Click the main submit button
     search_button = page.get_by_role("button", name="Search", exact=True)
@@ -43,7 +46,7 @@ def test_query_by_object_name(page: Page):
     page.wait_for_load_state("networkidle")
     page.wait_for_timeout(2000)
 
-    page.screenshot(path="test_frontend_screenshot_3_search.png")
+    page.screenshot(path=f"{SCREENSHOTS_DIR}/test_frontend_screenshot_3_search.png")
 
 
 @pytest.mark.xfail
@@ -83,7 +86,7 @@ def test_datalink_download_visible(page: Page):
     # Click the first row's DataLink toggle
     page.locator("[data-testid='datalink-toggle']").first.click()
     page.wait_for_timeout(1000)  # wait 1 sec
-    page.screenshot(path="test_frontend_screenshot_4_datalink_before_assert.png")
+    page.screenshot(path=f"{SCREENSHOTS_DIR}/test_frontend_screenshot_4_datalink_before_assert.png")
     expect(page.locator("[data-testid='datalink-no-services']")).to_have_count(0)
     expect(datalink_links.first).to_be_visible()
-    page.screenshot(path="test_frontend_screenshot_5_datalink.png")
+    page.screenshot(path=f"{SCREENSHOTS_DIR}/test_frontend_screenshot_5_datalink.png")
