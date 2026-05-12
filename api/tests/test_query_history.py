@@ -52,7 +52,9 @@ async def test_search_coords_writes_history(client, db_session, monkeypatch):
         assert r.status_code == 200
 
         # Assert: a QueryHistory row exists
-        res = await db_session.execute(select(QueryHistory))
+        res = await db_session.execute(
+            select(QueryHistory).where(QueryHistory.user_sub == fake_ident.sub)
+        )
         rows = res.scalars().all()
 
         assert len(rows) == 1

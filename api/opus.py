@@ -9,6 +9,7 @@ from urllib.parse import urlparse, urlunparse
 
 import httpx
 import xmltodict
+from ctao_shared.security import require_xsrf_dependency
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from starlette.responses import Response
@@ -332,7 +333,11 @@ async def list_results(
     return _xml_to_json(r.text)
 
 
-@router.post("/jobs", response_model=OpusJobCreateResponse)
+@router.post(
+    "/jobs",
+    response_model=OpusJobCreateResponse,
+    dependencies=[Depends(require_xsrf_dependency)],
+)
 async def create_job(
     params: QuickLookParams,
     user: Any = Depends(get_current_user_with_iam_sub),
