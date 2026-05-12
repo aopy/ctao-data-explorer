@@ -25,12 +25,23 @@ pylint:
   script:
     - pylint --fail-under 5.0 api auth_service --output-format=json2:pylint.json,colorized
 
+hadolint:
+  script:
+    - hadolint Dockerfile.auth Dockerfile.backend Dockerfile.frontend Dockerfile.playwright
+
 build:
   tags:
     - desy-test-cluster
   parallel:
     matrix:
       - IMAGE: ["frontend", "backend", "auth", "playwright"]
+  before_script:
+    - |
+      if [ "$IMAGE" = "backend" ] || [ "$IMAGE" = "auth" ]; then
+        PRETEND_VERSION="${CI_COMMIT_TAG:-$(git describe --tags 2>/dev/null || echo '0.1.0')}"
+        KANIKO_EXTRA_ARGS="${KANIKO_EXTRA_ARGS:-} --build-arg=SETUPTOOLS_SCM_PRETEND_VERSION=$PRETEND_VERSION"
+        export KANIKO_EXTRA_ARGS
+      fi
   variables:
     CI_HARBOR_REGISTRY_IMAGE: 
       harbor.cta-observatory.org/suss/${CI_PROJECT_NAME}-${IMAGE}:${DOCKER_TAG}

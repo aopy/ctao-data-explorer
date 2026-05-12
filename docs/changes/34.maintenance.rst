@@ -1,0 +1,2 @@
+Use uv base images for backend and auth service Docker images instead of pixi.
+Fix hadolint warnings in Dockerfiles.

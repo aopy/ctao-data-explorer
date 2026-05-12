@@ -75,7 +75,7 @@ documentation = "http://cta-computing.gitlab-pages.cta-observatory.org/suss/scie
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["api*", "auth_service*"]
+include = ["api*", "auth_service*", "ctao_shared*"]
 
 # For coverage.py to find the source files when running from the project root
 # and better management therefore in SonarQube
