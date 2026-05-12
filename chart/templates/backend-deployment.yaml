@@ -56,7 +56,7 @@ spec:
           image: "{{ .Values.global.imageRegistry }}/{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
           workingDir: /app
-          command: ["sh", "-lc", "cd /app && pixi run alembic -c alembic.ini upgrade head"]
+          command: ["alembic", "-c", "alembic.ini", "upgrade", "head"]
           env:
             - name: PYTHONPATH
               value: /app
