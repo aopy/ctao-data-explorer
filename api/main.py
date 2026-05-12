@@ -50,7 +50,7 @@ def _is_testing_env() -> bool:
 
 def _init_redis_for_app(app: FastAPI) -> redis.ConnectionPool | None:
     if _is_testing_env():
-        from api.tests.fakeredis import FakeRedis
+        from ctao_shared.testing.fakeredis import FakeRedis
 
         app.state.redis = FakeRedis()
         logger.info("Using in-memory FakeRedis for tests.")
