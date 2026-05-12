@@ -1,0 +1,19 @@
+customChecks: []
+checks:
+  exclude:
+    - use-namespace          # ephemeral kind cluster uses default namespace
+    - minimum-three-replicas # single-node kind cluster
+    - no-node-affinity       # single-node kind cluster
+    - dnsconfig-options      # not required for this deployment
+    - non-isolated-pod       # no NetworkPolicy required
+    - required-annotation-email  # not applicable
+    - required-label-owner   # not applicable
+    - restart-policy         # StatefulSet/Pod don't need this
+    - no-rolling-update-strategy  # not applicable for all workloads
+    - read-secret-from-env-var    # acceptable pattern for this project
+    - writable-host-mount    # test pod needs writable /repo
+    - no-liveness-probe      # test pod doesn't need probes
+    - no-readiness-probe     # test pod doesn't need probes
+    - privileged-ports       # nginx on port 80 is acceptable
+    - default-service-account # redis/postgres use default SA
+    - no-read-only-root-fs   # not feasible for all containers

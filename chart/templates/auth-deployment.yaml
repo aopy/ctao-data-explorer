@@ -10,11 +10,13 @@ spec:
   replicas: {{ .Values.auth.replicaCount }}
   selector:
     matchLabels:
-      app: {{ include "ctao-data-explorer.name" . }}-auth
+      {{- include "ctao-data-explorer.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: auth
   template:
     metadata:
       labels:
-        app: {{ include "ctao-data-explorer.name" . }}-auth
+        {{- include "ctao-data-explorer.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: auth
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
@@ -34,6 +36,13 @@ spec:
             - >
               until nc -z {{ include "ctao-data-explorer.postgresql.host" . }} {{ .Values.postgresql.service.port }};
               do echo "waiting for postgres"; sleep 2; done
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "64Mi"
+            limits:
+              cpu: "1000m"
+              memory: "128Mi"
         - name: wait-for-redis
           image: {{ .Values.global.dockerProxy }}/busybox:1.36
           command:
@@ -42,6 +51,13 @@ spec:
             - >
               until nc -z {{ include "ctao-data-explorer.redis.host" . }} {{ .Values.redis.service.port }};
               do echo "waiting for redis"; sleep 2; done
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
 
       containers:
         - name: auth

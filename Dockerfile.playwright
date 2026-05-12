@@ -15,5 +15,9 @@ RUN apt-get update && apt-get install -y curl dnsutils python3 python3-pip pytho
         pytest-playwright  \
         pytest-requirements \
         requests && \
-    playwright install && \
-    playwright install-deps firefox
+    playwright install firefox && \
+    playwright install-deps firefox && \
+    mv /root/.cache/ms-playwright /opt/ms-playwright && \
+    chmod -R a+rX /opt/ms-playwright
+
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
