@@ -52,6 +52,7 @@ test = [
   "pytest",
   "pytest-requirements",
   "pytest-cov",
+  "mypy>=2.1.0",
 ]
 doc = [
     "sphinx",
@@ -63,6 +64,7 @@ doc = [
     "towncrier",
 ]
 dev = [
+  "prek>=0.3.13",
   "setuptools_scm",
   "towncrier",
 ]
@@ -182,7 +184,7 @@ combine-as-imports = true
 
 [tool.mypy]
 python_version = "3.12"
-files = ["api", "auth_service/session_data.py"]
+files = ["api", "auth_service"]
 plugins = ["pydantic.mypy", "sqlalchemy.ext.mypy.plugin"]
 
 show_error_codes = true
