@@ -141,7 +141,9 @@ class Tap:
         session: Session = requests.Session()
         adapter = CTAOHTTPAdapter(timeout=timeout)
         session.mount("https://", adapter)
-        session.mount("http://", adapter)
+        session.mount(
+            "http://", adapter
+        )  # NOSONAR(python:S5332) — TAP service URL is operator-supplied, not hardcoded. The code accepts whatever scheme the caller passes
         self.conn = vo.dal.TAPService(self.url, session=session)
 
     # def query(self, query):
