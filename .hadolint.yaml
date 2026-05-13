@@ -1,6 +1,6 @@
 ignore:
   - DL3008  # pin apt versions - acceptable for our Dockerfiles
-  - DL3013  # pin pip versions - managed via pixi/requirements files
+  - DL3013  # pin pip versions - managed via uv/requirements files
   - DL3015  # no-install-recommends - acceptable
   - DL3042  # pip no-cache-dir - acceptable
 
