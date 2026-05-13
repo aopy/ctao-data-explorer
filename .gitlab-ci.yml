@@ -64,7 +64,7 @@ build:
 
 unit-tests-backend:
   stage: tests
-  image: ghcr.io/prefix-dev/pixi:0.66.0-noble
+  image: harbor.cta-observatory.org/proxy_cache/astral/uv:0.11-python3.12-trixie
   services:
     - name: redis:7-alpine
       alias: redis
@@ -83,8 +83,10 @@ unit-tests-backend:
     OIDC_ISSUER: "https://example.invalid"
     OIDC_REDIRECT_URI: "http://localhost/auth/callback"
     OIDC_SERVER_METADATA_URL: "https://example.invalid/.well-known/openid-configuration"
+  before_script:
+    - uv sync --locked --extra test
   script:
-    - pixi run test
+    - uv run pytest
   artifacts:
     when: always
     paths:
