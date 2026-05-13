@@ -41,6 +41,11 @@ spec:
               until nc -z {{ include "ctao-data-explorer.postgresql.host" . }}
               {{ .Values.postgresql.service.port }};
               do echo "waiting for postgres"; sleep 2; done
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
           resources:
             requests:
               cpu: "500m"
@@ -58,6 +63,11 @@ spec:
               until nc -z {{ include "ctao-data-explorer.redis.host" . }}
               {{ .Values.redis.service.port }};
               do echo "waiting for redis"; sleep 2; done
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
           resources:
             requests:
               cpu: "50m"
@@ -71,6 +81,11 @@ spec:
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
           workingDir: /app
           command: ["alembic", "-c", "alembic.ini", "upgrade", "head"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
           resources:
             requests:
               cpu: "500m"
