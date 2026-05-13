@@ -180,6 +180,7 @@ collect-test-artifacts:
       # this is a temporary before https://gitlab.cta-observatory.org/cta-computing/common/aiv-toolkit/-/merge_requests/165
       - "*/coverage.xml"
       - js/coverage/cobertura-coverage.xml
+      - js/coverage/lcov.info
     reports:
       junit: report.xml
 
