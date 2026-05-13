@@ -1,13 +1,16 @@
+from __future__ import annotations
+
 import secrets
 from functools import lru_cache
 
-from auth_service.config import get_auth_settings
-from ctao_shared.constants import COOKIE_NAME_XSRF, HEADER_NAME_XSRF
-from fastapi import HTTPException, Request, Response, status
+from auth_service.config import AuthSettings, get_auth_settings
+from ctao_shared.constants import COOKIE_NAME_XSRF
+from ctao_shared.security import require_xsrf
+from fastapi import Request, Response
 
 
 @lru_cache
-def _settings():
+def _settings() -> AuthSettings:
     return get_auth_settings()
 
 
@@ -44,17 +47,4 @@ def ensure_xsrf_cookie(request: Request, response: Response) -> str:
     return token
 
 
-def require_xsrf(request: Request) -> None:
-    """
-    Double-submit cookie CSRF check:
-    - XSRF-TOKEN cookie must exist
-    - X-XSRF-TOKEN header must match cookie
-    """
-    cookie_val = request.cookies.get(COOKIE_NAME_XSRF)
-    header_val = request.headers.get(HEADER_NAME_XSRF)
-
-    if not cookie_val or not header_val or header_val != cookie_val:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="CSRF token missing or invalid",
-        )
+__all__ = ["ensure_xsrf_cookie", "require_xsrf"]

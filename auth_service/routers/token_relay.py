@@ -6,6 +6,7 @@ from functools import lru_cache
 from typing import Any
 
 import httpx
+from ctao_shared.constants import COOKIE_NAME_XSRF, HEADER_NAME_XSRF
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
@@ -49,6 +50,24 @@ def _filtered_request_headers(req: Request) -> dict[str, str]:
             continue
         out[k] = v
     return out
+
+
+def _attach_xsrf_forwarding(req: Request, headers: dict[str, str]) -> None:
+    """
+    Forward the double-submit CSRF pair to downstream services.
+
+    We intentionally do not forward the main session cookie. The API only needs
+    the readable XSRF cookie plus the matching X-XSRF-TOKEN header for CSRF
+    validation; authentication is still handled by the injected Bearer token.
+    """
+    xsrf_cookie = req.cookies.get(COOKIE_NAME_XSRF)
+    xsrf_header = req.headers.get(HEADER_NAME_XSRF)
+
+    if xsrf_header:
+        headers[HEADER_NAME_XSRF] = xsrf_header
+
+    if xsrf_cookie:
+        headers["Cookie"] = f"{COOKIE_NAME_XSRF}={xsrf_cookie}"
 
 
 def _filtered_response_headers(headers: Iterable[tuple[str, str]]) -> dict[str, str]:
@@ -113,6 +132,7 @@ async def relay(
 
     # Build outgoing request pieces
     headers = _filtered_request_headers(request)
+    _attach_xsrf_forwarding(request, headers)
     headers["Authorization"] = f"Bearer {access_token}"
 
     body = await request.body()
