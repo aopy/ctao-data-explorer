@@ -145,7 +145,9 @@ async def relay(
             raise HTTPException(status_code=500, detail="ASGI relay target not registered")
 
         transport = httpx.ASGITransport(app=asgi_app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://asgi") as client:
+        async with (
+            httpx.AsyncClient(transport=transport, base_url="http://asgi") as client
+        ):  # NOSONAR(python:S5332) — ASGITransport never opens a socket, the scheme is a placeholder to satisfy httpx's API
             r = await client.request(
                 method=request.method,
                 url="/" + (path or ""),
