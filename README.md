@@ -12,9 +12,7 @@ Documentation is [here](http://ctao-data-explorer-a09d9e.gitlab-pages.cta-observ
   - [Requirements](#requirements)
     - [Backend](#backend)
     - [Frontend](#frontend)
-  - [Installation](#installation)
-    - [Backend Setup](#backend-setup)
-    - [Frontend Setup](#frontend-setup)
+  - [Installation and deployment](#installation-and-deployment)
   - [Usage](#usage)
 - [About CTAO](#about-ctao)
 
@@ -56,45 +54,10 @@ See `pyproject.toml` for more details.
 
 See `js/package.json` for more details.
 
-## Installation
+## Installation and deployment
 
-Here are the initial instructions previous to the containerization of the application. For deployment that will be used in production see the [Deployment section in the docs](http://ctao-data-explorer-a09d9e.gitlab-pages.cta-observatory.org/developer-guide/deployment/).
-
-### Backend Setup
-
-   ```bash
-   # Clone the repository
-   git clone https://gitlab.obspm.fr/oates/ctao-data-explorer.git
-   cd ctao-data-explorer
-   # Create and activate a conda environment
-   conda create -n ctao-backend python=3.12.7
-   conda activate ctao-backend
-   # Install dependencies
-   conda install -c conda-forge fastapi uvicorn aiofiles pyvo numpy requests cryptography hiredis \
-    fastapi-users-db-sqlalchemy authlib itsdangerous asyncpg httpx xmltodict alembic psycopg2
-   # Set up PostgreSQL
-   psql -U postgres
-   CREATE DATABASE fastapi_db;
-   CREATE USER user WITH PASSWORD 'password'; # Adjust user name and password
-   GRANT ALL PRIVILEGES ON DATABASE fastapi_db TO user;
-   # Apply Alembic migrations
-   alembic upgrade head
-   # Set up Redis
-   export REDIS_URL="redis://localhost:6379/0"
-   set -o allexport 
-   source .env
-   set +o allexport
-   # Run backend and auth service
-   uvicorn api.main:app --reload --port 8000
-   uvicorn auth_service.main:app --reload --port 8001
-   ```
-### Frontend Setup
-
-   ```bash
-   cd ctao-data-explorer/js
-   npm install
-   npm run build
-   ```
+For local development on Kubernetes (recommended), see the [Development Environment guide](http://ctao-data-explorer-a09d9e.gitlab-pages.cta-observatory.org/developer-guide/deployment/local/).
+Legacy setups (directly on host) are documented in the [Legacy deployment guide](http://ctao-data-explorer-a09d9e.gitlab-pages.cta-observatory.org/developer-guide/deployment/legacy/).
 
 ## Usage
 
