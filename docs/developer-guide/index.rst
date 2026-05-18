@@ -1,6 +1,6 @@
-=================
+===============
 Developer Guide
-=================
+===============
 
 Technical documentation for developers working on or deploying the CTAO Data Explorer.
 
@@ -10,9 +10,10 @@ Technical documentation for developers working on or deploying the CTAO Data Exp
    architecture
    configuration
    api
-   deployment
-   devenv
-   ci-cd
+   deployment/index
+   quality
+   developer-workflow
+   release
    standards
    metrics
    security

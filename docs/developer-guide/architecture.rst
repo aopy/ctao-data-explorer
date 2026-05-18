@@ -24,4 +24,4 @@ Architecture
 - **DataLink 1.1**: exposes associated resources and direct downloads when available
 - **OPUS**: preview jobs submitted to ``gammapy_source_analysis`` (UWS pattern)
 
-See also: standards & interop.
+See also: :doc:`standards`.
