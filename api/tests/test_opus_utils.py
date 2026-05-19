@@ -1,4 +1,15 @@
-from api.opus import _guess_preview_mime, _xml_to_json
+from urllib.parse import urlparse
+
+import pytest
+from fastapi import HTTPException
+
+from api.opus import (
+    _guess_preview_mime,
+    _opus_cfg,
+    _validate_opus_href,
+    _validate_opus_path_segment,
+    _xml_to_json,
+)
 
 
 def test_guess_preview_mime_by_rid_and_extension():
@@ -45,3 +56,33 @@ def test_xml_to_json_attributes_and_lists():
     if isinstance(items, dict):  # single-item edge
         items = [items]
     assert len(items) == 2
+
+
+@pytest.mark.anyio
+async def test_get_job_rejects_invalid_job_id(client, force_api_identity):
+    r = await client.get("/api/opus/jobs/../secret")
+    assert r.status_code in (400, 404)
+
+
+def test_validate_opus_path_segment_rejects_path_traversal():
+    with pytest.raises(HTTPException):
+        _validate_opus_path_segment("../secret", field_name="job_id")
+
+
+def test_validate_opus_path_segment_accepts_common_job_id():
+    assert _validate_opus_path_segment("abc-123_DEF.456", field_name="job_id") == "abc-123_DEF.456"
+
+
+def test_validate_opus_href_rejects_disallowed_host():
+    with pytest.raises(HTTPException):
+        _validate_opus_href("https://evil.example/result.fits")
+
+
+def test_validate_opus_path_segment_accepts_underscore_rid():
+    assert _validate_opus_path_segment("excess_map_fits", field_name="rid") == "excess_map_fits"
+
+
+def test_validate_opus_href_accepts_opus_store_url():
+    host = urlparse(_opus_cfg()["OPUS_BASE"]).netloc
+    href = f"https://{host}/store?ID=dbb866"
+    assert str(_validate_opus_href(href)) == href

@@ -1,0 +1,1 @@
+Fix OPUS URL validation to allow legitimate OPUS result-store links while keeping outbound fetches restricted to configured OPUS hosts and known result paths.
