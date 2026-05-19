@@ -12,6 +12,10 @@ from api.metrics import cache_hit, cache_miss, observe_redis
 logger = logging.getLogger(__name__)
 
 
+def _cache_key_fingerprint(cache_key: object) -> str:
+    return hashlib.sha256(str(cache_key).encode("utf-8")).hexdigest()[:12]
+
+
 def build_cache_key_from_adql(adql_query_str: str) -> str:
     return "search:" + hashlib.sha256(adql_query_str.encode()).hexdigest()
 
@@ -31,7 +35,11 @@ async def redis_get_json_model[TModel: BaseModel](
         ok = True
     except Exception:
         cached = None
-        logger.warning("Redis get failed for key=%s", cache_key, exc_info=True)
+        logger.warning(
+            "Redis get failed for key_hash=%s",
+            _cache_key_fingerprint(cache_key),
+            exc_info=True,
+        )
     finally:
         observe_redis("get", time.perf_counter() - t0, ok)
 
@@ -58,7 +66,11 @@ async def redis_set_json_model(
         await redis_client.set(cache_key, obj.model_dump_json(), ex=ttl)
         ok = True
     except Exception:
-        logger.warning("Redis set failed for key=%s", cache_key, exc_info=True)
+        logger.warning(
+            "Redis set failed for key_hash=%s",
+            _cache_key_fingerprint(cache_key),
+            exc_info=True,
+        )
     finally:
         observe_redis("set", time.perf_counter() - t0, ok)
 
@@ -79,7 +91,11 @@ async def redis_get_json_dict(
         ok = True
     except Exception:
         cached = None
-        logger.warning("Redis get failed for key=%s", cache_key, exc_info=True)
+        logger.warning(
+            "Redis get failed for key_hash=%s",
+            _cache_key_fingerprint(cache_key),
+            exc_info=True,
+        )
     finally:
         observe_redis("get", time.perf_counter() - t0, ok)
 
@@ -108,6 +124,10 @@ async def redis_set_json_dict(
         await redis_client.set(cache_key, json.dumps(obj), ex=ttl)
         ok = True
     except Exception:
-        logger.warning("Redis set failed for key=%s", cache_key, exc_info=True)
+        logger.warning(
+            "Redis set failed for key_hash=%s",
+            _cache_key_fingerprint(cache_key),
+            exc_info=True,
+        )
     finally:
         observe_redis("set", time.perf_counter() - t0, ok)
