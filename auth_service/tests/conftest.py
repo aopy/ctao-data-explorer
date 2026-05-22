@@ -121,6 +121,7 @@ def as_user(db_session, fake_redis, auth_client):
         access_token: str = "dummy-access-token",
         refresh_token_plain: str = "dummy-refresh-token",
         expires_in: int = 3600,
+        id_token: str | None = "dummy-id-token",
     ):
         sub = iam_subject_id or f"test-sub-{uuid.uuid4().hex[:8]}"
 
@@ -142,6 +143,7 @@ def as_user(db_session, fake_redis, auth_client):
             "iam_email": email,
             "first_name": first_name,
             "last_name": last_name,
+            "iam_id_token": id_token,
             SESSION_ACCESS_TOKEN_KEY: access_token,
             SESSION_ACCESS_TOKEN_EXPIRY_KEY: time.time() + expires_in,
             SESSION_REFRESH_TOKEN_KEY: enc_rt,

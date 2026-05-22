@@ -1,0 +1,1 @@
+Revoke IAM refresh token, delete local Redis session and clear browser cookies during logout.
