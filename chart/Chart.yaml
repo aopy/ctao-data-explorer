@@ -14,3 +14,10 @@ maintainers:
 home: https://gitlab.cta-observatory.org/cta-computing/suss/scienceportal/prototypes/ctao-data-explorer
 sources:
   - https://gitlab.cta-observatory.org/cta-computing/suss/scienceportal/prototypes/ctao-data-explorer
+
+dependencies:
+  - name: indigo-iam
+    condition: iam.enabled
+    alias: iam
+    version: v0.1.0-rc1
+    repository: oci://harbor.cta-observatory.org/aai
