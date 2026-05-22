@@ -10,6 +10,122 @@ SCREENSHOTS_DIR = "/tmp/screenshots"
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 
 
+def _login(page: Page):
+    """Login helper for tests that require an authenticated session.
+
+    Clicks the Login button, fills in TEST_USER and TEST_PASSWORD on the IAM login form,
+    submits, and waits for the redirect back to the frontend.
+    Skips if credentials are not set.
+    """
+    test_user = os.getenv("TEST_USER")
+    test_password = os.getenv("TEST_PASSWORD")
+    if not test_user or not test_password:
+        pytest.skip("TEST_USER/TEST_PASSWORD not configured, skipping login test for now")
+    login_button = page.get_by_role("button", name="Login", exact=True)
+    expect(login_button).to_be_visible()
+    login_button.click()
+    page.wait_for_load_state("networkidle")
+    expect(page.locator("#username")).to_be_visible()
+    page.locator("#username").fill(test_user)
+    page.locator("#password").fill(test_password)
+    page.screenshot(path=f"{SCREENSHOTS_DIR}/login_before_submit.png")
+    with page.expect_navigation(timeout=60000):
+        page.get_by_role("button", name="Sign in", exact=True).click()
+    page.screenshot(path=f"{SCREENSHOTS_DIR}/login_at_callback.png")
+    page.wait_for_url(f"{frontend_url}**", timeout=60000)
+    page.screenshot(path=f"{SCREENSHOTS_DIR}/login_after_redirect.png")
+
+
+@pytest.mark.verifies_usecase("SUSS-UC-050-19")
+def test_login(page: Page):
+    """Authenticate via IAM and verify restricted tabs appear after login.
+
+    Navigates to the frontend, confirms restricted tabs (My Basket, Preview Jobs, etc.)
+    are absent initially, calls _login to authenticate via IAM, then checks all restricted
+    tabs are visible in the navigation bar after successful login.
+    """
+    page.goto(frontend_url, wait_until="networkidle")
+    for tab in ["My Basket", "Preview Jobs", "Query Store", "Profile"]:
+        expect(page.get_by_role("link", name=tab, exact=True)).to_have_count(0)
+    page.screenshot(path=f"{SCREENSHOTS_DIR}/test_login_before.png")
+    _login(page)
+    page.screenshot(path=f"{SCREENSHOTS_DIR}/test_login_after.png")
+    for tab in ["Search", "Results", "My Basket", "Preview Jobs", "Query Store", "Profile"]:
+        expect(page.get_by_role("link", name=tab, exact=True)).to_be_visible()
+
+
+@pytest.mark.verifies_usecase("SUSS-UC-050-20")
+def test_logout(page: Page):
+    """Log out and verify restricted tabs are no longer visible.
+
+    Logs in, confirms restricted tabs are visible, clicks Logout, waits for
+    redirect back to frontend, then verifies restricted tabs (My Basket, Preview Jobs, etc.)
+    are hidden while public tabs (Search, Results) remain visible.
+    """
+    page.goto(frontend_url, wait_until="networkidle")
+    _login(page)
+    for tab in ["Search", "Results", "My Basket", "Preview Jobs", "Query Store", "Profile"]:
+        expect(page.get_by_role("link", name=tab, exact=True)).to_be_visible()
+    page.screenshot(path=f"{SCREENSHOTS_DIR}/test_logout_logged_in.png")
+    logout_button = page.get_by_role("button", name="Logout", exact=True)
+    expect(logout_button).to_be_visible()
+    logout_button.click()
+    page.wait_for_load_state("networkidle")
+    page.wait_for_url(f"{frontend_url}**")
+    page.screenshot(path=f"{SCREENSHOTS_DIR}/test_logout_after.png")
+    for tab in ["My Basket", "Preview Jobs", "Query Store", "Profile"]:
+        expect(page.get_by_role("link", name=tab, exact=True)).to_have_count(0)
+    expect(page.get_by_role("link", name="Search", exact=True)).to_be_visible()
+    expect(page.get_by_role("link", name="Results", exact=True)).to_be_visible()
+
+
+@pytest.mark.verifies_usecase("SUSS-UC-050-19")
+def test_csrf_cookie_set_after_login(page: Page):
+    """Check that the XSRF-TOKEN cookie is absent before login and set afterwards.
+
+    Reads browser cookies before login and asserts XSRF-TOKEN is absent. After login via
+    _login, reads cookies again and asserts XSRF-TOKEN is present and non-empty.
+    """
+    page.goto(frontend_url, wait_until="networkidle")
+    cookies = page.context.cookies()
+    xsrf_before = [c for c in cookies if c["name"] == "XSRF-TOKEN"]
+    assert len(xsrf_before) == 0, "XSRF-TOKEN should not be set before login"
+    _login(page)
+    cookies = page.context.cookies()
+    xsrf = [c for c in cookies if c["name"] == "XSRF-TOKEN"]
+    assert len(xsrf) == 1, "XSRF-TOKEN must be set after login"
+    assert len(xsrf[0]["value"]) > 0, "XSRF-TOKEN must be non-empty"
+
+
+@pytest.mark.verifies_usecase("SUSS-UC-050-15")
+def test_authenticated_basket_add(page: Page):
+    """Login, search for target, click Add to Basket, and check for feedback alert.
+
+    Logs in, fills a source name, resolves it, runs a search, clicks the
+    Add to Basket button on the first result row, then asserts a feedback alert is visible.
+    """
+    page.goto(frontend_url, wait_until="networkidle")
+    _login(page)
+    source_input = page.locator("#objectNameInput")
+    expect(source_input).to_be_visible()
+    source_input.fill("crab")
+    resolve_button = page.get_by_role("button", name="Resolve", exact=True)
+    expect(resolve_button).to_be_visible()
+    resolve_button.click()
+    expect(page.locator("#coord1Input")).not_to_have_value("")
+    expect(page.locator("#coord2Input")).not_to_have_value("")
+    search_button = page.get_by_role("button", name="Search", exact=True)
+    expect(search_button).to_be_enabled()
+    search_button.click()
+    page.wait_for_load_state("networkidle")
+    add_btn = page.locator("button[title='Add to active basket']").first
+    expect(add_btn).to_be_visible()
+    expect(add_btn).to_be_enabled()
+    add_btn.click()
+    alert = page.locator(".alert")
+    expect(alert).to_be_visible()
+
+
 @pytest.mark.verifies_usecase("SUSS-UC-050-01")
 def test_query_by_object_name(page: Page):
     page.goto(frontend_url, wait_until="networkidle")
