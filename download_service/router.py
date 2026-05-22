@@ -44,11 +44,14 @@ async def signed_urls(
     )
 
     if final_status == "failed":
+        first_error = errors[0] if errors else None
+
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=first_error.status_code if first_error else status.HTTP_400_BAD_REQUEST,
             detail={
-                "error": "AUTHORIZATION_DENIED",
-                "message": "IAM denied token exchange for all requested files",
+                "error": first_error.code if first_error else "INVALID_REQUEST",
+                "message": first_error.message if first_error else "No files could be prepared",
+                "errors": [error.model_dump(exclude={"status_code"}) for error in errors],
             },
         )
 
@@ -59,9 +62,13 @@ async def signed_urls(
             errors=errors,
             token_exchange_count=count,
         )
+        body = partial_body.model_dump(mode="json")
+        for error in body.get("errors", []):
+            error.pop("status_code", None)
+
         return JSONResponse(
             status_code=status.HTTP_206_PARTIAL_CONTENT,
-            content=partial_body.model_dump(mode="json"),
+            content=body,
         )
 
     success_body = SignedUrlResponse(

@@ -53,7 +53,10 @@ async def test_signed_urls_rejects_disallowed_host(client: AsyncClient):
         json={"files": ["https://evil.example/pnfs/ifh.de/acs/sdc/data/file1.dat"]},
     )
 
-    assert r.status_code == 403 or r.status_code == 206
+    assert r.status_code == 400
+    data = r.json()
+    assert data["detail"]["error"] == "HOST_NOT_ALLOWED"
+    assert data["detail"]["message"] == "Storage host is not allowed"
 
 
 @pytest.mark.anyio

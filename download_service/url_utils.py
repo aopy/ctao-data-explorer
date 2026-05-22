@@ -49,7 +49,7 @@ def validate_storage_url(url: str, settings: DownloadSettings) -> str:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "error": "INVALID_REQUEST",
-                "message": "storage URLs must use https",
+                "message": "Storage URL must use https",
             },
         )
 
@@ -72,12 +72,12 @@ def validate_storage_url(url: str, settings: DownloadSettings) -> str:
         )
 
     allowed = settings.allowed_storage_hosts
-    if allowed and parsed.netloc not in allowed:
+    if parsed.netloc not in allowed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
-                "error": "INVALID_REQUEST",
-                "message": "storage URL host is not allowed",
+                "error": "HOST_NOT_ALLOWED",
+                "message": "Storage host is not allowed",
             },
         )
 

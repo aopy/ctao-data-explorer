@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field, field_validator
 CredentialType = Literal["bearer_token"]
 RequestStatus = Literal["completed", "partial", "failed"]
 FileErrorCode = Literal[
+    "INVALID_REQUEST",
+    "HOST_NOT_ALLOWED",
     "NOT_FOUND",
     "AUTHORIZATION_DENIED",
     "RESOLUTION_FAILED",
@@ -43,6 +45,7 @@ class FileError(BaseModel):
     file: str
     code: FileErrorCode
     message: str
+    status_code: int = 400
 
 
 class SignedUrlResponse(BaseModel):

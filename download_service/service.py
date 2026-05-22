@@ -9,6 +9,7 @@ from fastapi import HTTPException, status
 from download_service.config import DownloadSettings
 from download_service.models import (
     FileError,
+    FileErrorCode,
     RequestStatus,
     SignedUrlEntry,
     SignedUrlRequest,
@@ -73,6 +74,21 @@ class LfnResolver:
         )
 
 
+def _file_error_code_from_http_detail(detail: object) -> FileErrorCode:
+    if isinstance(detail, dict):
+        raw = detail.get("error")
+        if raw in {
+            "INVALID_REQUEST",
+            "HOST_NOT_ALLOWED",
+            "NOT_FOUND",
+            "AUTHORIZATION_DENIED",
+            "RESOLUTION_FAILED",
+            "UPSTREAM_ERROR",
+        }:
+            return raw
+    return "INVALID_REQUEST"
+
+
 async def _resolve_input_file(
     *,
     original: str,
@@ -132,6 +148,7 @@ async def _tokenise_one(
                 file=original,
                 code="AUTHORIZATION_DENIED",
                 message="IAM scope policy denied storage.read for this path",
+                status_code=status.HTTP_403_FORBIDDEN,
             ),
         )
 
@@ -142,18 +159,25 @@ async def _tokenise_one(
                 file=original,
                 code="UPSTREAM_ERROR",
                 message="IAM token exchange endpoint returned an unexpected response",
+                status_code=status.HTTP_502_BAD_GATEWAY,
             ),
         )
 
     except HTTPException as exc:
         detail = exc.detail
-        message = detail.get("message") if isinstance(detail, dict) else str(detail)
+        if isinstance(detail, dict):
+            code = _file_error_code_from_http_detail(detail)
+            message = str(detail.get("message") or "Invalid download request")
+        else:
+            code = "INVALID_REQUEST"
+            message = str(detail)
         return (
             None,
             FileError(
                 file=original,
-                code="RESOLUTION_FAILED" if is_lfn(original) else "NOT_FOUND",
+                code=code,
                 message=message,
+                status_code=exc.status_code,
             ),
         )
 
