@@ -1,0 +1,3 @@
+Add a local IAM as a Helm chart dependency for CI/auth testing.
+Add self-signed TLS cert generation via Helm template and ``OIDC_VERIFY_SSL`` setting to support it.
+Add Playwright end-to-end authentication tests.
