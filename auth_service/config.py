@@ -45,6 +45,7 @@ class AuthSettings(BaseSettings):
     OIDC_REDIRECT_URI: str
     OIDC_FAKE_EXPIRES_IN: int | None = None
     OIDC_SERVER_METADATA_URL: str | None = None
+    OIDC_VERIFY_SSL: bool = True
 
     # misc
     LOG_LEVEL: str = "INFO"

@@ -46,12 +46,17 @@ def get_oauth() -> OAuth:
             raise RuntimeError(
                 "Auth service OIDC is not configured: set OIDC_SERVER_METADATA_URL or OIDC_ISSUER"
             )
+        client_kwargs: dict[str, object] = {"scope": "openid profile email offline_access"}
+        if not s.OIDC_VERIFY_SSL:
+            client_kwargs["verify"] = (
+                False  # NOSONAR (S4830) — intentional for testing with self-signed IAM cert
+            )
         oauth.register(
             name=CTAO_PROVIDER_NAME,
             server_metadata_url=metadata_url,
             client_id=s.CTAO_CLIENT_ID,
             client_secret=s.CTAO_CLIENT_SECRET,
-            client_kwargs={"scope": "openid profile email offline_access"},
+            client_kwargs=client_kwargs,
         )
         _registered = True
         return oauth

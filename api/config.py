@@ -21,6 +21,7 @@ class ApiSettings(BaseSettings):
     OIDC_ISSUER: str | None = None
     OIDC_AUDIENCE: str | None = None
     OIDC_CLOCK_SKEW_SECONDS: int = 60
+    OIDC_VERIFY_SSL: bool = True
 
     DEFAULT_TAP_URL: str = "http://voparis-tap-he.obspm.fr/tap"  # no HTTPS available (for now)
     ALLOW_INSECURE_TAP_URL: bool = True
