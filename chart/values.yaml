@@ -31,6 +31,13 @@ dev:
         memory: 1Gi
         ephemeral-storage: 1Gi
 
+# Test credentials (used when iam.enabled=true provides local IAM users)
+tests:
+  testUser: sdc-user
+  testPassword: test-password
+  # Set to a pre-created secret name to skip auto-generation
+  existingSecret: ""
+
 # Backend (FastAPI) configuration
 backend:
   enabled: true
@@ -243,6 +250,76 @@ redis:
     type: ClusterIP
     port: 6379
 
+# IAM (INDIGO IAM) for local authentication testing
+# See also: Chart.yaml dependency with alias: iam
+iam:
+  enabled: false
+
+  global:
+    fqdn: iam-ctao-data-explorer.test.example
+
+  ingress:
+    enabled: true
+    annotations:
+      haproxy.org/ssl-redirect: "true"
+      haproxy.org/ssl-redirect-port: "443"
+    className: haproxy
+    tls:
+      enabled: true
+      secretName: iam-tls
+
+  # Use IAM's built-in MariaDB
+  mariadb:
+    enabled: true
+
+  testClient:
+    config:
+      client:
+        id: test-client
+        secret: secret
+
+  bootstrap:
+    enabled: true
+    config:
+      clients:
+        - client_id: suss-test-client
+          client_name: Test Client
+          client_secret: secret
+          grant_types:
+            - authorization_code
+            - password
+            - client_credentials
+            - urn:ietf:params:oauth:grant_type:redelegate
+            - refresh_token
+          redirect_uris:
+            - "https://ctao-data-explorer.test.example/auth/oidc/callback"
+          scopes:
+            - scim:write
+            - scim:read
+            - offline_access
+            - openid
+            - profile
+            - iam:admin.write
+            - iam:admin.read
+      groups:
+        - name: ctao.suss.test
+        - name: ctao.suss.test/sdc
+        - name: ctao.suss.test/sdc/user
+      users:
+        - username: sdc-user
+          password: test-password
+          email: sdc@test.example
+          given_name: SDC
+          family_name: User
+          groups:
+            - ctao.suss.test
+            - ctao.suss.test/sdc/user
+          role: ROLE_USER
+
+  trustStore:
+    addAIVCA: true
+    testCASecretName: '{{ .Release.Name }}-test-ca'
+
 ingress:
   enabled: true
   className: "haproxy"
@@ -289,6 +366,7 @@ servicePorts:
   backend: 8000
   frontend: 80
   auth: 8001
+  iam: 8080
 
 # Pod annotations
 podAnnotations: {}
