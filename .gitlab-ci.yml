@@ -5,10 +5,14 @@ include:
   - aiv-config.yml
 
 variables:
-  AIV_DEPLOY_HELM_UPGRADE_CHART_EXTRA_VALUES: "--set auth.secrets.refreshTokenEncryptionKey=${REFRESH_TOKEN_ENCRYPTION_KEY}
-    --set auth.secrets.clientId=${CTAO_CLIENT_ID}
-    --set auth.secrets.clientSecret=${CTAO_CLIENT_SECRET}
-    --set auth.secrets.sessionSecretKeyOidc=${SESSION_SECRET_KEY_OIDC}"
+  AIV_DEPLOY_HELM_UPGRADE_CHART_EXTRA_VALUES: "--set iam.enabled=true
+    --set auth.env.OIDC_SERVER_METADATA_URL=https://iam-ctao-data-explorer.test.example/.well-known/openid-configuration
+    --set auth.env.OIDC_ISSUER=https://iam-ctao-data-explorer.test.example
+    --set auth.env.OIDC_VERIFY_SSL=false
+    --set auth.secrets.clientId=suss-test-client
+    --set auth.secrets.clientSecret=secret
+    --set auth.secrets.sessionSecretKeyOidc=${SESSION_SECRET_KEY_OIDC}
+    --set auth.secrets.refreshTokenEncryptionKey=${REFRESH_TOKEN_ENCRYPTION_KEY}"
 
 stages:
   - prepare
@@ -138,11 +142,7 @@ k8s-integration-tests:
       - test-in-k8s/
       - .toolkit/stats/pull-images-statistics.json
       - .toolkit/stats/testkit-helm-upgrade-statistics.json
-      - test_frontend_screenshot_1_before.png
-      - test_frontend_screenshot_2_resolve.png
-      - test_frontend_screenshot_3_search.png
-      - test_frontend_screenshot_4_datalink_before_assert.png
-      - test_frontend_screenshot_5_datalink.png
+      - "*.png"
     expose_as: "K8s Integration Test Results"
     reports:
       junit: test-in-k8s/report.xml
