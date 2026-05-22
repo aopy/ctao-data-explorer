@@ -164,6 +164,7 @@ async def auth_callback(
 
     iam_access_token: str = cast(str, token_response["access_token"])
     iam_refresh_token: str | None = cast(str | None, token_response.get("refresh_token"))
+    iam_id_token: str | None = cast(str | None, token_response.get("id_token"))
     iam_access_token_expiry: float = _compute_expiry(token_response.get("expires_in", 3600))
 
     app_user_id: int = await _get_or_create_user(db_session, iam_subject_id)
@@ -182,6 +183,7 @@ async def auth_callback(
         iam_at=iam_access_token,
         iam_at_exp=iam_access_token_expiry,
         iam_rt=encrypted_rt,
+        iam_id_token=iam_id_token,
     )
 
     try:

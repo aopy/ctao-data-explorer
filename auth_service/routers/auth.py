@@ -4,11 +4,13 @@ import logging
 import time
 from functools import lru_cache
 from typing import Any, cast
+from urllib.parse import urlencode
 
 import httpx
 import redis.asyncio as redis
 from authlib.integrations.base_client.errors import OAuthError
 from authlib.integrations.starlette_client import OAuth
+from cryptography.fernet import InvalidToken
 from ctao_shared.constants import (
     COOKIE_NAME_MAIN_SESSION,
     SESSION_KEY_PREFIX,
@@ -219,7 +221,14 @@ async def _ensure_valid_access_token(
         await redis_client.delete(key)
         return None
 
-    decrypted_rt = decrypt_token(enc_rt)
+    try:
+        decrypted_rt = decrypt_token(enc_rt)
+    except (InvalidToken, TypeError, ValueError):
+        logger.warning(
+            "Could not decrypt refresh token in session; forcing re-auth.", exc_info=True
+        )
+        await redis_client.delete(key)
+        return None
     if not decrypted_rt:
         await redis_client.delete(key)
         return None
@@ -348,21 +357,185 @@ async def me(
     )
 
 
+@lru_cache
+def _oidc_metadata_url() -> str:
+    metadata_url = (_settings().OIDC_SERVER_METADATA_URL or "").strip()
+    if metadata_url:
+        return metadata_url
+
+    issuer = (_settings().OIDC_ISSUER or "").strip().rstrip("/")
+    if issuer:
+        return f"{issuer}/.well-known/openid-configuration"
+
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="OIDC metadata URL is not configured.",
+    )
+
+
+async def _load_oidc_metadata() -> dict[str, Any]:
+    url = _oidc_metadata_url()
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.RequestError as err:
+        logger.warning("OIDC metadata endpoint unreachable: %s", err)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OIDC metadata endpoint unreachable.",
+        ) from err
+    except httpx.HTTPStatusError as err:
+        logger.warning("OIDC metadata endpoint returned error: %s", err)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OIDC metadata endpoint returned an error.",
+        ) from err
+    except ValueError as err:
+        logger.warning("OIDC metadata endpoint returned invalid JSON: %s", err)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OIDC metadata endpoint returned invalid JSON.",
+        ) from err
+
+    return cast(dict[str, Any], data)
+
+
+async def _revoke_refresh_token(refresh_token: str, metadata: dict[str, Any]) -> None:
+    revocation_endpoint = metadata.get("revocation_endpoint")
+    if not revocation_endpoint:
+        logger.warning("OIDC metadata does not expose revocation_endpoint; skipping RT revocation.")
+        return
+
+    data = {
+        "token": refresh_token,
+        "token_type_hint": "refresh_token",
+    }
+
+    client_id = _settings().CTAO_CLIENT_ID
+    client_secret = _settings().CTAO_CLIENT_SECRET
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            if client_id and client_secret:
+                resp = await client.post(
+                    str(revocation_endpoint),
+                    data=data,
+                    auth=(client_id, client_secret),
+                )
+            else:
+                if client_id:
+                    data["client_id"] = client_id
+                resp = await client.post(
+                    str(revocation_endpoint),
+                    data=data,
+                )
+            if resp.status_code >= 400:
+                logger.warning(
+                    "Refresh-token revocation failed: status=%s body=%s",
+                    resp.status_code,
+                    resp.text[:500],
+                )
+                return
+
+            logger.info("Refresh token revocation attempted successfully.")
+    except httpx.RequestError:
+        logger.warning("Refresh-token revocation endpoint unreachable.", exc_info=True)
+
+
+def _post_logout_redirect_uri() -> str:
+    return _settings().FRONTEND_BASE_URL or _settings().BASE_URL or "/"
+
+
+def _build_end_session_url(
+    metadata: dict[str, Any],
+    *,
+    id_token_hint: str | None,
+) -> str | None:
+    end_session_endpoint = (
+        metadata.get("end_session_endpoint") or _settings().OIDC_END_SESSION_ENDPOINT
+    )
+
+    if not end_session_endpoint:
+        logger.warning(
+            "OIDC metadata does not expose end_session_endpoint and "
+            "OIDC_END_SESSION_ENDPOINT is not configured; no upstream logout URL."
+        )
+        return None
+
+    params: dict[str, str] = {
+        "post_logout_redirect_uri": _post_logout_redirect_uri(),
+    }
+
+    if id_token_hint:
+        params["id_token_hint"] = id_token_hint
+
+    if _settings().CTAO_CLIENT_ID:
+        params["client_id"] = _settings().CTAO_CLIENT_ID
+
+    return f"{end_session_endpoint}?{urlencode(params)}"
+
+
 @auth_api_router.post("/logout_session", tags=["auth"])
 async def logout_session(
     request: Request,
     response: Response,
     redis: redis.Redis = Depends(get_redis_client),
-) -> dict[str, str]:
-    # CSRF protection
+) -> dict[str, str | None]:
     require_xsrf(request)
+
+    metadata: dict[str, Any] = {}
+    session: SessionData | None = None
+    session_key: str | None = None
 
     session_id = request.cookies.get(COOKIE_NAME_MAIN_SESSION)
     if session_id:
-        await redis.delete(f"{SESSION_KEY_PREFIX}{session_id}")
+        session_key = f"{SESSION_KEY_PREFIX}{session_id}"
+        raw = await redis.get(session_key)
+
+        if raw:
+            try:
+                raw_text = raw.decode() if isinstance(raw, bytes) else raw
+                session = SessionData.from_redis_dict(json.loads(raw_text))
+            except Exception:
+                logger.warning(
+                    "Could not parse session during logout for session_id=%s",
+                    session_id,
+                    exc_info=True,
+                )
+
+    try:
+        metadata = await _load_oidc_metadata()
+    except HTTPException:
+        logger.warning("Could not load OIDC metadata during logout; continuing local logout.")
+        metadata = {}
+
+    refresh_token: str | None = None
+    if session and session.iam_rt:
+        try:
+            refresh_token = decrypt_token(session.iam_rt)
+        except (InvalidToken, TypeError, ValueError):
+            logger.warning(
+                "Could not decrypt refresh token during logout for session_id=%s; skipping revocation.",
+                session_id,
+                exc_info=True,
+            )
+            refresh_token = None
+
+        if refresh_token:
+            await _revoke_refresh_token(refresh_token, metadata)
+
+    logout_url = _build_end_session_url(
+        metadata,
+        id_token_hint=session.iam_id_token if session else None,
+    )
+
+    if session_key:
+        await redis.delete(session_key)
         logger.info("Session %s deleted from Redis", session_id)
 
-    # Clear cookies: session + xsrf
     cookie_params = get_auth_settings().cookie_params
     response.delete_cookie(
         key=COOKIE_NAME_MAIN_SESSION,
@@ -374,7 +547,11 @@ async def logout_session(
         path="/",
         domain=_settings().COOKIE_DOMAIN or None,
     )
-    return {"status": "logout successful"}
+
+    return {
+        "status": "logout successful",
+        "logout_url": logout_url,
+    }
 
 
 router = auth_api_router

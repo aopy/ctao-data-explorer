@@ -41,6 +41,8 @@ class SessionData(BaseModel):
     iam_at_exp: float | None = Field(default=None, alias=SESSION_ACCESS_TOKEN_EXPIRY_KEY)
     iam_rt: str | None = Field(default=None, alias=SESSION_REFRESH_TOKEN_KEY)
 
+    iam_id_token: str | None = None
+
     @classmethod
     def from_redis_dict(cls, raw: dict[str, Any]) -> SessionData:
         """
