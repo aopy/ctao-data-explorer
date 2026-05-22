@@ -17,6 +17,8 @@ class DownloadSettings(BaseSettings):
     IAM_TOKEN_ENDPOINT: str
     DOWNLOAD_SERVICE_CLIENT_ID: str
     DOWNLOAD_SERVICE_CLIENT_SECRET: str
+    DOWNLOAD_TOKEN_EXCHANGE_AUDIENCE: str | None = None
+    DOWNLOAD_TOKEN_EXCHANGE_SCOPE: str | None = None
 
     # Request limits
     DOWNLOAD_MAX_FILES: int = 100

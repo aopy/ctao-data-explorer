@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import FastAPI
-from httpx import ASGITransport, AsyncClient
+from httpx import ASGITransport, AsyncClient, Response
 
 from download_service.config import get_download_settings
 from download_service.main import create_app
@@ -22,6 +22,8 @@ def app(monkeypatch) -> FastAPI:
     monkeypatch.setenv("DOWNLOAD_SERVICE_CLIENT_ID", "client-id")
     monkeypatch.setenv("DOWNLOAD_SERVICE_CLIENT_SECRET", "client-secret")
     monkeypatch.setenv("DOWNLOAD_ALLOWED_STORAGE_HOSTS_JSON", '["globe-door.ifh.de:2880"]')
+    monkeypatch.setenv("DOWNLOAD_TOKEN_EXCHANGE_AUDIENCE", "https://wlcg.cern.ch/jwt/v1/any")
+    monkeypatch.setenv("DOWNLOAD_TOKEN_EXCHANGE_SCOPE", "storage.read:/public/")
     get_download_settings.cache_clear()
     return create_app()
 
@@ -37,11 +39,7 @@ async def client(app: FastAPI):
 async def test_signed_urls_requires_bearer(client: AsyncClient):
     r = await client.post(
         "/api/v1/signed-urls",
-        json={
-            "files": [
-                "https://globe-door.ifh.de:2880/pnfs/ifh.de/acs/sdc/data/file1.dat"
-            ]
-        },
+        json={"files": ["https://globe-door.ifh.de:2880/pnfs/ifh.de/acs/sdc/data/file1.dat"]},
     )
 
     assert r.status_code == 401
@@ -52,11 +50,7 @@ async def test_signed_urls_rejects_disallowed_host(client: AsyncClient):
     r = await client.post(
         "/api/v1/signed-urls",
         headers={"Authorization": "Bearer USER-TOKEN"},
-        json={
-            "files": [
-                "https://evil.example/pnfs/ifh.de/acs/sdc/data/file1.dat"
-            ]
-        },
+        json={"files": ["https://evil.example/pnfs/ifh.de/acs/sdc/data/file1.dat"]},
     )
 
     assert r.status_code == 403 or r.status_code == 206
@@ -88,9 +82,7 @@ async def test_signed_urls_success(client: AsyncClient, monkeypatch):
         "/api/v1/signed-urls",
         headers={"Authorization": "Bearer USER-TOKEN"},
         json={
-            "files": [
-                "https://globe-door.ifh.de:2880/pnfs/ifh.de/acs/sdc/data/file1.dat"
-            ],
+            "files": ["https://globe-door.ifh.de:2880/pnfs/ifh.de/acs/sdc/data/file1.dat"],
             "validity": "PT1H",
         },
     )
@@ -165,11 +157,7 @@ async def test_signed_url_status_does_not_return_tokens(client: AsyncClient, mon
     r = await client.post(
         "/api/v1/signed-urls",
         headers={"Authorization": "Bearer USER-TOKEN"},
-        json={
-            "files": [
-                "https://globe-door.ifh.de:2880/pnfs/ifh.de/acs/sdc/data/file1.dat"
-            ]
-        },
+        json={"files": ["https://globe-door.ifh.de:2880/pnfs/ifh.de/acs/sdc/data/file1.dat"]},
     )
 
     assert r.status_code == 200
@@ -185,3 +173,64 @@ async def test_signed_url_status_does_not_return_tokens(client: AsyncClient, mon
     assert "access_token" not in status_data
     assert status_data["file_count"] == 1
     assert status_data["status"] == "completed"
+
+
+@pytest.mark.anyio
+async def test_signed_urls_uses_configured_token_exchange_scope_and_audience(
+    client: AsyncClient,
+    monkeypatch,
+):
+    monkeypatch.setenv("DOWNLOAD_TOKEN_EXCHANGE_AUDIENCE", "https://wlcg.cern.ch/jwt/v1/any")
+    monkeypatch.setenv("DOWNLOAD_TOKEN_EXCHANGE_SCOPE", "storage.read:/public/")
+    get_download_settings.cache_clear()
+
+    real_post = AsyncClient.post
+
+    async def fake_post(self, url, *args, data=None, auth=None, **kwargs):
+        if str(url).startswith("/api/"):
+            return await real_post(self, url, *args, data=data, auth=auth, **kwargs)
+
+        assert url == "https://iam.example/token"
+        assert data is not None
+
+        assert data["scope"] == "storage.read:/public/"
+        assert data["audience"] == "https://wlcg.cern.ch/jwt/v1/any"
+
+        assert data["grant_type"] == "urn:ietf:params:oauth:grant-type:token-exchange"
+        assert data["subject_token"] == "USER-TOKEN"
+        assert data["subject_token_type"] == "urn:ietf:params:oauth:token-type:access_token"
+        assert data["requested_token_type"] == "urn:ietf:params:oauth:token-type:access_token"
+        assert auth == ("client-id", "client-secret")
+
+        return Response(
+            200,
+            json={
+                "access_token": "FILE-TOKEN",
+                "expires_in": 3600,
+                "scope": "storage.read:/public/",
+                "token_type": "Bearer",
+                "issued_token_type": "urn:ietf:params:oauth:token-type:jwt",
+            },
+        )
+
+    monkeypatch.setattr(AsyncClient, "post", fake_post)
+
+    r = await client.post(
+        "/api/v1/signed-urls",
+        headers={"Authorization": "Bearer USER-TOKEN"},
+        json={
+            "files": [
+                "https://globe-door.ifh.de:2880/pnfs/ifh.de/acs/cta/diskonly/oidc-test-bas/public/test-file.txt"
+            ],
+            "validity": "PT1H",
+        },
+    )
+
+    assert r.status_code == 200, r.text
+    data = r.json()
+
+    assert data["token_exchange_count"] == 1
+    assert data["signed_urls"][0]["access_token"] == "FILE-TOKEN"
+    assert data["signed_urls"][0]["storage_url"] == (
+        "https://globe-door.ifh.de:2880/pnfs/ifh.de/acs/cta/diskonly/oidc-test-bas/public/test-file.txt"
+    )

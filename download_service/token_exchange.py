@@ -34,17 +34,19 @@ async def exchange_file_token(
     """
     RFC 8693 token exchange.
 
-    The requested token is scoped to one exact file:
+    The requested token is scoped to one file/path:
       scope=storage.read:<file_path>
-      audience=https://<dcache-host>/
+
+    The audience is normally derived from the storage host, but can be overridden
+    with DOWNLOAD_TOKEN_AUDIENCE for storage systems configured with a fixed/default audience.
     """
     data = {
         "grant_type": TOKEN_EXCHANGE_GRANT,
         "subject_token": subject_token,
         "subject_token_type": ACCESS_TOKEN_TYPE,
         "requested_token_type": ACCESS_TOKEN_TYPE,
-        "scope": scope,
-        "audience": audience,
+        "scope": settings.DOWNLOAD_TOKEN_EXCHANGE_SCOPE or scope,
+        "audience": settings.DOWNLOAD_TOKEN_EXCHANGE_AUDIENCE or audience,
     }
 
     data["expires_in"] = str(validity_seconds)

@@ -23,6 +23,7 @@ router = APIRouter(prefix="/api/v1", tags=["download"])
 def get_status_store(request: Request) -> RequestStatusStore:
     return request.app.state.download_status_store
 
+
 BearerTokenDep = Annotated[str, Depends(require_bearer_token)]
 SettingsDep = Annotated[DownloadSettings, Depends(get_download_settings)]
 StatusStoreDep = Annotated[RequestStatusStore, Depends(get_status_store)]
