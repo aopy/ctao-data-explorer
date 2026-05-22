@@ -42,6 +42,7 @@ dependencies = [
     "python-multipart>=0.0.26,<0.1",
     "asgi-lifespan>=2.1.0,<3",
     "aiosqlite>=0.22.1,<0.23",
+    "pyjwt>=2.12.1",
 ]
 
 # needed for setuptools_scm to find the version from git tags
