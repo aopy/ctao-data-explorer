@@ -142,7 +142,18 @@ k8s-integration-tests:
       - test-in-k8s/
       - .toolkit/stats/pull-images-statistics.json
       - .toolkit/stats/testkit-helm-upgrade-statistics.json
-      - "*.png"
+      - test_frontend_screenshot_1_before.png
+      - test_frontend_screenshot_2_resolve.png
+      - test_frontend_screenshot_3_search.png
+      - test_frontend_screenshot_4_datalink_before_assert.png
+      - test_frontend_screenshot_5_datalink.png
+      - login_before_submit.png
+      - login_at_callback.png
+      - login_after_redirect.png
+      - test_login_before.png
+      - test_login_after.png
+      - test_logout_logged_in.png
+      - test_logout_after.png
     expose_as: "K8s Integration Test Results"
     reports:
       junit: test-in-k8s/report.xml
