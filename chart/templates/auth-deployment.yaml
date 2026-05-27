@@ -79,7 +79,7 @@ spec:
             - containerPort: {{ .Values.auth.service.port }}
               name: http
 
-          {{ $_ := required "auth.env.OIDC_ISSUER is required" (index .Values.auth.env "OIDC_ISSUER") }}
+          {{ $_ := required "iam.global.fqdn is required for OIDC issuer" .Values.iam.global.fqdn }}
 
           env:
             - name: AUTH_REDIS_URL
@@ -100,6 +100,14 @@ spec:
             - name: {{ $k }}
               value: {{ $v | quote }}
             {{- end }}
+
+            # IAM-derived OIDC overrides (always set; last-wins over range above)
+            - name: OIDC_ISSUER
+              value: {{ printf "https://%s" .Values.iam.global.fqdn | quote }}
+            - name: OIDC_SERVER_METADATA_URL
+              value: {{ printf "https://%s/.well-known/openid-configuration" .Values.iam.global.fqdn | quote }}
+            - name: OIDC_VERIFY_SSL
+              value: {{ .Values.iam.tls.verifySSL | quote }}
           envFrom:
             - secretRef:
                 name: {{ .Values.auth.secrets.existingSecret | default (printf "%s-auth-secrets" (include "ctao-data-explorer.fullname" .)) }}

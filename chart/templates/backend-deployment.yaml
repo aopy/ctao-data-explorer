@@ -170,6 +170,12 @@ spec:
               value: {{ $value | quote }}
             {{- end }}
 
+            # IAM-derived OIDC overrides (always set; last-wins over range above)
+            - name: OIDC_ISSUER
+              value: {{ printf "https://%s" .Values.iam.global.fqdn | quote }}
+            - name: OIDC_VERIFY_SSL
+              value: {{ .Values.iam.tls.verifySSL | quote }}
+
           livenessProbe:
             httpGet:
               path: /health/live
