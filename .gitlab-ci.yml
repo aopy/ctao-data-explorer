@@ -5,10 +5,7 @@ include:
   - aiv-config.yml
 
 variables:
-  AIV_DEPLOY_HELM_UPGRADE_CHART_EXTRA_VALUES: "--set iam.enabled=true
-    --set auth.env.OIDC_SERVER_METADATA_URL=https://iam-ctao-data-explorer.test.example/.well-known/openid-configuration
-    --set auth.env.OIDC_ISSUER=https://iam-ctao-data-explorer.test.example
-    --set auth.env.OIDC_VERIFY_SSL=false
+  AIV_DEPLOY_HELM_UPGRADE_CHART_EXTRA_VALUES: "
     --set auth.secrets.clientId=suss-test-client
     --set auth.secrets.clientSecret=secret
     --set auth.secrets.sessionSecretKeyOidc=${SESSION_SECRET_KEY_OIDC}
