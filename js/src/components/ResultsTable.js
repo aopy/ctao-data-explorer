@@ -27,6 +27,15 @@ const DEFAULT_VISIBLE_COLUMNS = [
   'az_pnt',
 ];
 
+function getDatalinkUrl(row) {
+  return (
+    row.datalink_url || // backend-generated DataLink URL
+    row.datalink ||     // new hess_dr.obscore DataLink column
+    row.access_url ||   // standard ObsCore access_url
+    null
+  );
+}
+
 export default function ResultsTable({
   results,
   onRowSelected,
@@ -381,14 +390,18 @@ export default function ResultsTable({
     cols.push({
       id: 'datalink-column',
       name: 'DataLink',
-      cell: row =>
-        row.datalink_url ? (
+      cell: row => {
+        const datalinkUrl = getDatalinkUrl(row);
+
+        return datalinkUrl ? (
           <DataLinkDropdown
-            datalink_url={row.datalink_url}
+            datalink_url={datalinkUrl}
+            isLoggedIn={isLoggedIn}
             isOpen={row.id === openDropdownId}
             onToggle={() => setOpenDropdownId(row.id === openDropdownId ? null : row.id)}
           />
-        ) : null,
+        ) : null;
+      },
       ignoreRowClick: true,
       allowOverflow: true,
       button: true,
