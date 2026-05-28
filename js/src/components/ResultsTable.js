@@ -27,13 +27,16 @@ const DEFAULT_VISIBLE_COLUMNS = [
   'az_pnt',
 ];
 
+function looksLikeDatalinkUrl(value) {
+  if (!value) return false;
+  return String(value).toLowerCase().includes('/datalink/');
+}
+
 function getDatalinkUrl(row) {
-  return (
-    row.datalink_url || // backend-generated DataLink URL
-    row.datalink ||     // new hess_dr.obscore DataLink column
-    row.access_url ||   // standard ObsCore access_url
-    null
-  );
+  if (row.datalink_url) return row.datalink_url;
+  if (row.datalink) return row.datalink;
+  if (looksLikeDatalinkUrl(row.access_url)) return row.access_url;
+  return null;
 }
 
 export default function ResultsTable({
