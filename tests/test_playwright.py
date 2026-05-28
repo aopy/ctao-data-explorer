@@ -14,7 +14,8 @@ def _login(page: Page):
     """Login helper for tests that require an authenticated session.
 
     Clicks the Login button, fills in TEST_USER and TEST_PASSWORD on the IAM login form,
-    submits, and waits for the redirect back to the frontend.
+    submits, handles the IAM consent/approval page if it appears, and waits for the
+    redirect back to the frontend.
     Skips if credentials are not set.
     """
     test_user = os.getenv("TEST_USER")
@@ -32,7 +33,18 @@ def _login(page: Page):
     with page.expect_navigation(timeout=60000):
         page.get_by_role("button", name="Sign in", exact=True).click()
     page.screenshot(path=f"{SCREENSHOTS_DIR}/login_at_callback.png")
-    page.wait_for_url(f"{frontend_url}**", timeout=60000)
+    # If the page is still on the IAM host, a consent/approval page is shown.
+    # Click the approve button to complete the authorization flow.
+    if "iam-ctao-data-explorer" in page.url:
+        approve_button = page.get_by_role("button", name="Authorize", exact=True)
+        expect(approve_button).to_be_visible(timeout=10000)
+        with page.expect_navigation(timeout=60000):
+            approve_button.click()
+    # The callback redirects (307) to the frontend, so expect_navigation above
+    # already follows it. Just wait for the actual frontend page to be fully loaded.
+    if not page.url.startswith(frontend_url):
+        page.wait_for_url(f"{frontend_url}**", timeout=60000)
+    page.wait_for_load_state("networkidle")
     page.screenshot(path=f"{SCREENSHOTS_DIR}/login_after_redirect.png")
 
 
@@ -71,7 +83,8 @@ def test_logout(page: Page):
     expect(logout_button).to_be_visible()
     logout_button.click()
     page.wait_for_load_state("networkidle")
-    page.wait_for_url(f"{frontend_url}**")
+    if not page.url.startswith(frontend_url):
+        page.wait_for_url(f"{frontend_url}**")
     page.screenshot(path=f"{SCREENSHOTS_DIR}/test_logout_after.png")
     for tab in ["My Basket", "Preview Jobs", "Query Store", "Profile"]:
         expect(page.get_by_role("link", name=tab, exact=True)).to_have_count(0)
