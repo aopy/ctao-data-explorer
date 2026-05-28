@@ -26,6 +26,21 @@ pylint:
   script:
     - pylint --fail-under 5.0 api auth_service --output-format=json2:pylint.json,colorized
 
+kubeconform:
+  stage: lint
+  image: harbor.cta-observatory.org/proxy_cache/alpine/helm:${HELM_VERSION}
+  rules:
+    - exists:
+        - $CHART_LOCATION/Chart.yaml
+  before_script:
+    - curl -L
+      https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz
+      | tar xvzf -
+  script:
+    - helm dependencies build $CHART_LOCATION
+    - helm template $CHART_LOCATION | ./kubeconform -summary -verbose -strict
+      -output pretty -ignore-missing-schemas
+
 pre-commit-hooks:
   before_script:
     - apt update && apt install -y --no-install-recommends git
