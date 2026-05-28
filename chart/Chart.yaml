@@ -21,3 +21,8 @@ dependencies:
     alias: iam
     version: v0.1.0-rc1
     repository: oci://harbor.cta-observatory.org/aai
+
+  - name: gcert-issuer
+    condition: gcert-issuer.enabled
+    version: v0.2.0
+    repository: oci://harbor.cta-observatory.org/common 
