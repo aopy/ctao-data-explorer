@@ -96,6 +96,7 @@ class JwtVerifier:
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="OIDC discovery document missing jwks_uri",
             )
+
         self._jwks_client = PyJWKClient(str(jwks_uri))
         return self._jwks_client
 
