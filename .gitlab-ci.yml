@@ -1,14 +1,12 @@
 include:
   - project: cta-computing/common/aiv-toolkit
-    ref: fdcd7e77e4c13dafd56b3a499613db8aa6cb4eff
+    ref: 31281a43be49c4d23602c4bfc9ff11368a57f18d
     file: ci-functions.yml
   - aiv-config.yml
 
 variables:
-  AIV_DEPLOY_HELM_UPGRADE_CHART_EXTRA_VALUES: "
-    --set auth.secrets.clientId=suss-test-client
-    --set auth.secrets.clientSecret=secret
-    --set auth.secrets.sessionSecretKeyOidc=${SESSION_SECRET_KEY_OIDC}
+  AIV_DEPLOY_HELM_UPGRADE_CHART_EXTRA_VALUES: " --set auth.secrets.clientId=suss-test-client
+    --set auth.secrets.clientSecret=secret --set auth.secrets.sessionSecretKeyOidc=${SESSION_SECRET_KEY_OIDC}
     --set auth.secrets.refreshTokenEncryptionKey=${REFRESH_TOKEN_ENCRYPTION_KEY}"
 
 stages:
@@ -24,7 +22,8 @@ stages:
 
 pylint:
   script:
-    - pylint --fail-under 5.0 api auth_service --output-format=json2:pylint.json,colorized
+    - pylint --fail-under 5.0 api auth_service 
+      --output-format=json2:pylint.json,colorized
 
 kubeconform:
   stage: lint
@@ -33,14 +32,16 @@ kubeconform:
     - exists:
         - $CHART_LOCATION/Chart.yaml
   before_script:
-    - curl -L
+    - curl -L 
       https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz
       | tar xvzf -
   script:
     - helm dependencies build $CHART_LOCATION
-    - helm template $CHART_LOCATION | ./kubeconform -summary -verbose -strict
+    - helm template $CHART_LOCATION | ./kubeconform -summary -verbose -strict 
       -output pretty -ignore-missing-schemas
-    - helm template $CHART_LOCATION -f chart/values-aiv.yaml --set iam.enabled=false --set gcert-issuer.enabled=false | ./kubeconform -summary -verbose -strict  -output pretty -ignore-missing-schemas
+    - helm template $CHART_LOCATION -f chart/values-aiv.yaml --set 
+      iam.enabled=false --set gcert-issuer.enabled=false | ./kubeconform 
+      -summary -verbose -strict  -output pretty -ignore-missing-schemas
 pre-commit-hooks:
   before_script:
     - apt update && apt install -y --no-install-recommends git
@@ -52,7 +53,8 @@ pre-commit-hooks:
 
 hadolint:
   script:
-    - hadolint Dockerfile.auth Dockerfile.backend Dockerfile.frontend Dockerfile.playwright
+    - hadolint Dockerfile.auth Dockerfile.backend Dockerfile.frontend 
+      Dockerfile.playwright
 
 build:
   tags:
@@ -131,10 +133,9 @@ unit-tests-frontend:
     - cat js/craco.config.js
     - cat js/package.json | grep -A2 '"test"'
   script:
-    - CI=true npm test --prefix js -- --watchAll=false --coverage
-        --coverageReporters=text
-        --coverageReporters=lcov
-        --coverageReporters=cobertura
+    - CI=true npm test --prefix js -- --watchAll=false --coverage 
+      --coverageReporters=text --coverageReporters=lcov 
+      --coverageReporters=cobertura
   artifacts:
     when: always
     paths:
@@ -198,7 +199,8 @@ collect-test-artifacts:
     - !reference [.install-kit, script]
   script:
     - find . -name "report.xml" -o -name "coverage.xml" | sort
-    - aiv-report -v merge-junit */report.xml js/coverage/report.xml --output report.xml
+    - aiv-report -v merge-junit */report.xml js/coverage/report.xml --output 
+      report.xml
     - cp -fv test/coverage.xml coverage.xml
   artifacts:
     paths:
