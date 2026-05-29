@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import ssl
 import time
 from dataclasses import dataclass
 from functools import lru_cache
@@ -64,8 +63,7 @@ class JwtVerifier:
         url = f"{issuer}/.well-known/openid-configuration"
 
         try:
-            ssl_verify = self._settings.OIDC_VERIFY_SSL
-            resp = httpx.get(url, verify=ssl_verify, timeout=5)
+            resp = httpx.get(url, timeout=5)
             resp.raise_for_status()
             data = cast(dict[str, Any], resp.json())
         except httpx.RequestError as err:
@@ -98,12 +96,7 @@ class JwtVerifier:
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="OIDC discovery document missing jwks_uri",
             )
-        ssl_context = None
-        if not self._settings.OIDC_VERIFY_SSL:
-            ssl_context = (
-                ssl._create_unverified_context()  # NOSONAR (S4830, S5527) — intentional for testing with self-signed IAM cert
-            )
-        self._jwks_client = PyJWKClient(str(jwks_uri), ssl_context=ssl_context)
+        self._jwks_client = PyJWKClient(str(jwks_uri))
         return self._jwks_client
 
     def verify(self, token: str) -> VerifiedIdentity:
