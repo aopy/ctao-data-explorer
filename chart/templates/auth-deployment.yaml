@@ -113,6 +113,8 @@ spec:
               value: {{ printf "https://%s/.well-known/openid-configuration" .Values.iam.global.fqdn | quote }}
             - name: SSL_CERT_FILE
               value: /etc/ssl/certs/iam-ca.pem
+            - name: TOKEN_RELAY_TARGETS_JSON
+              value: {{ dict "dataaccess" (printf "http://%s-backend:%d" (include "ctao-data-explorer.fullname" .) (.Values.backend.service.port | int)) | toJson | quote }}
           envFrom:
             - secretRef:
                 name: {{ .Values.auth.secrets.existingSecret | default (printf "%s-auth-secrets" (include "ctao-data-explorer.fullname" .)) }}
