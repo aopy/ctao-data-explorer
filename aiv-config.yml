@@ -20,8 +20,7 @@ variables:
   AIV_DOCKER_IMAGE_CONTEXT: .
 
   CHART_LOCATION: chart
-  # before future upgrades, uncomment
-  # CHART_VALUES: chart/values-aiv.yaml
+  CHART_VALUES: chart/values-aiv.yaml
 
   ENABLE_INGRESS: true
 
