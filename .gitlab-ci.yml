@@ -40,7 +40,7 @@ kubeconform:
     - helm dependencies build $CHART_LOCATION
     - helm template $CHART_LOCATION | ./kubeconform -summary -verbose -strict
       -output pretty -ignore-missing-schemas
-
+    - helm template $CHART_LOCATION -f chart/values-aiv.yaml --set iam.enabled=false --set gcert-issuer.enabled=false | ./kubeconform -summary -verbose -strict  -output pretty -ignore-missing-schemas
 pre-commit-hooks:
   before_script:
     - apt update && apt install -y --no-install-recommends git
