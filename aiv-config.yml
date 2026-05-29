@@ -25,3 +25,5 @@ variables:
   ENABLE_INGRESS: true
 
   ALLOWED_IMAGE_PREFIXES: docker,postgres,redis,registry.k8s.io
+
+  BASE_REF_PATCH_FILES: pre-upgrade-patches/values-aiv.patch
