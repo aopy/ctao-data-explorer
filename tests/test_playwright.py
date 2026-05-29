@@ -129,7 +129,7 @@ def test_authenticated_basket_add(page: Page):
     page.wait_for_load_state("networkidle")
 
     # Confirm basket was actually created before navigating away
-    expect(page.get_by_text("Basket 1")).to_be_visible()
+    expect(page.get_by_role("textbox", name="Current basket name")).to_have_value("Basket 1")
 
     # Navigate back to search
     search_link = page.get_by_role("link", name="Search", exact=True)
