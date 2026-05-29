@@ -78,6 +78,11 @@ spec:
           ports:
             - containerPort: {{ .Values.auth.service.port }}
               name: http
+          volumeMounts:
+            - name: iam-ca-cert
+              mountPath: /etc/ssl/certs/iam-ca.pem
+              subPath: test-ca.pem
+              readOnly: true
 
           {{ $_ := required "iam.global.fqdn is required for OIDC issuer" .Values.iam.global.fqdn }}
 
@@ -106,8 +111,8 @@ spec:
               value: {{ printf "https://%s" .Values.iam.global.fqdn | quote }}
             - name: OIDC_SERVER_METADATA_URL
               value: {{ printf "https://%s/.well-known/openid-configuration" .Values.iam.global.fqdn | quote }}
-            - name: OIDC_VERIFY_SSL
-              value: {{ .Values.iam.tls.verifySSL | quote }}
+            - name: SSL_CERT_FILE
+              value: /etc/ssl/certs/iam-ca.pem
           envFrom:
             - secretRef:
                 name: {{ .Values.auth.secrets.existingSecret | default (printf "%s-auth-secrets" (include "ctao-data-explorer.fullname" .)) }}
@@ -128,4 +133,8 @@ spec:
 
           resources:
             {{- toYaml .Values.auth.resources | nindent 12 }}
+      volumes:
+        - name: iam-ca-cert
+          secret:
+            secretName: {{ include "ctao-data-explorer.fullname" . }}-test-ca
 {{- end }}
