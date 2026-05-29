@@ -15,6 +15,8 @@ variables:
   RELEASE_PLAN_FN: https://gitlab.cta-observatory.org/cta-computing/suss/suss-project-management/suss-release-plan/-/raw/main/release_development_document/suss-release-plan.tex
   TRACEABILITY_CSV_FN: https://gitlab.cta-observatory.org/cta-computing/suss/suss-project-management/requirements-traceability/-/raw/main/SUSS_Requirements_Traceability_Matrix.csv
 
+  AIV_DEPLOY_HELM_TEST_FILTER: name=ctao-data-explorer-pytest
+
   AIV_DOCKER_IMAGE_CONTEXT: .
 
   CHART_LOCATION: chart
