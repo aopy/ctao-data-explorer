@@ -19,7 +19,7 @@ dependencies:
   - name: indigo-iam
     condition: iam.enabled
     alias: iam
-    version: v0.1.0-rc1
+    version: v0.1.0-rc2
     repository: oci://harbor.cta-observatory.org/aai
 
   - name: gcert-issuer
