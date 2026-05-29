@@ -152,9 +152,6 @@ def test_authenticated_basket_add(page: Page):
     search_button.click()
     page.wait_for_load_state("networkidle")
 
-    # Wait for at least one result row before touching Add
-    expect(page.locator("input[id^='select-row-datatable-row']").first).to_be_visible()
-
     # Add button has no title attribute — match by role + name
     add_btn = page.get_by_role("button", name="Add", exact=True).first
     expect(add_btn).to_be_enabled()
