@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -112,13 +113,25 @@ def test_csrf_cookie_set_after_login(page: Page):
 
 @pytest.mark.verifies_usecase("SUSS-UC-050-15")
 def test_authenticated_basket_add(page: Page):
-    """Login, search for target, click Add to Basket, and check for feedback alert.
+    """Login, search for target, add to basket, and verify it appears in My Basket tab.
 
-    Logs in, fills a source name, resolves it, runs a search, clicks the
-    Add to Basket button on the first result row, then asserts a feedback alert is visible.
+    Logs in, navigates to My Basket to trigger default basket creation, searches for "crab",
+    clicks the Add button on the first result row, checks for the feedback alert,
+    then navigates to My Basket and verifies the observation is listed.
     """
     page.goto(frontend_url, wait_until="networkidle")
     _login(page)
+    # Visit My Basket first to trigger auto-creation of the default "Basket 1" group,
+    # so the Add buttons are enabled on the search results page.
+    my_basket_link = page.get_by_role("link", name="My Basket", exact=True)
+    expect(my_basket_link).to_be_visible()
+    my_basket_link.click()
+    page.wait_for_load_state("networkidle")
+    # Navigate back to the search tab
+    search_link = page.get_by_role("link", name="Search", exact=True)
+    expect(search_link).to_be_visible()
+    search_link.click()
+    page.wait_for_load_state("networkidle")
     source_input = page.locator("#objectNameInput")
     expect(source_input).to_be_visible()
     source_input.fill("crab")
@@ -137,6 +150,12 @@ def test_authenticated_basket_add(page: Page):
     add_btn.click()
     alert = page.locator(".alert")
     expect(alert).to_be_visible()
+    page.screenshot(path=f"{SCREENSHOTS_DIR}/basket_add_alert.png")
+    # Navigate to My Basket and verify the observation appears in the list
+    my_basket_link.click()
+    page.wait_for_load_state("networkidle")
+    expect(page.get_by_text(re.compile(r"Obs\. id:"), exact=False)).to_be_visible()
+    page.screenshot(path=f"{SCREENSHOTS_DIR}/basket_after_add.png")
 
 
 @pytest.mark.verifies_usecase("SUSS-UC-050-01")
