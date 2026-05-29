@@ -127,31 +127,45 @@ def test_authenticated_basket_add(page: Page):
     expect(my_basket_link).to_be_visible()
     my_basket_link.click()
     page.wait_for_load_state("networkidle")
-    # Navigate back to the search tab
+
+    # Confirm basket was actually created before navigating away
+    expect(page.get_by_text("Basket 1")).to_be_visible()
+
+    # Navigate back to search
     search_link = page.get_by_role("link", name="Search", exact=True)
     expect(search_link).to_be_visible()
     search_link.click()
     page.wait_for_load_state("networkidle")
+
     source_input = page.locator("#objectNameInput")
     expect(source_input).to_be_visible()
     source_input.fill("crab")
+
     resolve_button = page.get_by_role("button", name="Resolve", exact=True)
     expect(resolve_button).to_be_visible()
     resolve_button.click()
     expect(page.locator("#coord1Input")).not_to_have_value("")
     expect(page.locator("#coord2Input")).not_to_have_value("")
+
     search_button = page.get_by_role("button", name="Search", exact=True)
     expect(search_button).to_be_enabled()
     search_button.click()
     page.wait_for_load_state("networkidle")
-    add_btn = page.locator("button[title='Add to active basket']").first
-    expect(add_btn).to_be_visible()
+
+    # Wait for at least one result row before touching Add
+    expect(page.locator("table tbody tr").first).to_be_visible()
+
+    # Add button has no title attribute — match by role + name
+    add_btn = page.get_by_role("button", name="Add", exact=True).first
     expect(add_btn).to_be_enabled()
     add_btn.click()
+
     alert = page.locator(".alert")
     expect(alert).to_be_visible()
     page.screenshot(path=f"{SCREENSHOTS_DIR}/basket_add_alert.png")
+
     # Navigate to My Basket and verify the observation appears in the list
+    my_basket_link = page.get_by_role("link", name="My Basket", exact=True)
     my_basket_link.click()
     page.wait_for_load_state("networkidle")
     expect(page.get_by_text(re.compile(r"Obs\. id:"), exact=False)).to_be_visible()
