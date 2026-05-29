@@ -273,9 +273,6 @@ iam:
   global:
     fqdn: iam-ctao-data-explorer.test.example
 
-  tls:
-    verifySSL: false
-
   ingress:
     enabled: true
     annotations:
