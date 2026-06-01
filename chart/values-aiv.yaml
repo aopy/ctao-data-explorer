@@ -1,6 +1,6 @@
 # CI / test overrides for ctao-data-explorer.
-# Pass via --values chart/values-aiv.yaml in CI pipeline.
 # Derives from values.yaml; only differences are listed here.
+# Used if CHART_VALUES is set in AIV config (aiv-config.yml).
 
 # IAM (local auth)
 
