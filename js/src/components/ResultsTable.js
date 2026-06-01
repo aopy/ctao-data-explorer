@@ -430,6 +430,7 @@ export default function ResultsTable({
 
         return (
           <button
+            data-testid="download-button"
             className="btn btn-sm btn-primary"
             onClick={() => downloadRow(row)}
             disabled={isDownloading}
@@ -437,7 +438,7 @@ export default function ResultsTable({
             type="button"
           >
             {isDownloading ? "Preparing…" : "Download"}
-              </button>
+          </button>
         );
       },
       ignoreRowClick: true,
