@@ -138,11 +138,13 @@ spec:
               containerPort: {{ .Values.backend.service.targetPort }}
               protocol: TCP
 
+          {{- if .Values.iam_external.enabled }}
           volumeMounts:
             - name: iam-ca-cert
               mountPath: /etc/ssl/certs/iam-ca.pem
               subPath: test-ca.pem
               readOnly: true
+          {{- end }}
 
           env:
             - name: API_DATABASE_URL
@@ -176,11 +178,13 @@ spec:
               value: {{ $value | quote }}
             {{- end }}
 
-            # IAM-derived OIDC overrides (always set; last-wins over range above)
+            {{- if .Values.iam_external.enabled }}
+            {{- $issuer := tpl (required "iam_external.issuer is required" .Values.iam_external.issuer) . }}
             - name: OIDC_ISSUER
-              value: {{ printf "https://%s" .Values.iam.global.fqdn | quote }}
+              value: {{ $issuer | quote }}
             - name: SSL_CERT_FILE
               value: /etc/ssl/certs/iam-ca.pem
+            {{- end }}
 
           livenessProbe:
             httpGet:
@@ -199,10 +203,12 @@ spec:
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
 
+      {{- if .Values.iam_external.enabled }}
       volumes:
         - name: iam-ca-cert
           secret:
-            secretName: {{ include "ctao-data-explorer.fullname" . }}-test-ca
+            secretName: {{ .Release.Name }}-test-ca
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

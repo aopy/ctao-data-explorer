@@ -78,14 +78,13 @@ spec:
           ports:
             - containerPort: {{ .Values.auth.service.port }}
               name: http
+          {{- if .Values.iam_external.enabled }}
           volumeMounts:
             - name: iam-ca-cert
               mountPath: /etc/ssl/certs/iam-ca.pem
               subPath: test-ca.pem
               readOnly: true
-
-          {{ $_ := required "iam.global.fqdn is required for OIDC issuer" .Values.iam.global.fqdn }}
-
+          {{- end }}
           env:
             - name: AUTH_REDIS_URL
               value: {{ include "ctao-data-explorer.redisUrl" . | quote }}
@@ -106,13 +105,15 @@ spec:
               value: {{ $v | quote }}
             {{- end }}
 
-            # IAM-derived OIDC overrides (always set; last-wins over range above)
+            {{- if .Values.iam_external.enabled }}
+            {{- $issuer := tpl (required "iam_external.issuer is required" .Values.iam_external.issuer) . }}
             - name: OIDC_ISSUER
-              value: {{ printf "https://%s" .Values.iam.global.fqdn | quote }}
+              value: {{ $issuer | quote }}
             - name: OIDC_SERVER_METADATA_URL
-              value: {{ printf "https://%s/.well-known/openid-configuration" .Values.iam.global.fqdn | quote }}
+              value: {{ printf "%s/.well-known/openid-configuration" ($issuer | trimSuffix "/") | quote }}
             - name: SSL_CERT_FILE
               value: /etc/ssl/certs/iam-ca.pem
+            {{- end }}
             - name: TOKEN_RELAY_TARGETS_JSON
               value: {{ dict "dataaccess" (printf "http://%s-backend:%d" (include "ctao-data-explorer.fullname" .) (.Values.backend.service.port | int)) | toJson | quote }}
           envFrom:
@@ -135,8 +136,10 @@ spec:
 
           resources:
             {{- toYaml .Values.auth.resources | nindent 12 }}
+      {{- if .Values.iam_external.enabled }}
       volumes:
         - name: iam-ca-cert
           secret:
-            secretName: {{ include "ctao-data-explorer.fullname" . }}-test-ca
+            secretName: {{ .Release.Name }}-test-ca
+      {{- end }}
 {{- end }}
