@@ -1,0 +1,13 @@
+Added IAM (Indigo IAM) as a Helm chart dependency for local authentication in CI/testing.
+Added gcert-issuer for self-signed TLS certificate generation.
+Introduced a ``iam_external`` abstraction layer (``iam_external.issuer``) that
+consolidates how the OIDC issuer is configured, replacing the previous
+``auth.env.OIDC_ISSUER`` and ``auth.env.OIDC_SERVER_METADATA_URL`` keys.
+Added CI/test-specific override values (``values-aiv.yaml``).
+Added Playwright end-to-end authentication tests.
+Removed references to the external IAM test instance in majestix server.
+
+**API change**: OIDC issuer and metadata URL must now be set via
+``iam_external.issuer`` (with ``iam_external.enabled: true``) instead of
+``auth.env.OIDC_ISSUER`` and ``auth.env.OIDC_SERVER_METADATA_URL``.
+The old ``auth.env`` keys are no longer consumed by the deployment templates.
