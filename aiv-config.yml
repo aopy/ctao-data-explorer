@@ -19,7 +19,9 @@ variables:
 
   AIV_DOCKER_IMAGE_CONTEXT: .
 
+  CHART_NAME: ctao-data-explorer
   CHART_LOCATION: chart
+  # CI/test overrides — IAM, gcert-issuer, test credentials
   CHART_VALUES: chart/values-aiv.yaml
 
   ENABLE_INGRESS: true
