@@ -30,6 +30,8 @@ iam:
   mariadb:
     enabled: true
     auth:
+      database: indigo-iam
+      rootPassword: rootpass
       password: test-password
     image:
       repository: proxy_cache/bitnamilegacy/mariadb
@@ -103,6 +105,8 @@ iam:
     addAIVCA: true
     testCASecretName: '{{ .Release.Name }}-test-ca'
 
+
+
 # gcert-issuer (TLS for IAM)
 
 gcert-issuer:
@@ -163,6 +167,7 @@ auth:
   secrets:
     clientId: suss-test-client
     clientSecret: secret
+    
 
 # IAM abstraction layer
 # Wires values from IAM subchart via tpl for CI/testing.

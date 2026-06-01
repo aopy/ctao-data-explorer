@@ -1,7 +1,7 @@
 repos:
   - repo: 
       https://gitlab.cta-observatory.org/cta-computing/common/aiv-toolkit.git
-    rev: v5.0.2
+    rev: v5.1.2
     hooks:
       - id: ctao-aiv-toolkit
 
