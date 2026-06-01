@@ -5,10 +5,10 @@ auth:
     OIDC_REDIRECT_URI: "https://ctao-data-explorer.test.example/auth/oidc/callback"
     COOKIE_DOMAIN: "ctao-data-explorer.test.example"
 
-      #iam:
-  #  mariadb:
-    #auth:
-    #      database: indigo-iam
-    #      password: Passw0rd
-    #      rootPassword: rootpass
+iam:
+  mariadb:
+    auth:
+      database: indigo-iam
+      password: Passw0rd
+      rootPassword: rootpass
 
