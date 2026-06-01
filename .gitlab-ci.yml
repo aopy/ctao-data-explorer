@@ -1,6 +1,6 @@
 include:
   - project: cta-computing/common/aiv-toolkit
-    ref: b08af5b83ce8e72c7be91960792ec32ec3a70503
+    ref: f5359a7726a67941b5f856a29d9206048749600d
     file: ci-functions.yml
   - aiv-config.yml
 
@@ -180,7 +180,8 @@ k8s-upgrade-integration-tests:
   variables:
     UPGRADE_BASE_REF: "v0.9.2"
     # fix for new ingress controller
-    BASE_REF_PATCH_FILES: pre-upgrade-patches/pre-upgrade.patch pre-upgrade-patches/values-aiv.patch
+    BASE_REF_PATCH_FILES: pre-upgrade-patches/pre-upgrade.patch 
+      pre-upgrade-patches/values-aiv.patch
 
 collect-test-artifacts:
   stage: tests
