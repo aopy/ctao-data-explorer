@@ -13,10 +13,6 @@ iam:
 
   global:
     fqdn: iam-ctao-data-explorer.test.example
-  
-  secrets:
-    clientId: suss-test-client
-    clientSecret: secret
 
   ingress:
     enabled: true
@@ -168,6 +164,9 @@ auth:
     OIDC_REDIRECT_URI: "https://ctao-data-explorer.test.example/auth/oidc/callback"
     COOKIE_DOMAIN: "ctao-data-explorer.test.example"
     COOKIE_SECURE: false
+  secrets:
+    clientId: suss-test-client
+    clientSecret: secret
     
 
 # IAM abstraction layer

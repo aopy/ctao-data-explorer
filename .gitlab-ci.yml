@@ -1,6 +1,6 @@
 include:
   - project: cta-computing/common/aiv-toolkit
-    ref: fdcd7e77e4c13dafd56b3a499613db8aa6cb4eff
+    ref: f5359a7726a67941b5f856a29d9206048749600d
     file: ci-functions.yml
   - aiv-config.yml
 
