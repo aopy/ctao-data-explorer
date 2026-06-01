@@ -7,6 +7,12 @@
 # IAM sub-chart: disabled by default; enable via values-aiv.yaml for CI/testing
 iam:
   enabled: false
+  testClient:
+    enabled: false
+    config:
+      client:
+        id: test-client
+        secret: secret
 
 # gcert-issuer sub-chart: disabled by default; needed for IAM TLS in CI/testing
 # Dev / test pod — disabled by default; enabled in CI via values-aiv.yaml
