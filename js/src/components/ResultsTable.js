@@ -1,10 +1,12 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import DataTable from 'react-data-table-component';
 import axios from 'axios';
 import { apiClient } from "../apiClients";
-import DataLinkDropdown from './DataLinkDropdown';
+// import DataLinkDropdown from './DataLinkDropdown';
 import { API_PREFIX } from '../index';
 import { getColumnDisplayInfo } from './columnConfig';
+import { prepareAndDownloadFile } from "./downloadFileWithToken";
+import { resolveDownloadUrlForRow } from "./downloadTargetUtils";
 
 const DEFAULT_VISIBLE_COLUMNS = [
   'obs_collection',
@@ -135,7 +137,37 @@ export default function ResultsTable({
   const usePagination = filteredCount > USE_PAGINATION_THRESHOLD;
 
   const [alertMessage, setAlertMessage] = useState(null);
-  const [openDropdownId, setOpenDropdownId] = useState(null);
+  //const [openDropdownId, setOpenDropdownId] = useState(null);
+
+  const [downloadingRowId, setDownloadingRowId] = useState(null);
+
+  const downloadRow = useCallback(async rowData => {
+    if (!isLoggedIn) {
+      setAlertMessage("Please log in to download this file.");
+      return;
+    }
+
+    setDownloadingRowId(rowData.id);
+    setAlertMessage(null);
+
+    try {
+      const fileUrl = await resolveDownloadUrlForRow(rowData);
+      await prepareAndDownloadFile(fileUrl);
+      setAlertMessage(`Download started for obs_id=${rowData.obs_id}.`);
+    } catch (error) {
+      console.error("Download failed", error);
+
+      const message =
+        error.response?.data?.detail?.message ||
+        error.response?.data?.detail?.error ||
+        error.message ||
+        "Download failed.";
+
+      setAlertMessage(message);
+    } finally {
+      setDownloadingRowId(null);
+    }
+  }, [isLoggedIn]);
 
   // Row selection change
   const handleSelectedTableRowsChange = (state) => {
@@ -389,21 +421,24 @@ export default function ResultsTable({
       button: true,
     });
 
-    // DataLink column
+    // Download column
     cols.push({
-      id: 'datalink-column',
-      name: 'DataLink',
+      id: 'download-column',
+      name: 'Download',
       cell: row => {
-        const datalinkUrl = getDatalinkUrl(row);
+        const isDownloading = downloadingRowId === row.id;
 
-        return datalinkUrl ? (
-          <DataLinkDropdown
-            datalink_url={datalinkUrl}
-            isLoggedIn={isLoggedIn}
-            isOpen={row.id === openDropdownId}
-            onToggle={() => setOpenDropdownId(row.id === openDropdownId ? null : row.id)}
-          />
-        ) : null;
+        return (
+          <button
+            className="btn btn-sm btn-primary"
+            onClick={() => downloadRow(row)}
+            disabled={isDownloading}
+            title={isLoggedIn ? "Download file" : "Login to download"}
+            type="button"
+          >
+            {isDownloading ? "Preparing…" : "Download"}
+              </button>
+        );
       },
       ignoreRowClick: true,
       allowOverflow: true,
@@ -457,8 +492,10 @@ export default function ResultsTable({
     isLoggedIn,
     activeBasketGroupId,
     allBasketGroups,
-    openDropdownId,
+    //openDropdownId,
     toggleableBackendCols,
+    downloadingRowId,
+    downloadRow,
   ]);
 
   const customStyles = {
