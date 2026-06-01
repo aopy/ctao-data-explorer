@@ -18,8 +18,8 @@ variables:
   AIV_DOCKER_IMAGE_CONTEXT: .
 
   CHART_LOCATION: chart
-  # before future upgrades, uncomment
-  # CHART_VALUES: chart/values-aiv.yaml
+  # CI/test overrides — IAM, gcert-issuer, test credentials
+  CHART_VALUES: chart/values-aiv.yaml
 
   ENABLE_INGRESS: true
 
