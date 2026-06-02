@@ -15,12 +15,20 @@ variables:
   RELEASE_PLAN_FN: https://gitlab.cta-observatory.org/cta-computing/suss/suss-project-management/suss-release-plan/-/raw/main/release_development_document/suss-release-plan.tex
   TRACEABILITY_CSV_FN: https://gitlab.cta-observatory.org/cta-computing/suss/suss-project-management/requirements-traceability/-/raw/main/SUSS_Requirements_Traceability_Matrix.csv
 
+  AIV_DEPLOY_HELM_TEST_FILTER: name=ctao-data-explorer-pytest
+
   AIV_DOCKER_IMAGE_CONTEXT: .
 
+  CHART_NAME: ctao-data-explorer
   CHART_LOCATION: chart
-  # before future upgrades, uncomment
-  # CHART_VALUES: chart/values-aiv.yaml
+  # CI/test overrides — IAM, gcert-issuer, test credentials
+  CHART_VALUES: chart/values-aiv.yaml
 
   ENABLE_INGRESS: true
 
   ALLOWED_IMAGE_PREFIXES: docker,postgres,redis,registry.k8s.io
+
+  BASE_REF_PATCH_FILES: pre-upgrade-patches/values-aiv.patch
+
+  APPLY_PRE_UPGRADE_URL: https://gitlab.cta-observatory.org/cta-computing/common/gcert-issuer/-/raw/main/chart/crds/gcert-request.yaml
+

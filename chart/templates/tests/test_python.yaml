@@ -43,8 +43,8 @@ spec:
         - -c
         - |
           set -euo pipefail
-          export FRONTEND_URL=http://ctao-data-explorer.test.example
-          curl -v $FRONTEND_URL
+          export FRONTEND_URL=https://ctao-data-explorer.test.example
+          curl -vk $FRONTEND_URL
 
           . /opt/venv/bin/activate
 

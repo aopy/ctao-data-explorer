@@ -138,6 +138,14 @@ spec:
               containerPort: {{ .Values.backend.service.targetPort }}
               protocol: TCP
 
+          {{- if .Values.iam_external.enabled }}
+          volumeMounts:
+            - name: iam-ca-cert
+              mountPath: /etc/ssl/certs/iam-ca.pem
+              subPath: test-ca.pem
+              readOnly: true
+          {{- end }}
+
           env:
             - name: API_DATABASE_URL
               {{ if .Values.backend.databaseUrlSecret.name }}
@@ -170,6 +178,14 @@ spec:
               value: {{ $value | quote }}
             {{- end }}
 
+            {{- if .Values.iam_external.enabled }}
+            {{- $issuer := tpl (required "iam_external.issuer is required" .Values.iam_external.issuer) . }}
+            - name: OIDC_ISSUER
+              value: {{ $issuer | quote }}
+            - name: SSL_CERT_FILE
+              value: /etc/ssl/certs/iam-ca.pem
+            {{- end }}
+
           livenessProbe:
             httpGet:
               path: /health/live
@@ -187,6 +203,12 @@ spec:
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
 
+      {{- if .Values.iam_external.enabled }}
+      volumes:
+        - name: iam-ca-cert
+          secret:
+            secretName: {{ .Release.Name }}-test-ca
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
