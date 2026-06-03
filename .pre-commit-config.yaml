@@ -1,5 +1,5 @@
 repos:
-  - repo: 
+  - repo:
       https://gitlab.cta-observatory.org/cta-computing/common/aiv-toolkit.git
     rev: v5.1.2
     hooks:
@@ -22,3 +22,33 @@ repos:
         require_serial: true
         language: unsupported
         pass_filenames: false
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: >
+          (.*\.fits(\.fz)?)|
+          (.*\.svg$)
+
+      - id: end-of-file-fixer
+        exclude: >
+          (.*\.fits(\.fz)?)|
+          (.*\.svg$)|
+          (.*\.patch.*)|
+          (chart/.*README\.md)$
+
+      - id: check-case-conflict
+      - id: check-merge-conflict
+        exclude: ".*\\.fits(\\.fz)?"
+
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+        exclude: ".*\\.fits(\\.fz)?"
+
+      - id: check-xml
+        files: \.svg$
+
+      - id: check-yaml
+        files: \.(yaml|yml)$
+        exclude: (^chart/templates/)|(\.gitlab-ci\.yml)

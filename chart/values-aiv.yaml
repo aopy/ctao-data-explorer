@@ -167,7 +167,7 @@ auth:
   secrets:
     clientId: suss-test-client
     clientSecret: secret
-    
+
 
 # IAM abstraction layer
 # Wires values from IAM subchart via tpl for CI/testing.

@@ -53,7 +53,6 @@ test = [
   "pytest",
   "pytest-requirements",
   "pytest-cov",
-  "mypy>=2.1.0",
 ]
 doc = [
     "sphinx",
@@ -65,9 +64,10 @@ doc = [
     "towncrier",
 ]
 dev = [
-  "prek>=0.3.13",
-  "setuptools_scm",
-  "towncrier",
+    "prek>=0.3.13",
+    "setuptools_scm",
+    "towncrier",
+    "mypy>=2.1.0",
 ]
 
 all = ["ctao-data-explorer[test,doc,dev]"]

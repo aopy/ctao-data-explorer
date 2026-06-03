@@ -22,7 +22,7 @@ stages:
 
 pylint:
   script:
-    - pylint --fail-under 5.0 api auth_service 
+    - pylint --fail-under 5.0 api auth_service
       --output-format=json2:pylint.json,colorized
 
 kubeconform:
@@ -32,15 +32,15 @@ kubeconform:
     - exists:
         - $CHART_LOCATION/Chart.yaml
   before_script:
-    - curl -L 
+    - curl -L
       https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz
       | tar xvzf -
   script:
     - helm dependencies build $CHART_LOCATION
-    - helm template $CHART_LOCATION | ./kubeconform -summary -verbose -strict 
+    - helm template $CHART_LOCATION | ./kubeconform -summary -verbose -strict
       -output pretty -ignore-missing-schemas
-    - helm template $CHART_LOCATION -f chart/values-aiv.yaml --set 
-      iam.enabled=false --set gcert-issuer.enabled=false | ./kubeconform 
+    - helm template $CHART_LOCATION -f chart/values-aiv.yaml --set
+      iam.enabled=false --set gcert-issuer.enabled=false | ./kubeconform
       -summary -verbose -strict  -output pretty -ignore-missing-schemas
 pre-commit-hooks:
   before_script:
@@ -53,7 +53,7 @@ pre-commit-hooks:
 
 hadolint:
   script:
-    - hadolint Dockerfile.auth Dockerfile.backend Dockerfile.frontend 
+    - hadolint Dockerfile.auth Dockerfile.backend Dockerfile.frontend
       Dockerfile.playwright
 
 build:
@@ -70,7 +70,7 @@ build:
         export KANIKO_EXTRA_ARGS
       fi
   variables:
-    CI_HARBOR_REGISTRY_IMAGE: 
+    CI_HARBOR_REGISTRY_IMAGE:
       harbor.cta-observatory.org/suss/${CI_PROJECT_NAME}-${IMAGE}:${DOCKER_TAG}
     AIV_DOCKER_IMAGE_CONTEXT: $CI_PROJECT_DIR
     AIV_DOCKERFILE: Dockerfile.${IMAGE}
@@ -133,8 +133,8 @@ unit-tests-frontend:
     - cat js/craco.config.js
     - cat js/package.json | grep -A2 '"test"'
   script:
-    - CI=true npm test --prefix js -- --watchAll=false --coverage 
-      --coverageReporters=text --coverageReporters=lcov 
+    - CI=true npm test --prefix js -- --watchAll=false --coverage
+      --coverageReporters=text --coverageReporters=lcov
       --coverageReporters=cobertura
   artifacts:
     when: always
@@ -197,7 +197,7 @@ collect-test-artifacts:
     - !reference [.install-kit, script]
   script:
     - find . -name "report.xml" -o -name "coverage.xml" | sort
-    - aiv-report -v merge-junit */report.xml js/coverage/report.xml --output 
+    - aiv-report -v merge-junit */report.xml js/coverage/report.xml --output
       report.xml
     - cp -fv test/coverage.xml coverage.xml
   artifacts:

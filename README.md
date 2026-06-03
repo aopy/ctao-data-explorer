@@ -61,11 +61,11 @@ Legacy setups (directly on host) are documented in the [Legacy deployment guide]
 
 ## Usage
 
-> **Warning**  
-> This deployment is hosted by the Paris Astronomical Data Center (PADC).  
+> **Warning**
+> This deployment is hosted by the Paris Astronomical Data Center (PADC).
 > It is not the official production server; features and APIs may change.
 
-1. **Open the site:**  
+1. **Open the site:**
    <https://padc-ctao-data-explorer.obspm.fr/> → you land on **Search**.
 
 2. **Build a query (Search page)**
@@ -78,7 +78,7 @@ Legacy setups (directly on host) are documented in the [Legacy deployment guide]
        - **MET (s)** — *Mission Elapsed Time, seconds since the fixed CTAO reference epoch*
        - You may fill **any** of these; the others auto-fill and stay in sync.
      - **MET epoch (fixed):** `2001-01-01 00:00:00 TT`
-   - Click **Search** to run or **Clear Form** to reset.  
+   - Click **Search** to run or **Clear Form** to reset.
    _Tip: you can use either position, time, or both._
 
 3. **Explore results (Results page)**

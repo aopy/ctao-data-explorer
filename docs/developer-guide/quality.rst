@@ -66,6 +66,6 @@ The SonarQube scanner analyses the full codebase (Python + JavaScript) after
 all tests have run. It checks:
 
 - Code coverage (Python and JavaScript)
-- Reliability and maintainability issues: code smells, bugs and vulnerabilities 
+- Reliability and maintainability issues: code smells, bugs and vulnerabilities
 - Security hotspots
 - A **quality gate** must pass before the MR can be merged

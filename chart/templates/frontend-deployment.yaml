@@ -28,7 +28,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      automountServiceAccountToken: false 
+      automountServiceAccountToken: false
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
 
@@ -67,7 +67,7 @@ spec:
           volumeMounts:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-                
+
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
 
@@ -76,8 +76,8 @@ spec:
             - name: DANGEROUSLY_DISABLE_HOST_CHECK
               value: "true"
           {{- end }}
-            
-          
+
+
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
