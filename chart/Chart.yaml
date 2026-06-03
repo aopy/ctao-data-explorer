@@ -25,4 +25,4 @@ dependencies:
   - name: gcert-issuer
     condition: gcert-issuer.enabled
     version: v0.2.0
-    repository: oci://harbor.cta-observatory.org/common 
+    repository: oci://harbor.cta-observatory.org/common

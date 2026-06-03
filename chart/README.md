@@ -48,7 +48,7 @@ backend:
   image:
     repository: your-registry.com/ctao-data-explorer-backend
     tag: "v1.0.0"
-  
+
   env:
     POSTGRES_PASSWORD: "secure-password"
 

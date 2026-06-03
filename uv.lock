@@ -714,6 +714,7 @@ all = [
     { name = "towncrier" },
 ]
 dev = [
+    { name = "mypy" },
     { name = "prek" },
     { name = "setuptools-scm" },
     { name = "towncrier" },
@@ -728,7 +729,6 @@ doc = [
     { name = "towncrier" },
 ]
 test = [
-    { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-requirements" },
@@ -754,7 +754,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28,<0.29" },
     { name = "itsdangerous" },
     { name = "mako", specifier = ">=1.3.11,<1.4" },
-    { name = "mypy", marker = "extra == 'test'", specifier = ">=2.1.0" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=2.1.0" },
     { name = "numpy", specifier = ">=2.1,<2.2" },
     { name = "numpydoc", marker = "extra == 'doc'" },
     { name = "prek", marker = "extra == 'dev'", specifier = ">=0.3.13" },
