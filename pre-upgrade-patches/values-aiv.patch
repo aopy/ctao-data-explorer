@@ -1,7 +1,0 @@
-diff --git a/chart/values-aiv.yaml b/chart/values-aiv.yaml
-new file mode 100644
-index 0000000..fdffa2a
---- /dev/null
-+++ b/chart/values-aiv.yaml
-@@ -0,0 +1 @@
-+# placeholder

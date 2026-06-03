@@ -10,13 +10,12 @@ spec:
   replicas: {{ .Values.auth.replicaCount }}
   selector:
     matchLabels:
-      {{- include "ctao-data-explorer.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: auth
+      app: {{ include "ctao-data-explorer.name" . }}-auth
   template:
     metadata:
       labels:
         {{- include "ctao-data-explorer.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: auth
+        app: {{ include "ctao-data-explorer.name" . }}-auth
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:

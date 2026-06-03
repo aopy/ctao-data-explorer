@@ -12,6 +12,5 @@ spec:
       targetPort: {{ .Values.auth.service.targetPort }}
       protocol: TCP
   selector:
-    {{- include "ctao-data-explorer.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: auth
+    app: {{ include "ctao-data-explorer.name" . }}-auth
 {{- end }}
