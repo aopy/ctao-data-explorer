@@ -179,10 +179,6 @@ k8s-upgrade-integration-tests:
     - desy-testcluster-ctao-computing-aiv
   variables:
     UPGRADE_BASE_REF: "v1.0.0-rc2"
-      
-    # fix for new ingress controller
-    BASE_REF_PATCH_FILES: pre-upgrade-patches/pre-upgrade.patch 
-      pre-upgrade-patches/values-aiv.patch
 
 collect-test-artifacts:
   stage: tests
