@@ -4,6 +4,8 @@ import html
 
 from fastapi import APIRouter, Query, Response
 
+from api.config import get_api_settings
+
 router = APIRouter()
 
 
@@ -22,9 +24,15 @@ def _build_datalink_row(id_val: str) -> str:
         try:
             obs_id_int = int(obs_id_str)
             formatted_id = f"{obs_id_int:06d}"
-            access_url = (
-                f"https://hess-dr.obspm.fr/retrieve/hess_dl3_dr1_obs_id_{formatted_id}.fits.gz"
-            )
+
+            settings = get_api_settings()
+            test_download_url = settings.DATALINK_TEST_DOWNLOAD_URL
+            if test_download_url:
+                access_url = test_download_url
+            else:
+                access_url = (
+                    f"https://hess-dr.obspm.fr/retrieve/hess_dl3_dr1_obs_id_{formatted_id}.fits.gz"
+                )
         except ValueError:
             error_message = f"NotFoundFault: Invalid numeric obs id in {id_val}"
 
