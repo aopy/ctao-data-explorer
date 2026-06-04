@@ -219,3 +219,7 @@ pypi:
 build-docs:
   rules:
     - when: never
+
+deploy-docs-env:
+  rules:
+    - when: never

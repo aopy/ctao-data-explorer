@@ -2,6 +2,7 @@ import logging
 import os
 import re
 
+import allure
 import pytest
 from playwright.sync_api import Page, expect
 
@@ -170,48 +171,64 @@ def test_authenticated_basket_add(page: Page):
 
 
 @pytest.mark.verifies_usecase("SUSS-UC-050-01")
-def test_query_by_object_name(page: Page, testcase):
-    testcase.teststep("Navigate to the frontend")
-    page.goto(frontend_url, wait_until="networkidle")
+def test_query_by_object_name(page: Page):
+    with allure.step("Navigate to frontend and verify title"):
+        page.goto(frontend_url, wait_until="networkidle")
 
-    logging.info(f"Page title: {page.title()}")
+        logging.info(f"Page title: {page.title()}")
 
-    testcase.teststep("Verify the page title contains 'CTAO Data Explorer'")
-    assert "CTAO Data Explorer" in page.title()
+        assert "CTAO Data Explorer" in page.title()
 
-    page.screenshot(path=f"{SCREENSHOTS_DIR}/test_frontend_screenshot_1_before.png")
+        fn = f"{SCREENSHOTS_DIR}/test_frontend_screenshot_1_initial.png"
+        page.screenshot(path=fn)
 
-    testcase.teststep("Fill in the source name and click Resolve")
-    source_input = page.locator("#objectNameInput")
-    expect(source_input).to_be_visible()
-    source_input.fill("crab")
+        allure.attach(
+            page.screenshot(path=fn),
+            name="Initial Page",
+            attachment_type=allure.attachment_type.PNG,
+        )
 
-    resolve_button = page.get_by_role("button", name="Resolve", exact=True)
-    expect(resolve_button).to_be_visible()
-    resolve_button.click()
+    with allure.step("Fill in object name and resolve to coordinates"):
+        source_input = page.locator("#objectNameInput")
+        expect(source_input).to_be_visible()
+        source_input.fill("crab")
 
-    testcase.teststep("Wait until resolve has populated coordinates")
-    coord1_input = page.locator("#coord1Input")
-    coord2_input = page.locator("#coord2Input")
-    expect(coord1_input).not_to_have_value("")
-    expect(coord2_input).not_to_have_value("")
+        resolve_button = page.get_by_role("button", name="Resolve", exact=True)
+        expect(resolve_button).to_be_visible()
+        resolve_button.click()
 
-    page.screenshot(path=f"{SCREENSHOTS_DIR}/test_frontend_screenshot_2_resolve.png")
+        coord1_input = page.locator("#coord1Input")
+        coord2_input = page.locator("#coord2Input")
+        expect(coord1_input).not_to_have_value("")
+        expect(coord2_input).not_to_have_value("")
 
-    testcase.teststep("Click the main submit button")
-    search_button = page.get_by_role("button", name="Search", exact=True)
-    expect(search_button).to_be_visible()
-    expect(search_button).to_be_enabled()
-    search_button.click()
+        fn = f"{SCREENSHOTS_DIR}/test_frontend_screenshot_2_resolve.png"
+        page.screenshot(path=fn)
+        allure.attach(
+            page.screenshot(path=fn),
+            name="Resolved Coordinates",
+            attachment_type=allure.attachment_type.PNG,
+        )
 
-    # Wait for some post-search UI stability
-    page.wait_for_load_state("networkidle")
-    page.wait_for_timeout(2000)
+    with allure.step("Run search and verify results"):
+        search_button = page.get_by_role("button", name="Search", exact=True)
+        expect(search_button).to_be_visible()
+        expect(search_button).to_be_enabled()
+        search_button.click()
 
-    testcase.teststep("Verify that results are displayed")
-    page.screenshot(path=f"{SCREENSHOTS_DIR}/test_frontend_screenshot_3_search.png")
+        # Wait for some post-search UI stability
+        page.wait_for_load_state("networkidle")
+        page.wait_for_timeout(2000)
 
-    # TODO: actually verify the results content here, but for now just check that the table is visible
+        fn = f"{SCREENSHOTS_DIR}/test_frontend_screenshot_3_search.png"
+        page.screenshot(path=fn)
+        allure.attach(
+            page.screenshot(path=fn),
+            name="Search Results",
+            attachment_type=allure.attachment_type.PNG,
+        )
+
+        # TODO: actually verify the results content here, but for now just check that the table is visible
 
 
 @pytest.mark.xfail
