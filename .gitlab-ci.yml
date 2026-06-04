@@ -220,6 +220,6 @@ build-docs:
   rules:
     - when: never
 
-deploy-docs-env:
+deploy_docs_env:
   rules:
     - when: never
