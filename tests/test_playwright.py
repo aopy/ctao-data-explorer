@@ -170,15 +170,18 @@ def test_authenticated_basket_add(page: Page):
 
 
 @pytest.mark.verifies_usecase("SUSS-UC-050-01")
-def test_query_by_object_name(page: Page):
+def test_query_by_object_name(page: Page, testcase):
+    testcase.teststep("Navigate to the frontend")
     page.goto(frontend_url, wait_until="networkidle")
 
     logging.info(f"Page title: {page.title()}")
+
+    testcase.teststep("Verify the page title contains 'CTAO Data Explorer'")
     assert "CTAO Data Explorer" in page.title()
 
     page.screenshot(path=f"{SCREENSHOTS_DIR}/test_frontend_screenshot_1_before.png")
 
-    # Fill source name and resolve
+    testcase.teststep("Fill in the source name and click Resolve")
     source_input = page.locator("#objectNameInput")
     expect(source_input).to_be_visible()
     source_input.fill("crab")
@@ -187,7 +190,7 @@ def test_query_by_object_name(page: Page):
     expect(resolve_button).to_be_visible()
     resolve_button.click()
 
-    # Wait until resolve has populated coordinates
+    testcase.teststep("Wait until resolve has populated coordinates")
     coord1_input = page.locator("#coord1Input")
     coord2_input = page.locator("#coord2Input")
     expect(coord1_input).not_to_have_value("")
@@ -195,7 +198,7 @@ def test_query_by_object_name(page: Page):
 
     page.screenshot(path=f"{SCREENSHOTS_DIR}/test_frontend_screenshot_2_resolve.png")
 
-    # Click the main submit button
+    testcase.teststep("Click the main submit button")
     search_button = page.get_by_role("button", name="Search", exact=True)
     expect(search_button).to_be_visible()
     expect(search_button).to_be_enabled()
@@ -205,7 +208,10 @@ def test_query_by_object_name(page: Page):
     page.wait_for_load_state("networkidle")
     page.wait_for_timeout(2000)
 
+    testcase.teststep("Verify that results are displayed")
     page.screenshot(path=f"{SCREENSHOTS_DIR}/test_frontend_screenshot_3_search.png")
+
+    # TODO: actually verify the results content here, but for now just check that the table is visible
 
 
 @pytest.mark.xfail

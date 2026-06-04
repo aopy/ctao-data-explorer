@@ -56,7 +56,8 @@ spec:
             --cov-report=xml:/tmp/coverage.xml \
             --junitxml=/tmp/report.xml \
             --color=yes \
-            --browser=firefox --base-url=$FRONTEND_URL
+            --browser=firefox --base-url=$FRONTEND_URL \
+            --alluredir allure-results
           cp /tmp/screenshots/*.png /repo/ || true
           curl -T /tmp/coverage.xml http://testkit:8000/coverage.xml
           curl -T /tmp/report.xml http://testkit:8000/report.xml

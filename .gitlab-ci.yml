@@ -214,3 +214,8 @@ collect-test-artifacts:
 pypi:
   rules:
     - when: never
+
+# TODO: temporary while gitlab pages are broken
+build-docs:
+  rules:
+    - when: never
