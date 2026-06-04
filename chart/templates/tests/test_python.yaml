@@ -49,6 +49,7 @@ spec:
           . /opt/venv/bin/activate
 
           {{ if .Values.dev.run_tests }}
+          git config --global --add safe.directory /repo
           pip install -e /repo/[test]
           cp -r /repo/tests /tmp/tests
           pytest /tmp/tests/test_playwright.py \
