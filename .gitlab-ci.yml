@@ -169,6 +169,7 @@ k8s-integration-tests:
       - test_logout_after.png
       - basket_add_alert.png
       - basket_after_add.png
+      - allure-report.html
     expose_as: "K8s Integration Test Results"
     reports:
       junit: test-in-k8s/report.xml

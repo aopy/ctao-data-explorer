@@ -60,9 +60,14 @@ spec:
             --color=yes \
             --browser=firefox --base-url=$FRONTEND_URL \
             --alluredir allure-results
+
+          allure awesome --single-file allure-results/ -o allure-report
+
           cp /tmp/screenshots/*.png /repo/ || true
           curl -T /tmp/coverage.xml http://testkit:8000/coverage.xml
           curl -T /tmp/report.xml http://testkit:8000/report.xml
+          curl -T allure-report/index.html http://testkit:8000/allure-report.html
+          cp -fv allure-report/index.html /repo/allure-report.html || true
           {{ end }}
 
           {{ if .Values.dev.sleep }}
