@@ -2,6 +2,7 @@ import logging
 import os
 import re
 
+import allure
 import pytest
 from playwright.sync_api import Page, expect
 
@@ -171,41 +172,63 @@ def test_authenticated_basket_add(page: Page):
 
 @pytest.mark.verifies_usecase("SUSS-UC-050-01")
 def test_query_by_object_name(page: Page):
-    page.goto(frontend_url, wait_until="networkidle")
+    with allure.step("Navigate to frontend and verify title"):
+        page.goto(frontend_url, wait_until="networkidle")
 
-    logging.info(f"Page title: {page.title()}")
-    assert "CTAO Data Explorer" in page.title()
+        logging.info(f"Page title: {page.title()}")
 
-    page.screenshot(path=f"{SCREENSHOTS_DIR}/test_frontend_screenshot_1_before.png")
+        assert "CTAO Data Explorer" in page.title()
 
-    # Fill source name and resolve
-    source_input = page.locator("#objectNameInput")
-    expect(source_input).to_be_visible()
-    source_input.fill("crab")
+        fn = f"{SCREENSHOTS_DIR}/test_frontend_screenshot_1_initial.png"
+        page.screenshot(path=fn)
 
-    resolve_button = page.get_by_role("button", name="Resolve", exact=True)
-    expect(resolve_button).to_be_visible()
-    resolve_button.click()
+        allure.attach(
+            page.screenshot(path=fn),
+            name="Initial Page",
+            attachment_type=allure.attachment_type.PNG,
+        )
 
-    # Wait until resolve has populated coordinates
-    coord1_input = page.locator("#coord1Input")
-    coord2_input = page.locator("#coord2Input")
-    expect(coord1_input).not_to_have_value("")
-    expect(coord2_input).not_to_have_value("")
+    with allure.step("Fill in object name and resolve to coordinates"):
+        source_input = page.locator("#objectNameInput")
+        expect(source_input).to_be_visible()
+        source_input.fill("crab")
 
-    page.screenshot(path=f"{SCREENSHOTS_DIR}/test_frontend_screenshot_2_resolve.png")
+        resolve_button = page.get_by_role("button", name="Resolve", exact=True)
+        expect(resolve_button).to_be_visible()
+        resolve_button.click()
 
-    # Click the main submit button
-    search_button = page.get_by_role("button", name="Search", exact=True)
-    expect(search_button).to_be_visible()
-    expect(search_button).to_be_enabled()
-    search_button.click()
+        coord1_input = page.locator("#coord1Input")
+        coord2_input = page.locator("#coord2Input")
+        expect(coord1_input).not_to_have_value("")
+        expect(coord2_input).not_to_have_value("")
 
-    # Wait for some post-search UI stability
-    page.wait_for_load_state("networkidle")
-    page.wait_for_timeout(2000)
+        fn = f"{SCREENSHOTS_DIR}/test_frontend_screenshot_2_resolve.png"
+        page.screenshot(path=fn)
+        allure.attach(
+            page.screenshot(path=fn),
+            name="Resolved Coordinates",
+            attachment_type=allure.attachment_type.PNG,
+        )
 
-    page.screenshot(path=f"{SCREENSHOTS_DIR}/test_frontend_screenshot_3_search.png")
+    with allure.step("Run search and verify results"):
+        search_button = page.get_by_role("button", name="Search", exact=True)
+        expect(search_button).to_be_visible()
+        expect(search_button).to_be_enabled()
+        search_button.click()
+
+        # Wait for some post-search UI stability
+        page.wait_for_load_state("networkidle")
+        page.wait_for_timeout(2000)
+
+        fn = f"{SCREENSHOTS_DIR}/test_frontend_screenshot_3_search.png"
+        page.screenshot(path=fn)
+        allure.attach(
+            page.screenshot(path=fn),
+            name="Search Results",
+            attachment_type=allure.attachment_type.PNG,
+        )
+
+        # TODO: actually verify the results content here, but for now just check that the table is visible
 
 
 @pytest.mark.xfail

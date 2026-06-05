@@ -169,6 +169,8 @@ k8s-integration-tests:
       - test_logout_after.png
       - basket_add_alert.png
       - basket_after_add.png
+      - allure-report.html
+      - allure.tar.gz
     expose_as: "K8s Integration Test Results"
     reports:
       junit: test-in-k8s/report.xml
@@ -212,5 +214,14 @@ collect-test-artifacts:
       junit: report.xml
 
 pypi:
+  rules:
+    - when: never
+
+# TODO: temporary while gitlab pages are broken
+build-docs:
+  rules:
+    - when: never
+
+deploy_docs_env:
   rules:
     - when: never

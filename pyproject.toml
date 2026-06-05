@@ -53,6 +53,7 @@ test = [
   "pytest",
   "pytest-requirements",
   "pytest-cov",
+  "allure-pytest",
 ]
 doc = [
     "sphinx",
