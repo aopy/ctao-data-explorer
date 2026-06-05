@@ -225,3 +225,7 @@ build-docs:
 deploy_docs_env:
   rules:
     - when: never
+
+pages:
+  rules:
+    - when: never
