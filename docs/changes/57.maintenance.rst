@@ -1,2 +1,0 @@
-Added UI tests using playwright: query by target coordinates, test no query
-results case, and visualization of profile page after authentication.
