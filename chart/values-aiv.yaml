@@ -175,6 +175,7 @@ auth:
 iam_external:
   enabled: true
   issuer: "https://{{ .Values.iam.global.fqdn }}"
+  caCertSecret: '{{ .Release.Name }}-test-ca'
 
 # Backend
 

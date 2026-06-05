@@ -44,6 +44,10 @@ gcert-issuer:
 iam_external:
   enabled: false
   issuer: ""
+  # Name of a K8s Secret with key test-ca.pem containing the IAM CA cert.
+  # When set, the cert is mounted at /etc/ssl/certs/iam-ca.pem and SSL_CERT_FILE is set.
+  # Leave empty when the external IAM uses a publicly-trusted CA.
+  caCertSecret: ""
 
 global:
   imagePullSecrets: []

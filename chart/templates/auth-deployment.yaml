@@ -77,7 +77,7 @@ spec:
           ports:
             - containerPort: {{ .Values.auth.service.port }}
               name: http
-          {{- if .Values.iam_external.enabled }}
+          {{- if .Values.iam_external.caCertSecret }}
           volumeMounts:
             - name: iam-ca-cert
               mountPath: /etc/ssl/certs/iam-ca.pem
@@ -110,8 +110,10 @@ spec:
               value: {{ $issuer | quote }}
             - name: OIDC_SERVER_METADATA_URL
               value: {{ printf "%s/.well-known/openid-configuration" ($issuer | trimSuffix "/") | quote }}
+            {{- if .Values.iam_external.caCertSecret }}
             - name: SSL_CERT_FILE
               value: /etc/ssl/certs/iam-ca.pem
+            {{- end }}
             {{- end }}
             - name: TOKEN_RELAY_TARGETS_JSON
               value: {{ dict "dataaccess" (printf "http://%s-backend:%d" (include "ctao-data-explorer.fullname" .) (.Values.backend.service.port | int)) | toJson | quote }}
@@ -135,10 +137,10 @@ spec:
 
           resources:
             {{- toYaml .Values.auth.resources | nindent 12 }}
-      {{- if .Values.iam_external.enabled }}
+      {{- if .Values.iam_external.caCertSecret }}
       volumes:
         - name: iam-ca-cert
           secret:
-            secretName: {{ .Release.Name }}-test-ca
+            secretName: {{ tpl .Values.iam_external.caCertSecret $ }}
       {{- end }}
 {{- end }}

@@ -138,7 +138,7 @@ spec:
               containerPort: {{ .Values.backend.service.targetPort }}
               protocol: TCP
 
-          {{- if .Values.iam_external.enabled }}
+          {{- if .Values.iam_external.caCertSecret }}
           volumeMounts:
             - name: iam-ca-cert
               mountPath: /etc/ssl/certs/iam-ca.pem
@@ -182,8 +182,10 @@ spec:
             {{- $issuer := tpl (required "iam_external.issuer is required" .Values.iam_external.issuer) . }}
             - name: OIDC_ISSUER
               value: {{ $issuer | quote }}
+            {{- if .Values.iam_external.caCertSecret }}
             - name: SSL_CERT_FILE
               value: /etc/ssl/certs/iam-ca.pem
+            {{- end }}
             {{- end }}
 
           livenessProbe:
@@ -203,11 +205,11 @@ spec:
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
 
-      {{- if .Values.iam_external.enabled }}
+      {{- if .Values.iam_external.caCertSecret }}
       volumes:
         - name: iam-ca-cert
           secret:
-            secretName: {{ .Release.Name }}-test-ca
+            secretName: {{ tpl .Values.iam_external.caCertSecret $ }}
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
