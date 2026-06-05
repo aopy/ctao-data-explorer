@@ -170,6 +170,7 @@ k8s-integration-tests:
       - basket_add_alert.png
       - basket_after_add.png
       - allure-report.html
+      - allure.tar.gz
     expose_as: "K8s Integration Test Results"
     reports:
       junit: test-in-k8s/report.xml
