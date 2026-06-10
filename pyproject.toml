@@ -54,6 +54,7 @@ test = [
   "pytest-requirements",
   "pytest-cov",
   "allure-pytest",
+  "pytest-playwright"
 ]
 doc = [
     "sphinx",
@@ -79,7 +80,7 @@ documentation = "http://cta-computing.gitlab-pages.cta-observatory.org/suss/scie
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["api*", "auth_service*", "ctao_shared*"]
+include = ["api*", "auth_service*", "ctao_shared*", "download_service*"]
 
 # For coverage.py to find the source files when running from the project root
 # and better management therefore in SonarQube
@@ -89,12 +90,14 @@ source = ["."]
 include = [
     "api/**",
     "auth_service/**",
+    "download_service/**",
 ]
 
 [tool.coverage.report]
 include = [
     "api/**",
     "auth_service/**",
+    "download_service/**",
 ]
 
 [tool.towncrier]
