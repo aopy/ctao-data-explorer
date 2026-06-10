@@ -37,18 +37,24 @@ spec:
               name: "{{ .Release.Name }}-secrets"
               key: testPassword
               optional: true
+        - name: FRONTEND_URL
+          value: "https://{{ (index .Values.ingress.hosts 0).host }}"
       workingDir: /tmp
       command:
         - /bin/bash
         - -c
         - |
           set -euo pipefail
-          export FRONTEND_URL=https://ctao-data-explorer.test.example
-          curl -vk $FRONTEND_URL
 
           . /opt/venv/bin/activate
 
           {{ if .Values.dev.run_tests }}
+
+          {{ if .Values.dev.allow_external }}
+          export TEST_ALLOW_EXTERNAL_COMMUNICATION=true
+          {{ end }}
+
+
           git config --global --add safe.directory /repo
           pip install -e /repo/[test]
           cp -r /repo/tests /tmp/tests

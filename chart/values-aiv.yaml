@@ -62,6 +62,10 @@ iam:
         cpu: 500m
         memory: 512Mi
 
+    config:
+      java:
+        opts: -Xms512m -Xmx512m -Djava.security.egd=file:/dev/./urandom -Dspring.profiles.active=prod,oidc,wlcg-scopes
+
   bootstrap:
     enabled: true
     config:
@@ -74,6 +78,7 @@ iam:
             - password
             - client_credentials
             - urn:ietf:params:oauth:grant_type:redelegate
+            - urn:ietf:params:oauth:grant-type:token-exchange
             - refresh_token
           redirect_uris:
             - "https://ctao-data-explorer.test.example/auth/oidc/callback"
@@ -86,6 +91,7 @@ iam:
             - email
             - iam:admin.write
             - iam:admin.read
+            - storage.read:/public/
       groups:
         - name: ctao.suss.test
         - name: ctao.suss.test/sdc
@@ -138,6 +144,7 @@ dev:
   run_tests: true
   sleep: false
   mount_repo: true
+  allow_external: false
   frontend:
     dangerouslyDisableHostCheck: true
   test_pod:
@@ -154,6 +161,20 @@ dev:
         cpu: 500m
         memory: 1Gi
         ephemeral-storage: 1Gi
+
+# Download service
+
+download:
+  enabled: true
+  env:
+    IAM_TOKEN_ENDPOINT: "https://iam-ctao-data-explorer.test.example/token"
+    DOWNLOAD_ALLOWED_STORAGE_HOSTS_JSON: '["globe-door.ifh.de:2880", "localhost:9999"]'
+    DOWNLOAD_TOKEN_EXCHANGE_AUDIENCE: "https://wlcg.cern.ch/jwt/v1/any"
+    DOWNLOAD_TOKEN_EXCHANGE_SCOPE: "storage.read:/public/"
+    DOWNLOAD_LFN_PREFIX_MAP_JSON: '{"lfn:/sdc/":"https://globe-door.ifh.de:2880/pnfs/ifh.de/acs/sdc/"}'
+  secrets:
+    clientId: suss-test-client
+    clientSecret: secret
 
 # Auth service
 
@@ -182,6 +203,8 @@ iam_external:
 backend:
   env:
     BASE_URL: "https://ctao-data-explorer.test.example"
+    # DATALINK_TEST_DOWNLOAD_URL: "https://globe-door.ifh.de:2880/pnfs/ifh.de/acs/cta/diskonly/oidc-test-bas/public/test-file.txt"
+    DATALINK_TEST_DOWNLOAD_URL: "https://localhost:9999/test-file.txt"
 
 # Ingress
 

@@ -1,0 +1,106 @@
+{{- if .Values.download.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ctao-data-explorer.fullname" . }}-download
+  labels:
+    {{- include "ctao-data-explorer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: download
+spec:
+  {{- if not .Values.download.autoscaling.enabled }}
+  replicas: {{ .Values.download.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "ctao-data-explorer.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: download
+  template:
+    metadata:
+      labels:
+        {{- include "ctao-data-explorer.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: download
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      serviceAccountName: {{ include "ctao-data-explorer.serviceAccountName" . }}
+      automountServiceAccountToken: false
+
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+
+      containers:
+        - name: download
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.download.image.repository }}:{{ .Values.download.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.download.image.pullPolicy }}
+
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+
+          ports:
+            - name: http
+              containerPort: {{ .Values.download.service.targetPort }}
+              protocol: TCP
+
+          {{- if .Values.iam_external.caCertSecret }}
+          volumeMounts:
+            - name: iam-ca-cert
+              mountPath: /etc/ssl/certs/iam-ca.pem
+              subPath: test-ca.pem
+              readOnly: true
+          {{- end }}
+
+          env:
+            {{- range $key, $value := .Values.download.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+
+          {{- if .Values.iam_external.caCertSecret }}
+            - name: SSL_CERT_FILE
+              value: /etc/ssl/certs/iam-ca.pem
+          {{- end }}
+
+          envFrom:
+            - secretRef:
+                name: {{ .Values.download.secrets.existingSecret | default (printf "%s-download-secrets" (include "ctao-data-explorer.fullname" .)) }}
+
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+
+          resources:
+            {{- toYaml .Values.download.resources | nindent 12 }}
+
+      {{- if .Values.iam_external.caCertSecret }}
+      volumes:
+        - name: iam-ca-cert
+          secret:
+            secretName: {{ tpl .Values.iam_external.caCertSecret $ }}
+      {{- end }}
+
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

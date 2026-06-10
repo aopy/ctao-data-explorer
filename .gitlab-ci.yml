@@ -53,7 +53,7 @@ pre-commit-hooks:
 
 hadolint:
   script:
-    - hadolint Dockerfile.auth Dockerfile.backend Dockerfile.frontend
+    - hadolint Dockerfile.auth Dockerfile.backend Dockerfile.download Dockerfile.frontend
       Dockerfile.playwright
 
 build:
@@ -61,10 +61,10 @@ build:
     - desy-test-cluster
   parallel:
     matrix:
-      - IMAGE: ["frontend", "backend", "auth", "playwright"]
+      - IMAGE: ["frontend", "backend", "auth", "playwright", "download"]
   before_script:
     - |
-      if [ "$IMAGE" = "backend" ] || [ "$IMAGE" = "auth" ]; then
+      if [ "$IMAGE" = "backend" ] || [ "$IMAGE" = "auth" ] || [ "$IMAGE" = "download" ]; then
         PRETEND_VERSION="${CI_COMMIT_TAG:-$(git describe --tags 2>/dev/null || echo '0.1.0')}"
         KANIKO_EXTRA_ARGS="${KANIKO_EXTRA_ARGS:-} --build-arg=SETUPTOOLS_SCM_PRETEND_VERSION=$PRETEND_VERSION"
         export KANIKO_EXTRA_ARGS
@@ -169,6 +169,11 @@ k8s-integration-tests:
       - test_logout_after.png
       - basket_add_alert.png
       - basket_after_add.png
+      - test_download_alert.png
+      - test_download_without_login.png
+      - test_download_loading.png
+      - test_download_multiple_1.png
+      - test_download_multiple_2.png
       - allure-report.html
       - allure.tar.gz
     expose_as: "K8s Integration Test Results"
@@ -181,6 +186,22 @@ k8s-upgrade-integration-tests:
     - desy-testcluster-ctao-computing-aiv
   variables:
     UPGRADE_BASE_REF: "v1.0.0-rc2"
+
+
+# the following two jobs can be used to test integration with external services. Currently disabled
+k8s-integration-tests-with-external-iam-dcache:
+  extends: k8s-integration-tests
+  variables:
+    AIV_DEPLOY_HELM_UPGRADE_CHART_EXTRA_VALUES: --set dev.allow_external=true
+  rules:
+    - when: never
+
+k8s-upgrade-integration-tests-with-external-iam-dcache:
+  extends: k8s-upgrade-integration-tests
+  variables:
+    AIV_DEPLOY_HELM_UPGRADE_CHART_EXTRA_VALUES: --set dev.allow_external=true
+  rules:
+    - when: never
 
 collect-test-artifacts:
   stage: tests

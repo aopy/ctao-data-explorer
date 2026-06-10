@@ -116,7 +116,7 @@ spec:
             {{- end }}
             {{- end }}
             - name: TOKEN_RELAY_TARGETS_JSON
-              value: {{ dict "dataaccess" (printf "http://%s-backend:%d" (include "ctao-data-explorer.fullname" .) (.Values.backend.service.port | int)) | toJson | quote }}
+              value: {{ dict "dataaccess" (printf "http://%s-backend:%d" (include "ctao-data-explorer.fullname" .) (.Values.backend.service.port | int)) "download" (printf "http://%s-download:%d/api/v1" (include "ctao-data-explorer.fullname" .) (.Values.download.service.port | int)) | toJson | quote }}
           envFrom:
             - secretRef:
                 name: {{ .Values.auth.secrets.existingSecret | default (printf "%s-auth-secrets" (include "ctao-data-explorer.fullname" .)) }}

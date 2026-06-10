@@ -132,6 +132,42 @@ auth:
   env:
     COOKIE_SAMESITE: "Lax"
 
+# Download service configuration
+download:
+  enabled: false
+  replicaCount: 1
+
+  image:
+    repository: suss/ctao-data-explorer-download
+    pullPolicy: IfNotPresent
+    tag:
+
+  service:
+    type: ClusterIP
+    port: 8002
+    targetPort: 8002
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+  secrets:
+    existingSecret: ""
+    clientId: ""
+    clientSecret: ""
+
+  env: {}
+
 # Frontend configuration
 frontend:
   enabled: true
@@ -263,6 +299,7 @@ servicePorts:
   backend: 8000
   frontend: 80
   auth: 8001
+  download: 8002
 
 # Pod annotations
 podAnnotations: {}
