@@ -7,7 +7,12 @@ import pytest
 import requests
 from playwright.sync_api import Page, expect
 
-frontend_url = os.getenv("FRONTEND_URL", "https://ctao-data-explorer.test.example")
+frontend_url = os.getenv("FRONTEND_URL")
+if frontend_url is None:
+    pytest.skip(
+        "FRONTEND_URL is not set — skipping Playwright tests. "
+        "Set it to the frontend URL, e.g. https://ctao-data-explorer.test.example"
+    )
 
 SCREENSHOTS_DIR = "/tmp/screenshots"
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
@@ -55,124 +60,194 @@ def _login(page: Page):
 def test_login(page: Page):
     """Authenticate via IAM and verify restricted tabs appear after login.
 
-    Navigates to the frontend, confirms restricted tabs (My Basket, Preview Jobs, etc.)
-    are absent initially, calls _login to authenticate via IAM, then checks all restricted
-    tabs are visible in the navigation bar after successful login.
+    Steps:
+    1. Navigate to the frontend.
+    2. Assert restricted tabs (My Basket, Preview Jobs, etc.) are absent initially.
+    3. Authenticate via IAM.
+    4. Assert all tabs (Search, Results, My Basket, Preview Jobs, Query Store, Profile)
+       are visible after successful login.
     """
-    page.goto(frontend_url, wait_until="networkidle")
-    for tab in ["My Basket", "Preview Jobs", "Query Store", "Profile"]:
-        expect(page.get_by_role("link", name=tab, exact=True)).to_have_count(0)
-    page.screenshot(path=f"{SCREENSHOTS_DIR}/test_login_before.png")
-    _login(page)
-    page.screenshot(path=f"{SCREENSHOTS_DIR}/test_login_after.png")
-    for tab in ["Search", "Results", "My Basket", "Preview Jobs", "Query Store", "Profile"]:
-        expect(page.get_by_role("link", name=tab, exact=True)).to_be_visible()
+    with allure.step("Navigate to frontend and verify restricted tabs are absent"):
+        page.goto(frontend_url, wait_until="networkidle")
+        for tab in ["My Basket", "Preview Jobs", "Query Store", "Profile"]:
+            expect(page.get_by_role("link", name=tab, exact=True)).to_have_count(0)
+        fn = f"{SCREENSHOTS_DIR}/test_login_before.png"
+        s = page.screenshot(path=fn)
+        allure.attach(
+            s,
+            name="Before Login",
+            attachment_type=allure.attachment_type.PNG,
+        )
+
+    with allure.step("Authenticate via IAM"):
+        _login(page)
+
+    with allure.step("Verify all tabs are visible after login"):
+        fn = f"{SCREENSHOTS_DIR}/test_login_after.png"
+        s = page.screenshot(path=fn)
+        allure.attach(
+            s,
+            name="After Login",
+            attachment_type=allure.attachment_type.PNG,
+        )
+        for tab in ["Search", "Results", "My Basket", "Preview Jobs", "Query Store", "Profile"]:
+            expect(page.get_by_role("link", name=tab, exact=True)).to_be_visible()
 
 
 @pytest.mark.verifies_usecase("SUSS-UC-050-20")
 def test_logout(page: Page):
     """Log out and verify restricted tabs are no longer visible.
 
-    Logs in, confirms restricted tabs are visible, clicks Logout, waits for
-    redirect back to frontend, then verifies restricted tabs (My Basket, Preview Jobs, etc.)
-    are hidden while public tabs (Search, Results) remain visible.
+    Steps:
+    1. Log in.
+    2. Assert all tabs are visible after login.
+    3. Click the Logout button.
+    4. Assert restricted tabs (My Basket, Preview Jobs, etc.) are hidden.
+    5. Assert public tabs (Search, Results) remain visible.
     """
-    page.goto(frontend_url, wait_until="networkidle")
-    _login(page)
-    for tab in ["Search", "Results", "My Basket", "Preview Jobs", "Query Store", "Profile"]:
-        expect(page.get_by_role("link", name=tab, exact=True)).to_be_visible()
-    page.screenshot(path=f"{SCREENSHOTS_DIR}/test_logout_logged_in.png")
-    logout_button = page.get_by_role("button", name="Logout", exact=True)
-    expect(logout_button).to_be_visible()
-    logout_button.click()
-    page.wait_for_load_state("networkidle")
-    if not page.url.startswith(frontend_url):
-        page.wait_for_url(f"{frontend_url}**")
-    page.screenshot(path=f"{SCREENSHOTS_DIR}/test_logout_after.png")
-    for tab in ["My Basket", "Preview Jobs", "Query Store", "Profile"]:
-        expect(page.get_by_role("link", name=tab, exact=True)).to_have_count(0)
-    expect(page.get_by_role("link", name="Search", exact=True)).to_be_visible()
-    expect(page.get_by_role("link", name="Results", exact=True)).to_be_visible()
+    with allure.step("Log in and verify all tabs are visible"):
+        page.goto(frontend_url, wait_until="networkidle")
+        _login(page)
+        for tab in ["Search", "Results", "My Basket", "Preview Jobs", "Query Store", "Profile"]:
+            expect(page.get_by_role("link", name=tab, exact=True)).to_be_visible()
+        fn = f"{SCREENSHOTS_DIR}/test_logout_logged_in.png"
+        s = page.screenshot(path=fn)
+        allure.attach(
+            s,
+            name="Logged In",
+            attachment_type=allure.attachment_type.PNG,
+        )
+
+    with allure.step("Click Logout and wait for redirect"):
+        logout_button = page.get_by_role("button", name="Logout", exact=True)
+        expect(logout_button).to_be_visible()
+        logout_button.click()
+        page.wait_for_load_state("networkidle")
+        if not page.url.startswith(frontend_url):
+            page.wait_for_url(f"{frontend_url}**")
+
+    with allure.step("Verify restricted tabs are hidden, public tabs remain"):
+        for tab in ["My Basket", "Preview Jobs", "Query Store", "Profile"]:
+            expect(page.get_by_role("link", name=tab, exact=True)).to_have_count(0)
+        expect(page.get_by_role("link", name="Search", exact=True)).to_be_visible()
+        expect(page.get_by_role("link", name="Results", exact=True)).to_be_visible()
+        fn = f"{SCREENSHOTS_DIR}/test_logout_after.png"
+        s = page.screenshot(path=fn)
+        allure.attach(
+            s,
+            name="After Logout",
+            attachment_type=allure.attachment_type.PNG,
+        )
 
 
 @pytest.mark.verifies_usecase("SUSS-UC-050-19")
 def test_csrf_cookie_set_after_login(page: Page):
     """Check that the XSRF-TOKEN cookie is absent before login and set afterwards.
 
-    Reads browser cookies before login and asserts XSRF-TOKEN is absent. After login via
-    _login, reads cookies again and asserts XSRF-TOKEN is present and non-empty.
+    Steps:
+    1. Navigate to frontend and read browser cookies.
+    2. Assert XSRF-TOKEN is absent before login.
+    3. Log in.
+    4. Read cookies again.
+    5. Assert XSRF-TOKEN is present and non-empty after login.
     """
-    page.goto(frontend_url, wait_until="networkidle")
-    cookies = page.context.cookies()
-    xsrf_before = [c for c in cookies if c["name"] == "XSRF-TOKEN"]
-    assert len(xsrf_before) == 0, "XSRF-TOKEN should not be set before login"
-    _login(page)
-    cookies = page.context.cookies()
-    xsrf = [c for c in cookies if c["name"] == "XSRF-TOKEN"]
-    assert len(xsrf) == 1, "XSRF-TOKEN must be set after login"
-    assert len(xsrf[0]["value"]) > 0, "XSRF-TOKEN must be non-empty"
+    with allure.step("Navigate to frontend and assert XSRF-TOKEN cookie is absent"):
+        page.goto(frontend_url, wait_until="networkidle")
+        cookies = page.context.cookies()
+        xsrf_before = [c for c in cookies if c["name"] == "XSRF-TOKEN"]
+        assert len(xsrf_before) == 0, "XSRF-TOKEN should not be set before login"
+
+    with allure.step("Log in via IAM"):
+        _login(page)
+
+    with allure.step("Assert XSRF-TOKEN cookie is present and non-empty after login"):
+        cookies = page.context.cookies()
+        xsrf = [c for c in cookies if c["name"] == "XSRF-TOKEN"]
+        assert len(xsrf) == 1, "XSRF-TOKEN must be set after login"
+        assert len(xsrf[0]["value"]) > 0, "XSRF-TOKEN must be non-empty"
 
 
-@pytest.mark.verifies_usecase("SUSS-UC-050-15")
+@pytest.mark.verifies_usecase("SUSS-UC-050-11")
 def test_authenticated_basket_add(page: Page):
-    """Login, search for target, add to basket, and verify it appears in My Basket tab.
+    """Login, search for target, create an active basket, add to it, and verify.
 
-    Logs in, navigates to My Basket to trigger default basket creation, searches for "crab",
-    clicks the Add button on the first result row, checks for the feedback alert,
-    then navigates to My Basket and verifies the observation is listed.
+    Steps:
+    1. Navigate to frontend and log in.
+    2. Enter "crab", resolve coordinates via SIMBAD, and click Search.
+    3. Wait for results table rows (`.rdt_TableRow`) to appear.
+    4. Select the first row checkbox, click "Add 1 selected" — expect "no active basket" error.
+    5. Visit My Basket to create/activate "Basket 1".
+    6. Return to Results, wait for rows, find a row not yet in basket (filtering for
+       "Add" button rather than "In Basket"), and click it.
+    7. Assert success message matching "Added obs_id=<id> to active basket successfully!".
+    8. Navigate to My Basket and assert the observation appears.
     """
-    page.goto(frontend_url, wait_until="networkidle")
-    _login(page)
-    # Visit My Basket first to trigger auto-creation of the default "Basket 1" group,
-    # so the Add buttons are enabled on the search results page.
-    my_basket_link = page.get_by_role("link", name="My Basket", exact=True)
-    expect(my_basket_link).to_be_visible()
-    my_basket_link.click()
-    page.wait_for_load_state("networkidle")
+    with allure.step("Log in, resolve source crab"):
+        page.goto(frontend_url, wait_until="networkidle")
+        _login(page)
+        source_input = page.locator("#objectNameInput")
+        expect(source_input).to_be_visible()
+        source_input.fill("crab")
+        resolve_button = page.get_by_role("button", name="Resolve", exact=True)
+        expect(resolve_button).to_be_visible()
+        resolve_button.click()
+        expect(page.locator("#coord1Input")).not_to_have_value("")
+        expect(page.locator("#coord2Input")).not_to_have_value("")
 
-    # Confirm basket was actually created before navigating away
-    expect(page.get_by_role("textbox", name="Current basket name")).to_have_value("Basket 1")
+    with allure.step("Run search and wait for results rows"):
+        search_button = page.get_by_role("button", name="Search", exact=True)
+        expect(search_button).to_be_enabled()
+        search_button.click()
+        page.wait_for_function("window.location.href.includes('results')", timeout=15000)
+        page.wait_for_selector(".rdt_TableRow", state="visible", timeout=60000)
 
-    # Navigate back to search
-    search_link = page.get_by_role("link", name="Search", exact=True)
-    expect(search_link).to_be_visible()
-    search_link.click()
-    page.wait_for_load_state("networkidle")
+    with allure.step("Select first row and attempt Add — expect no active basket error"):
+        page.locator(".rdt_TableRow").first.locator('input[type="checkbox"]').click()
+        page.wait_for_timeout(500)
+        add_btn = page.get_by_role("button", name="Add 1 selected")
+        expect(add_btn).to_be_enabled()
+        add_btn.click()
+        alert = page.locator(".alert-info")
+        expect(alert).to_be_visible()
+        expect(alert).to_have_text("Please select an active basket group first!")
 
-    source_input = page.locator("#objectNameInput")
-    expect(source_input).to_be_visible()
-    source_input.fill("crab")
+    with allure.step("Visit My Basket to create active basket, return and add observation"):
+        my_basket_link = page.get_by_role("link", name="My Basket", exact=True)
+        expect(my_basket_link).to_be_visible()
+        my_basket_link.click()
+        page.wait_for_load_state("networkidle")
+        results_link = page.get_by_role("link", name="Results", exact=True)
+        expect(results_link).to_be_visible()
+        results_link.click()
+        page.wait_for_function("window.location.href.includes('results')", timeout=15000)
+        page.wait_for_selector(".rdt_TableRow", state="visible", timeout=60000)
+        page.locator(".rdt_TableRow").filter(
+            has=page.get_by_role("button", name="Add")
+        ).first.get_by_role("button", name="Add").click()
+        alert = page.locator(".alert-info")
+        expect(alert).to_be_visible()
+        expect(alert).to_have_text(re.compile(r"Added obs_id=\d+ to active basket successfully!"))
 
-    resolve_button = page.get_by_role("button", name="Resolve", exact=True)
-    expect(resolve_button).to_be_visible()
-    resolve_button.click()
-    expect(page.locator("#coord1Input")).not_to_have_value("")
-    expect(page.locator("#coord2Input")).not_to_have_value("")
-
-    search_button = page.get_by_role("button", name="Search", exact=True)
-    expect(search_button).to_be_enabled()
-    search_button.click()
-    page.wait_for_load_state("networkidle")
-
-    # Add button has no title attribute — match by role + name
-    add_btn = page.get_by_role("button", name="Add", exact=True).first
-    expect(add_btn).to_be_enabled()
-    add_btn.click()
-
-    alert = page.locator(".alert")
-    expect(alert).to_be_visible()
-    page.screenshot(path=f"{SCREENSHOTS_DIR}/basket_add_alert.png")
-
-    # Navigate to My Basket and verify the observation appears in the list
-    my_basket_link = page.get_by_role("link", name="My Basket", exact=True)
-    my_basket_link.click()
-    page.wait_for_load_state("networkidle")
-    expect(page.get_by_text(re.compile(r"Obs\. id:"), exact=False)).to_be_visible()
-    page.screenshot(path=f"{SCREENSHOTS_DIR}/basket_after_add.png")
+    with allure.step("Navigate to My Basket and verify observation appears"):
+        my_basket_link = page.get_by_role("link", name="My Basket", exact=True)
+        my_basket_link.click()
+        page.wait_for_load_state("networkidle")
+        expect(page.get_by_text(re.compile(r"Obs\. id:"), exact=False).first).to_be_visible()
 
 
 @pytest.mark.verifies_usecase("SUSS-UC-050-01")
 def test_query_by_object_name(page: Page):
+    """Query observations by astronomical object name and verify results are shown.
+
+    Steps:
+    1. Navigate to the frontend.
+    2. Assert the page title contains "CTAO Data Explorer".
+    3. Enter "crab" in the object name input and click Resolve.
+    4. Assert coordinates are populated after resolution.
+    5. Click Search.
+    6. Assert the URL navigates to the /results page.
+    7. Assert no warning/error message is displayed.
+    """
     with allure.step("Navigate to frontend and verify title"):
         page.goto(frontend_url, wait_until="networkidle")
 
@@ -181,10 +256,10 @@ def test_query_by_object_name(page: Page):
         assert "CTAO Data Explorer" in page.title()
 
         fn = f"{SCREENSHOTS_DIR}/test_frontend_screenshot_1_initial.png"
-        page.screenshot(path=fn)
+        s = page.screenshot(path=fn)
 
         allure.attach(
-            page.screenshot(path=fn),
+            s,
             name="Initial Page",
             attachment_type=allure.attachment_type.PNG,
         )
@@ -217,9 +292,11 @@ def test_query_by_object_name(page: Page):
         expect(search_button).to_be_enabled()
         search_button.click()
 
-        # Wait for some post-search UI stability
         page.wait_for_load_state("networkidle")
         page.wait_for_timeout(2000)
+
+        assert "/results" in page.url, "Expected to navigate to /results after search"
+        expect(page.locator(".alert-warning")).to_have_count(0)
 
         fn = f"{SCREENSHOTS_DIR}/test_frontend_screenshot_3_search.png"
         s = page.screenshot(path=fn)
@@ -229,13 +306,106 @@ def test_query_by_object_name(page: Page):
             attachment_type=allure.attachment_type.PNG,
         )
 
-        # TODO: actually verify the results content here, but for now just check that the table is visible
+
+@pytest.mark.verifies_usecase("SUSS-UC-050-01")
+def test_resolve_coordinates_by_ned(page: Page):
+    """Resolve coordinates for an object name via NED and verify both deg and hms/dms formats.
+    Steps:
+    1. Navigate to the frontend.
+    2. Uncheck SIMBAD, check NED as resolution service.
+    3. Enter "Mrk 501" in the object name input and click Resolve.
+    4. Assert decimal-degree coordinates: RA≈253.467569 (±0.005 deg), Dec≈39.760169 (±0.005 deg).
+    5. Switch coordinate system to Equatorial (hms/dms).
+    6. Assert hms/dms coordinates: RA matches "16 53 XX.x", Dec matches "+39 45 XX.x".
+    """
+    with allure.step("Navigate and select NED resolution"):
+        page.goto(frontend_url, wait_until="networkidle")
+        page.locator("#useSimbadCheck").uncheck()
+        page.locator("#useNedCheck").check()
+
+    with allure.step('Enter "Mrk 501" and resolve via NED'):
+        page.locator("#objectNameInput").fill("Mrk 501")
+        resolve_button = page.get_by_role("button", name="Resolve", exact=True)
+        expect(resolve_button).to_be_visible()
+        resolve_button.click()
+
+    with allure.step("Assert decimal-degree coordinates"):
+        coord1_input = page.locator("#coord1Input")
+        coord2_input = page.locator("#coord2Input")
+        expect(coord1_input).not_to_have_value("")
+        expect(coord2_input).not_to_have_value("")
+        ra_val = float(coord1_input.input_value())
+        dec_val = float(coord2_input.input_value())
+        assert abs(ra_val - 253.467569) < 0.005, f"RA out of tolerance: {ra_val}"
+        assert abs(dec_val - 39.760169) < 0.005, f"Dec out of tolerance: {dec_val}"
+
+    with allure.step("Switch to Equatorial (hms/dms) and assert format"):
+        page.get_by_role("button", name=re.compile(r"Equatorial.*hms")).click()
+        page.wait_for_load_state("networkidle")
+        expect(coord1_input).to_have_value(re.compile(r"^16 53 [\d.]+"))
+        expect(coord2_input).to_have_value(re.compile(r"^\+39 45 [\d.]+"))
 
 
-@pytest.mark.xfail
 @pytest.mark.verifies_usecase("SUSS-UC-050-02")
-def test_query_by_sky_coordinates():
-    raise NotImplementedError("Should be implemented for this release")
+def test_query_by_sky_coordinates(page: Page):
+    """Query observations by sky coordinates and verify results appear in the data table.
+
+    Steps:
+    1. Navigate to the frontend.
+    2. Enter RA=83.63, Dec=22.01 (Crab Nebula), radius=3 deg.
+    3. Click Search.
+    4. Assert the URL navigates to the /results page.
+    5. Assert at least one `.rdt_TableRow` is rendered (results table populated).
+    """
+    with allure.step("Navigate and enter sky coordinates (RA=83.63, Dec=22.01, radius=3)"):
+        page.goto(frontend_url, wait_until="networkidle")
+        page.locator("#coord1Input").fill("83.63")
+        page.locator("#coord2Input").fill("22.01")
+        page.locator("#radiusInput").fill("3")
+
+    with allure.step("Click Search and assert navigation to /results"):
+        search_button = page.get_by_role("button", name="Search", exact=True)
+        expect(search_button).to_be_enabled()
+        search_button.click()
+        page.wait_for_load_state("networkidle")
+        try:
+            page.wait_for_url("**/results**", timeout=10000)
+        except Exception:
+            page.screenshot(path=f"{SCREENSHOTS_DIR}/sky_search_timeout.png")
+            logging.error("Search did not navigate to /results; checking for error alerts")
+            raise
+
+    with allure.step("Assert at least one results row is rendered"):
+        expect(page.locator(".rdt_TableRow")).not_to_have_count(0, timeout=60000)
+
+
+@pytest.mark.verifies_usecase("SUSS-UC-050-06")
+def test_no_results_warning(page: Page):
+    """Search with coordinates that match no observations and verify the warning message.
+
+    Steps:
+    1. Navigate to the frontend.
+    2. Enter RA=0, Dec=0, radius=0.01 deg (no observations there).
+    3. Click Search.
+    4. Assert an .alert-warning message displays:
+       "No results were found for the given search criteria."
+    """
+    with allure.step(
+        "Navigate and enter coordinates with no observations (RA=0, Dec=0, radius=0.01)"
+    ):
+        page.goto(frontend_url, wait_until="networkidle")
+        page.locator("#coord1Input").fill("0")
+        page.locator("#coord2Input").fill("0")
+        page.locator("#radiusInput").fill("0.01")
+
+    with allure.step("Click Search and assert no-results warning"):
+        search_button = page.get_by_role("button", name="Search", exact=True)
+        expect(search_button).to_be_enabled()
+        search_button.click()
+        page.wait_for_load_state("networkidle")
+        alert = page.locator(".alert-warning")
+        expect(alert).to_be_visible()
+        expect(alert).to_contain_text("No results were found for the given search criteria.")
 
 
 @pytest.mark.verifies_usecase("SUSS-UC-050-14")
@@ -353,6 +523,38 @@ def test_download_file(page: Page, mock_dcache):
             name="Download Alert",
             attachment_type=allure.attachment_type.PNG,
         )
+
+
+@pytest.mark.verifies_usecase("SUSS-UC-050-21")
+def test_view_user_profile(page: Page):
+    """Log in and verify the user profile page displays correct user information.
+
+    Steps:
+    1. Navigate to the frontend and log in.
+    2. Click the Profile navigation link.
+    3. Assert the profile card (.card-body) is visible.
+    4. Assert the user's name "SDC User" is displayed.
+    5. Assert the user's email "sdc@test.example" is displayed.
+    """
+    with allure.step("Navigate and log in"):
+        page.goto(frontend_url, wait_until="networkidle")
+        _login(page)
+
+    with allure.step("Click Profile and verify user info"):
+        profile_link = page.get_by_role("link", name="Profile", exact=True)
+        expect(profile_link).to_be_visible()
+        profile_link.click()
+        page.wait_for_load_state("networkidle")
+        fn = f"{SCREENSHOTS_DIR}/test_profile.png"
+        s = page.screenshot(path=fn)
+        allure.attach(
+            s,
+            name="Profile Page",
+            attachment_type=allure.attachment_type.PNG,
+        )
+        expect(page.locator(".card-body")).to_be_visible()
+        expect(page.get_by_text(re.compile(r"Name:\s*SDC User"))).to_be_visible()
+        expect(page.get_by_text(re.compile(r"Email:\s*sdc@test\.example"))).to_be_visible()
 
 
 @pytest.mark.verifies_usecase("SUSS-UC-050-14")
