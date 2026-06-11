@@ -231,6 +231,14 @@ postgresql:
       size: 8Gi
       storageClass: ""
 
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 999
+      allowPrivilegeEscalation: false
+
+    podSecurityContext:
+      fsGroup: 999
+
     resources:
       limits:
         cpu: 500m

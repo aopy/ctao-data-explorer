@@ -23,13 +23,13 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      securityContext:
+        {{- toYaml .Values.postgresql.primary.podSecurityContext | nindent 8 }}
       containers:
         - name: postgresql
           image: {{ .Values.global.dockerProxy }}/postgres:17-alpine
           securityContext:
-            runAsNonRoot: true
-            runAsUser: 999
-            allowPrivilegeEscalation: false
+          {{- toYaml .Values.postgresql.primary.securityContext | nindent 12 }}
           imagePullPolicy: IfNotPresent
           ports:
             - name: postgresql
