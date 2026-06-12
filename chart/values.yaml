@@ -253,6 +253,9 @@ redis:
     persistence:
       enabled: true
       size: 1Gi
+      storageClass: ""
+      accessModes:
+        - ReadWriteOnce
 
     resources:
       limits:
