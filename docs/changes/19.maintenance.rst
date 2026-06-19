@@ -1,0 +1,1 @@
+Migrated documentation from MkDocs to Sphinx with ReStructuredText format, enabling better integration with ctao-sphinx-theme and improved changelog management via towncrier fragments.

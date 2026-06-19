@@ -1,108 +1,254 @@
+include:
+  - project: cta-computing/common/aiv-toolkit
+    ref: b4d52cdb1beb0648305052f3a0e1859014ec2df7
+    file: ci-functions.yml
+  - aiv-config.yml
+
+variables:
+  AIV_DEPLOY_HELM_UPGRADE_CHART_EXTRA_VALUES: " --set auth.secrets.clientId=suss-test-client
+    --set auth.secrets.clientSecret=secret --set auth.secrets.sessionSecretKeyOidc=${SESSION_SECRET_KEY_OIDC}
+    --set auth.secrets.refreshTokenEncryptionKey=${REFRESH_TOKEN_ENCRYPTION_KEY}"
+
 stages:
-  - test
-  - build-sonar
+  - prepare
+  - lint
+  - build
+  - sign
+  - tests
+  - sonarqube
+  - publish
+  - report
+  - changelog
 
-pytest:
-  stage: test
-  tags:
-    - sonar
-  image: python:3.12
-  variables:
-    PIP_DISABLE_PIP_VERSION_CHECK: "1"
-    PIP_NO_CACHE_DIR: "1"
-    PYTHONPATH: "$CI_PROJECT_DIR:$CI_PROJECT_DIR/api:$CI_PROJECT_DIR/auth_service"
-  before_script:
-    - set -euo pipefail
-    - python -V
-    - python -m venv .venv
-    - . .venv/bin/activate
-
-    - python -m pip install -U "pip<26" "setuptools<82" wheel
-
-    - python -c "import setuptools; print('setuptools:', setuptools.__version__)"
-    - python -c "import pkg_resources; print('pkg_resources OK')"
-
-    # Install app deps if present (top-level or under api/)
-    - if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
-    - if [ -f api/requirements.txt ]; then python -m pip install -r api/requirements.txt; fi
-
-    # Install CI/test-only deps
-    - if [ -f requirements-ci.txt ]; then python -m pip install -r requirements-ci.txt; fi
-    - if [ -f api/requirements-ci.txt ]; then python -m pip install -r api/requirements-ci.txt; fi
-
-    # Re-check after all installs
-    - python -c "import pkg_resources; print('pkg_resources still OK after deps')"
-
-    # Create a throwaway .env.ci with safe defaults
-    - |
-      cat > .env.ci <<EOF
-      OPUS_SERVICE=${OPUS_SERVICE:-https://example.invalid/opus}
-      OPUS_APP_TOKEN=${OPUS_APP_TOKEN:-dummy-ci-token}
-      OPUS_APP_USER=${OPUS_APP_USER:-ci}
-
-      API_DATABASE_URL=sqlite+aiosqlite:///./test.db
-      API_REDIS_URL=redis://localhost:6379/0
-
-      AUTH_DATABASE_URL=sqlite+aiosqlite:///./test_auth.db
-      AUTH_REDIS_URL=redis://localhost:6379/1
-
-      CTAO_CLIENT_ID=dummy-client-id
-      CTAO_CLIENT_SECRET=dummy-client-secret
-      OIDC_ISSUER=https://example.invalid/issuer
-
-      BASE_URL=http://localhost:8000
-      FRONTEND_BASE_URL=http://localhost:3000
-      OIDC_REDIRECT_URI=http://localhost:8001/auth/oidc/callback
-
-      COOKIE_NAME_MAIN_SESSION=ctao_session_main
-      COOKIE_SAMESITE=lax
-      COOKIE_SECURE=false
-      COOKIE_DOMAIN=
-      EOF
-
-    # Append a generated encryption key, then make it the active .env
-    - |
-      python - <<'PY' >> .env.ci
-      from cryptography.fernet import Fernet
-      print("REFRESH_TOKEN_ENCRYPTION_KEY="+Fernet.generate_key().decode())
-      PY
-    - cp .env.ci .env
-
-    # Debug
-    - which python
-    - python -c "import sys; print(sys.executable)"
-    - python -m pip --version
-
+pylint:
   script:
-    - . .venv/bin/activate
-    - python -m pytest api auth_service/tests --maxfail=1 --disable-warnings --cov=api --cov=auth_service --cov-report=xml:coverage.xml
+    - pylint --fail-under 5.0 api auth_service
+      --output-format=json2:pylint.json,colorized
 
+kubeconform:
+  stage: lint
+  image: harbor.cta-observatory.org/proxy_cache/alpine/helm:${HELM_VERSION}
+  rules:
+    - exists:
+        - $CHART_LOCATION/Chart.yaml
+  before_script:
+    - curl -L
+      https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz
+      | tar xvzf -
+  script:
+    - helm dependencies build $CHART_LOCATION
+    - helm template $CHART_LOCATION | ./kubeconform -summary -verbose -strict
+      -output pretty -ignore-missing-schemas
+    - helm template $CHART_LOCATION -f chart/values-aiv.yaml --set
+      iam.enabled=false --set gcert-issuer.enabled=false | ./kubeconform
+      -summary -verbose -strict  -output pretty -ignore-missing-schemas
+pre-commit-hooks:
+  before_script:
+    - apt update && apt install -y --no-install-recommends git
+    - python --version
+    - pip install uv
+    - uv sync --locked --extra all
+  script:
+    - uv run prek run --all-files
+
+hadolint:
+  script:
+    - hadolint Dockerfile.auth Dockerfile.backend Dockerfile.download Dockerfile.frontend
+      Dockerfile.playwright
+
+build:
+  tags:
+    - desy-test-cluster
+  parallel:
+    matrix:
+      - IMAGE: ["frontend", "backend", "auth", "playwright", "download"]
+  before_script:
+    - |
+      if [ "$IMAGE" = "backend" ] || [ "$IMAGE" = "auth" ] || [ "$IMAGE" = "download" ]; then
+        PRETEND_VERSION="${CI_COMMIT_TAG:-$(git describe --tags 2>/dev/null || echo '0.1.0')}"
+        KANIKO_EXTRA_ARGS="${KANIKO_EXTRA_ARGS:-} --build-arg=SETUPTOOLS_SCM_PRETEND_VERSION=$PRETEND_VERSION"
+        export KANIKO_EXTRA_ARGS
+      fi
+  variables:
+    CI_HARBOR_REGISTRY_IMAGE:
+      harbor.cta-observatory.org/suss/${CI_PROJECT_NAME}-${IMAGE}:${DOCKER_TAG}
+    AIV_DOCKER_IMAGE_CONTEXT: $CI_PROJECT_DIR
+    AIV_DOCKERFILE: Dockerfile.${IMAGE}
+    DOCKER_CONFIG: /kaniko/.docker
+    KUBERNETES_CPU_REQUEST: "1"
+    KUBERNETES_CPU_LIMIT: "2"
+    KUBERNETES_MEMORY_REQUEST: "16Gi"
+    KUBERNETES_MEMORY_LIMIT: "64Gi"
+
+unit-tests-backend:
+  stage: tests
+  image: harbor.cta-observatory.org/proxy_cache/astral/uv:0.11-python3.12-trixie
+  services:
+    - name: redis:7-alpine
+      alias: redis
+    - name: postgres:16-alpine
+      alias: postgres
+  variables:
+    # Test-only defaults to satisfy Settings validation during import/collection.
+    # Real deployments set these via Helm/CI variables.
+    POSTGRES_DB: testdb
+    POSTGRES_USER: user
+    POSTGRES_PASSWORD: pass
+    API_DATABASE_URL: "postgresql+asyncpg://user:pass@postgres:5432/testdb"
+    AUTH_DATABASE_URL: "postgresql+asyncpg://user:pass@postgres:5432/testdb"
+    API_REDIS_URL: "redis://redis:6379/1"
+    AUTH_REDIS_URL: "redis://redis:6379/0"
+    OIDC_ISSUER: "https://example.invalid"
+    OIDC_REDIRECT_URI: "http://localhost/auth/callback"
+    OIDC_SERVER_METADATA_URL: "https://example.invalid/.well-known/openid-configuration"
+  before_script:
+    - uv sync --locked --extra test
+  script:
+    - uv run pytest
   artifacts:
     when: always
     paths:
-      - coverage.xml
-    expire_in: 1 week
+      - test/coverage.xml
+      - test/report.xml
+    reports:
+      junit: test/report.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: test/coverage.xml
 
-  rules:
-    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
-    - if: $CI_COMMIT_BRANCH
-
-build-sonar:
-  stage: build-sonar
-  image:
-    name: sonarsource/sonar-scanner-cli:11
-    entrypoint: [""]
-  needs:
-    - job: pytest
-      artifacts: true
-  script:
-    - sonar-scanner -Dsonar.host.url="${SONAR_HOST_URL}" -Dsonar.login="${SONAR_TOKEN}"
+unit-tests-frontend:
+  stage: tests
+  image: harbor.cta-observatory.org/proxy_cache/node:24.2-alpine
+  cache:
+    key:
+      files:
+        - js/package-lock.json
+    paths:
+      - js/node_modules/
   variables:
-    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
-    GIT_DEPTH: "0"
-  rules:
-    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
-    - if: $CI_COMMIT_BRANCH
-  allow_failure: true
+    JEST_JUNIT_OUTPUT_DIR: coverage
+    JEST_JUNIT_OUTPUT_NAME: report.xml
+  before_script:
+    - npm ci --prefix js
+    - cat js/craco.config.js
+    - cat js/package.json | grep -A2 '"test"'
+  script:
+    - CI=true npm test --prefix js -- --watchAll=false --coverage
+      --coverageReporters=text --coverageReporters=lcov
+      --coverageReporters=cobertura
+  artifacts:
+    when: always
+    paths:
+      - js/coverage/
+    reports:
+      junit: js/coverage/report.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: js/coverage/cobertura-coverage.xml
+
+k8s-integration-tests:
   tags:
-    - sonar
+    - desy-testcluster-ctao-computing-aiv
+  artifacts:
+    when: always
+    paths:
+      - test-in-k8s/
+      - .toolkit/stats/pull-images-statistics.json
+      - .toolkit/stats/testkit-helm-upgrade-statistics.json
+      - test_frontend_screenshot_1_initial.png
+      - test_frontend_screenshot_2_resolve.png
+      - test_frontend_screenshot_3_search.png
+      - test_frontend_screenshot_4_download_before_assert.png
+      - test_frontend_screenshot_5_download.png
+      - login_before_submit.png
+      - login_at_callback.png
+      - login_after_redirect.png
+      - test_login_before.png
+      - test_login_after.png
+      - test_logout_logged_in.png
+      - test_logout_after.png
+      - sky_search_timeout.png
+      - test_profile.png
+      - basket_add_alert.png
+      - basket_after_add.png
+      - test_download_alert.png
+      - test_download_without_login.png
+      - test_download_loading.png
+      - test_download_multiple_1.png
+      - test_download_multiple_2.png
+      - allure-report.html
+      - allure.tar.gz
+    expose_as: "K8s Integration Test Results"
+    reports:
+      junit: test-in-k8s/report.xml
+
+k8s-upgrade-integration-tests:
+  extends: .test-in-k8s
+  tags:
+    - desy-testcluster-ctao-computing-aiv
+  variables:
+    UPGRADE_BASE_REF: "v1.0.0-rc2"
+
+
+# the following two jobs can be used to test integration with external services. Currently disabled
+k8s-integration-tests-with-external-iam-dcache:
+  extends: k8s-integration-tests
+  variables:
+    AIV_DEPLOY_HELM_UPGRADE_CHART_EXTRA_VALUES: --set dev.allow_external=true
+  rules:
+    - when: never
+
+k8s-upgrade-integration-tests-with-external-iam-dcache:
+  extends: k8s-upgrade-integration-tests
+  variables:
+    AIV_DEPLOY_HELM_UPGRADE_CHART_EXTRA_VALUES: --set dev.allow_external=true
+  rules:
+    - when: never
+
+collect-test-artifacts:
+  stage: tests
+  image: $PYTHON_IMAGE
+  needs:
+    # can add more jobs to combine
+    - job: collect-manual-tests
+      artifacts: true
+    - job: k8s-integration-tests
+      artifacts: true
+    - job: unit-tests-frontend
+      artifacts: true
+    - job: unit-tests-backend
+      artifacts: true
+  before_script:
+    - !reference [.install-kit, script]
+  script:
+    - find . -name "report.xml" -o -name "coverage.xml" | sort
+    - aiv-report -v merge-junit */report.xml js/coverage/report.xml --output
+      report.xml
+    - cp -fv test/coverage.xml coverage.xml
+  artifacts:
+    paths:
+      - report.xml
+      - coverage.xml
+      # this is a temporary before https://gitlab.cta-observatory.org/cta-computing/common/aiv-toolkit/-/merge_requests/165
+      - "*/coverage.xml"
+      - js/coverage/cobertura-coverage.xml
+      - js/coverage/lcov.info
+    reports:
+      junit: report.xml
+
+pypi:
+  rules:
+    - when: never
+
+# TODO: temporary while gitlab pages are broken
+build-docs:
+  rules:
+    - when: never
+
+deploy_docs_env:
+  rules:
+    - when: never
+
+pages:
+  rules:
+    - when: never

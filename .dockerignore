@@ -25,4 +25,4 @@ js/build/
 .vscode/
 
 # Avoid mixing local installation
-.pixi
+.uv/

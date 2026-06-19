@@ -1,0 +1,341 @@
+# Default values for ctao-data-explorer.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+#
+# CI/test overrides live in values-aiv.yaml.
+
+# IAM sub-chart: disabled by default; enable via values-aiv.yaml for CI/testing
+iam:
+  enabled: false
+  testClient:
+    enabled: false
+    config:
+      client:
+        id: test-client
+        secret: secret
+
+# gcert-issuer sub-chart: disabled by default; needed for IAM TLS in CI/testing
+# Dev / test pod — disabled by default; enabled in CI via values-aiv.yaml
+dev:
+  run_tests: false
+  sleep: false
+  frontend:
+    dangerouslyDisableHostCheck: false
+  test_pod:
+    image:
+      repository: suss/ctao-data-explorer-playwright
+      tag:
+      pullPolicy: IfNotPresent
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+        ephemeral-storage: 2Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+        ephemeral-storage: 1Gi
+
+gcert-issuer:
+  enabled: false
+
+# Abstraction layer for IAM config (local or external).
+# Populated via tpl in values-aiv.yaml for CI; set directly for external IAM.
+iam_external:
+  enabled: false
+  issuer: ""
+  # Name of a K8s Secret with key test-ca.pem containing the IAM CA cert.
+  # When set, the cert is mounted at /etc/ssl/certs/iam-ca.pem and SSL_CERT_FILE is set.
+  # Leave empty when the external IAM uses a publicly-trusted CA.
+  caCertSecret: ""
+
+global:
+  imagePullSecrets: []
+  imageRegistry: harbor.cta-observatory.org
+  dockerProxy: harbor.cta-observatory.org/proxy_cache
+
+# Backend (FastAPI) configuration
+backend:
+  enabled: true
+  replicaCount: 1
+
+  databaseUrlSecret:
+    name: ""
+    key: "url"
+
+  image:
+    repository: suss/ctao-data-explorer-backend
+    pullPolicy: IfNotPresent
+    tag:
+
+  service:
+    type: ClusterIP
+    port: 8000
+    targetPort: 8000
+
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+
+  env:
+    # OPUS
+    OPUS_ROOT: "https://voparis-uws-test.obspm.fr"
+    OPUS_SERVICE: "gammapy_source_analysis"
+
+  envFrom: []
+
+# Auth service configuration
+auth:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: suss/ctao-data-explorer-auth
+    pullPolicy: IfNotPresent
+    tag:
+
+  service:
+    type: ClusterIP
+    port: 8001
+    targetPort: 8001
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+      ephemeral-storage: 1Gi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+      ephemeral-storage: 512Mi
+
+  containerSecurityContext:
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
+  secrets:
+    existingSecret: ""
+
+  env:
+    COOKIE_SAMESITE: "Lax"
+
+# Download service configuration
+download:
+  enabled: false
+  replicaCount: 1
+
+  image:
+    repository: suss/ctao-data-explorer-download
+    pullPolicy: IfNotPresent
+    tag:
+
+  service:
+    type: ClusterIP
+    port: 8002
+    targetPort: 8002
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+  secrets:
+    existingSecret: ""
+    clientId: ""
+    clientSecret: ""
+
+  env: {}
+
+# Frontend configuration
+frontend:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: suss/ctao-data-explorer-frontend
+    pullPolicy: IfNotPresent
+    tag:
+
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 80
+
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 4096Mi
+      ephemeral-storage: 2Gi
+    requests:
+      cpu: 250m
+      memory: 1024Mi
+      ephemeral-storage: 1Gi
+
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+    allowPrivilegeEscalation: false
+
+  extraVolumes:
+    - name: nginx-cache
+      emptyDir: {}
+    - name: nginx-run
+      emptyDir: {}
+
+  extraVolumeMounts:
+    - name: nginx-cache
+      mountPath: /var/cache/nginx
+    - name: nginx-run
+      mountPath: /var/run
+
+# PostgreSQL configuration
+postgresql:
+  enabled: true
+  auth:
+    username: ao
+    password: password
+    database: fastapi_db
+
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+      storageClass: ""
+
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 999
+      allowPrivilegeEscalation: false
+
+    podSecurityContext:
+      fsGroup: 999
+
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+        ephemeral-storage: 2Gi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+        ephemeral-storage: 1Gi
+
+  service:
+    type: ClusterIP
+    port: 5432
+
+# Redis configuration
+redis:
+  enabled: true
+
+  master:
+    persistence:
+      enabled: true
+      size: 1Gi
+      storageClass: ""
+      accessModes:
+        - ReadWriteOnce
+
+    resources:
+      limits:
+        cpu: 250m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+  service:
+    type: ClusterIP
+    port: 6379
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: "haproxy"
+
+  annotations: {}
+
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /api
+          pathType: Prefix
+          backend: backend
+
+        - path: /auth
+          pathType: Prefix
+          backend: auth
+
+        - path: /
+          pathType: Prefix
+          backend: frontend
+
+# Service Account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# Service ports for ingress
+servicePorts:
+  backend: 8000
+  frontend: 80
+  auth: 8001
+  download: 8002
+
+# Pod annotations
+podAnnotations: {}
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+# Security context
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}

@@ -1,0 +1,226 @@
+{{- if .Values.backend.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ctao-data-explorer.fullname" . }}-backend
+  labels:
+    {{- include "ctao-data-explorer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  {{- if not .Values.backend.autoscaling.enabled }}
+  replicas: {{ .Values.backend.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "ctao-data-explorer.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        {{- include "ctao-data-explorer.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      serviceAccountName: {{ include "ctao-data-explorer.serviceAccountName" . }}
+      automountServiceAccountToken: false
+
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+
+      initContainers:
+        - name: wait-for-postgres
+          image: {{ .Values.global.dockerProxy }}/busybox:1.36
+          command:
+            - sh
+            - -c
+            - >
+              until nc -z {{ include "ctao-data-explorer.postgresql.host" . }}
+              {{ .Values.postgresql.service.port }};
+              do echo "waiting for postgres"; sleep 2; done
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "64Mi"
+            limits:
+              cpu: "1000m"
+              memory: "128Mi"
+
+        - name: wait-for-redis
+          image: {{ .Values.global.dockerProxy }}/busybox:1.36
+          command:
+            - sh
+            - -c
+            - >
+              until nc -z {{ include "ctao-data-explorer.redis.host" . }}
+              {{ .Values.redis.service.port }};
+              do echo "waiting for redis"; sleep 2; done
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+
+        - name: run-migrations
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          workingDir: /app
+          command: ["alembic", "-c", "alembic.ini", "upgrade", "head"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          env:
+            - name: PYTHONPATH
+              value: /app
+            - name: API_DATABASE_URL
+              value: {{ include "ctao-data-explorer.databaseUrl" . | quote }}
+            - name: DATABASE_URL
+              value: {{ include "ctao-data-explorer.databaseUrl" . | quote }}
+            - name: REDIS_URL
+              value: {{ include "ctao-data-explorer.redisUrl" . | quote }}
+            - name: API_REDIS_URL
+              value: {{ include "ctao-data-explorer.redisUrl" . | quote }}
+
+            - name: DB_URL
+              {{ if .Values.backend.databaseUrlSecret.name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.backend.databaseUrlSecret.name | quote }}
+                  key: {{ .Values.backend.databaseUrlSecret.key | default "url" | quote }}
+              {{ else }}
+              value: {{ include "ctao-data-explorer.databaseUrl" . | quote }}
+              {{ end }}
+
+            {{- range $key, $value := .Values.backend.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+
+          {{- with .Values.backend.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+
+      containers:
+        - name: backend
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+
+          ports:
+            - name: http
+              containerPort: {{ .Values.backend.service.targetPort }}
+              protocol: TCP
+
+          {{- if .Values.iam_external.caCertSecret }}
+          volumeMounts:
+            - name: iam-ca-cert
+              mountPath: /etc/ssl/certs/iam-ca.pem
+              subPath: test-ca.pem
+              readOnly: true
+          {{- end }}
+
+          env:
+            - name: API_DATABASE_URL
+              {{ if .Values.backend.databaseUrlSecret.name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.backend.databaseUrlSecret.name | quote }}
+                  key: {{ .Values.backend.databaseUrlSecret.key | default "url" | quote }}
+              {{ else }}
+              value: {{ include "ctao-data-explorer.databaseUrl" . | quote }}
+              {{ end }}
+
+            - name: DATABASE_URL
+              {{ if .Values.backend.databaseUrlSecret.name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.backend.databaseUrlSecret.name | quote }}
+                  key: {{ .Values.backend.databaseUrlSecret.key | default "url" | quote }}
+              {{ else }}
+              value: {{ include "ctao-data-explorer.databaseUrl" . | quote }}
+              {{ end }}
+
+            - name: API_REDIS_URL
+              value: {{ include "ctao-data-explorer.redisUrl" . | quote }}
+
+            - name: REDIS_URL
+              value: {{ include "ctao-data-explorer.redisUrl" . | quote }}
+
+            {{- range $key, $value := .Values.backend.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+
+            {{- if .Values.iam_external.enabled }}
+            {{- $issuer := tpl (required "iam_external.issuer is required" .Values.iam_external.issuer) . }}
+            - name: OIDC_ISSUER
+              value: {{ $issuer | quote }}
+            {{- if .Values.iam_external.caCertSecret }}
+            - name: SSL_CERT_FILE
+              value: /etc/ssl/certs/iam-ca.pem
+            {{- end }}
+            {{- end }}
+
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+
+      {{- if .Values.iam_external.caCertSecret }}
+      volumes:
+        - name: iam-ca-cert
+          secret:
+            secretName: {{ tpl .Values.iam_external.caCertSecret $ }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

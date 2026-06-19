@@ -49,6 +49,9 @@ class ApiSettings(BaseSettings):
     METRICS_BASIC_USER: str | None = None
     METRICS_BASIC_PASS: str | None = None
 
+    # Download URL for testing the Download Service
+    DATALINK_TEST_DOWNLOAD_URL: str | None = None
+
     @property
     def DATABASE_URL(self) -> str:
         return self.API_DATABASE_URL

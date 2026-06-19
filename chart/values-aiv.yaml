@@ -1,0 +1,239 @@
+# CI / test overrides for ctao-data-explorer.
+# Derives from values.yaml; only differences are listed here.
+# Used if CHART_VALUES is set in AIV config (aiv-config.yml).
+
+# IAM (local auth)
+
+iam:
+  enabled: true
+
+  # Disable IAM's built-in gcert-issuer sub-chart; top-level gcert-issuer handles this
+  gcert-issuer:
+    enabled: false
+
+  global:
+    fqdn: iam-ctao-data-explorer.test.example
+
+  ingress:
+    enabled: true
+    annotations:
+      haproxy.org/ssl-redirect: "true"
+      haproxy.org/ssl-redirect-port: "443"
+    className: haproxy
+    tls:
+      enabled: true
+      secretName: iam-tls
+
+  database:
+    host: '{{ .Release.Name }}-mariadb'
+
+  mariadb:
+    enabled: true
+    auth:
+      database: indigo-iam
+      rootPassword: rootpass
+      password: test-password
+    image:
+      repository: proxy_cache/bitnamilegacy/mariadb
+      tag: 12.0.2-debian-12-r0
+    primary:
+      persistence:
+        enabled: false
+
+  vomsAA:
+    enabled: false
+
+  certRequester:
+    enabled: false
+
+  testClient:
+    enabled: true
+    config:
+      client:
+        id: test-client
+        secret: secret
+
+  dev:
+    create_helm_test: false
+
+  loginService:
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+
+    config:
+      java:
+        opts: -Xms512m -Xmx512m -Djava.security.egd=file:/dev/./urandom -Dspring.profiles.active=prod,oidc,wlcg-scopes
+
+  bootstrap:
+    enabled: true
+    config:
+      clients:
+        - client_id: suss-test-client
+          client_name: Test Client
+          client_secret: secret
+          grant_types:
+            - authorization_code
+            - password
+            - client_credentials
+            - urn:ietf:params:oauth:grant_type:redelegate
+            - urn:ietf:params:oauth:grant-type:token-exchange
+            - refresh_token
+          redirect_uris:
+            - "https://ctao-data-explorer.test.example/auth/oidc/callback"
+          scopes:
+            - scim:write
+            - scim:read
+            - offline_access
+            - openid
+            - profile
+            - email
+            - iam:admin.write
+            - iam:admin.read
+            - storage.read:/public/
+      groups:
+        - name: ctao.suss.test
+        - name: ctao.suss.test/sdc
+        - name: ctao.suss.test/sdc/user
+      users:
+        - username: sdc-user
+          password: test-password
+          email: sdc@test.example
+          given_name: SDC
+          family_name: User
+          groups:
+            - ctao.suss.test
+            - ctao.suss.test/sdc/user
+          role: ROLE_USER
+
+  trustStore:
+    addAIVCA: true
+    testCASecretName: '{{ .Release.Name }}-test-ca'
+
+
+
+# gcert-issuer (TLS for IAM)
+
+gcert-issuer:
+  enabled: true
+  server_names:
+    - sample-server-compat
+  users:
+    - name: Test User
+      suffix: "-compat-user"
+    - name: Test User Unprivileged
+      suffix: "-unprivileged-compat-user"
+  bootstrap_job:
+    enabled: true
+  dev:
+    mount_repo: false
+    run_tests: false
+    default_gcrqs_enabled: true
+
+# Test credentials
+
+tests:
+  testUser: sdc-user
+  testPassword: test-password
+  existingSecret: ""
+
+# Dev / test pod
+
+dev:
+  run_tests: true
+  sleep: false
+  mount_repo: true
+  allow_external: false
+  frontend:
+    dangerouslyDisableHostCheck: true
+  test_pod:
+    image:
+      repository: suss/ctao-data-explorer-playwright
+      tag:
+      pullPolicy: IfNotPresent
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+        ephemeral-storage: 2Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+        ephemeral-storage: 1Gi
+
+# Download service
+
+download:
+  enabled: true
+  env:
+    IAM_TOKEN_ENDPOINT: "https://iam-ctao-data-explorer.test.example/token"
+    DOWNLOAD_ALLOWED_STORAGE_HOSTS_JSON: '["globe-door.ifh.de:2880", "localhost:9999"]'
+    DOWNLOAD_TOKEN_EXCHANGE_AUDIENCE: "https://wlcg.cern.ch/jwt/v1/any"
+    DOWNLOAD_TOKEN_EXCHANGE_SCOPE: "storage.read:/public/"
+    DOWNLOAD_LFN_PREFIX_MAP_JSON: '{"lfn:/sdc/":"https://globe-door.ifh.de:2880/pnfs/ifh.de/acs/sdc/"}'
+  secrets:
+    clientId: suss-test-client
+    clientSecret: secret
+
+# Auth service
+
+auth:
+  env:
+    BASE_URL: "https://ctao-data-explorer.test.example"
+    FRONTEND_BASE_URL: "https://ctao-data-explorer.test.example/"
+    OIDC_REDIRECT_URI: "https://ctao-data-explorer.test.example/auth/oidc/callback"
+    COOKIE_DOMAIN: "ctao-data-explorer.test.example"
+    COOKIE_SECURE: false
+  secrets:
+    clientId: suss-test-client
+    clientSecret: secret
+
+
+# IAM abstraction layer
+# Wires values from IAM subchart via tpl for CI/testing.
+
+iam_external:
+  enabled: true
+  issuer: "https://{{ .Values.iam.global.fqdn }}"
+  caCertSecret: '{{ .Release.Name }}-test-ca'
+
+# Backend
+
+backend:
+  env:
+    BASE_URL: "https://ctao-data-explorer.test.example"
+    # DATALINK_TEST_DOWNLOAD_URL: "https://globe-door.ifh.de:2880/pnfs/ifh.de/acs/cta/diskonly/oidc-test-bas/public/test-file.txt"
+    DATALINK_TEST_DOWNLOAD_URL: "https://localhost:9999/test-file.txt"
+
+# Ingress
+
+ingress:
+  hosts:
+    - host: ctao-data-explorer.test.example
+      paths:
+        - path: /api
+          pathType: Prefix
+          backend: backend
+        - path: /auth
+          pathType: Prefix
+          backend: auth
+        - path: /
+          pathType: Prefix
+          backend: frontend
+
+# Service ports
+
+servicePorts:
+  iam: 8080
+
+# Redis
+
+redis:
+  master:
+    persistence:
+      enabled: true
+      size: 100Mi
+      storageClass: "standard"
+      accessModes:
+        - ReadWriteOnce

@@ -3,6 +3,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from ctao_shared.security import require_xsrf_dependency
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -76,7 +77,11 @@ async def _internal_create_query_history(
         raise HTTPException(status_code=500, detail="Failed to save query history.") from e
 
 
-@query_history_router.post("", response_model=QueryHistoryRead)
+@query_history_router.post(
+    "",
+    response_model=QueryHistoryRead,
+    dependencies=[Depends(require_xsrf_dependency)],
+)
 async def create_query_history(
     history: QueryHistoryCreate,
     # Get app_user_id from the new session dependency
@@ -131,7 +136,11 @@ async def get_query_history(
         raise HTTPException(status_code=500, detail="Failed to retrieve query history.") from e
 
 
-@query_history_router.delete("/{history_id}", status_code=status.HTTP_204_NO_CONTENT)
+@query_history_router.delete(
+    "/{history_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_xsrf_dependency)],
+)
 async def delete_query_history_item(
     history_id: int,
     identity: VerifiedIdentity = Depends(get_required_identity),

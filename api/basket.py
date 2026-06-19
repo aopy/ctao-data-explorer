@@ -3,6 +3,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from ctao_shared.security import require_xsrf_dependency
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
@@ -75,7 +76,11 @@ class BasketBulkCreate(BaseModel):
 basket_router = APIRouter(prefix="/api/basket", tags=["basket"])
 
 
-@basket_router.post("/items/bulk", response_model=list[BasketItemRead])
+@basket_router.post(
+    "/items/bulk",
+    response_model=list[BasketItemRead],
+    dependencies=[Depends(require_xsrf_dependency)],
+)
 async def add_items_bulk(
     payload: BasketBulkCreate,
     identity: VerifiedIdentity = Depends(get_required_identity),
@@ -217,7 +222,11 @@ async def get_basket_groups(
     return out
 
 
-@basket_router.post("/groups/{group_id}/duplicate", response_model=BasketGroupRead)
+@basket_router.post(
+    "/groups/{group_id}/duplicate",
+    response_model=BasketGroupRead,
+    dependencies=[Depends(require_xsrf_dependency)],
+)
 async def duplicate_basket_group(
     group_id: int,
     identity: VerifiedIdentity = Depends(get_required_identity),
@@ -266,7 +275,11 @@ async def duplicate_basket_group(
     )
 
 
-@basket_router.post("/items", response_model=BasketItemRead)
+@basket_router.post(
+    "/items",
+    response_model=BasketItemRead,
+    dependencies=[Depends(require_xsrf_dependency)],
+)
 async def add_item_to_basket(
     basket_data: BasketCreate,
     identity: VerifiedIdentity = Depends(get_required_identity),
@@ -348,7 +361,11 @@ async def add_item_to_basket(
     )
 
 
-@basket_router.delete("/groups/{group_id}/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+@basket_router.delete(
+    "/groups/{group_id}/items/{item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_xsrf_dependency)],
+)
 async def remove_item_from_basket_group(
     group_id: int,
     item_id: int,
@@ -468,7 +485,11 @@ async def get_saved_dataset_item(
     )
 
 
-@basket_router.post("/groups", response_model=BasketGroupRead)
+@basket_router.post(
+    "/groups",
+    response_model=BasketGroupRead,
+    dependencies=[Depends(require_xsrf_dependency)],
+)
 async def create_basket_group(
     group_data: BasketGroupCreate,
     identity: VerifiedIdentity = Depends(get_required_identity),
@@ -487,7 +508,11 @@ async def create_basket_group(
     )
 
 
-@basket_router.put("/groups/{group_id}", response_model=BasketGroupRead)
+@basket_router.put(
+    "/groups/{group_id}",
+    response_model=BasketGroupRead,
+    dependencies=[Depends(require_xsrf_dependency)],
+)
 async def update_basket_group(
     group_id: int,
     group_data: BasketGroupUpdate,
@@ -527,7 +552,11 @@ async def update_basket_group(
     )
 
 
-@basket_router.delete("/groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
+@basket_router.delete(
+    "/groups/{group_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_xsrf_dependency)],
+)
 async def delete_basket_group(
     group_id: int,
     identity: VerifiedIdentity = Depends(get_required_identity),

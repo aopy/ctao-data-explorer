@@ -2,7 +2,7 @@
 
 This project is a web application to access, visualize, and analyze Cherenkov data, in the perspective of the **Cherenkov Telescope Array Observatory (CTAO)**. It combines a **React** frontend with a **FastAPI** backend. Users can search the archive, curate results, explore interactive visualizations, and submit selected items as preview jobs to the [OPUS](https://voparis-uws-test.obspm.fr/client/) service. The application adopts standards from the [International Virtual Observatory Alliance (IVOA)](https://ivoa.net/) to ensure interoperability and broad accessibility of astronomical data.
 
-Documentation is available online at https://aopy.github.io/ctao-data-explorer/
+Documentation is [here](http://ctao-data-explorer-a09d9e.gitlab-pages.cta-observatory.org/).
 
 ## Table of Contents
 
@@ -12,9 +12,7 @@ Documentation is available online at https://aopy.github.io/ctao-data-explorer/
   - [Requirements](#requirements)
     - [Backend](#backend)
     - [Frontend](#frontend)
-  - [Installation](#installation)
-    - [Backend Setup](#backend-setup)
-    - [Frontend Setup](#frontend-setup)
+  - [Installation and deployment](#installation-and-deployment)
   - [Usage](#usage)
 - [About CTAO](#about-ctao)
 
@@ -32,7 +30,7 @@ Documentation is available online at https://aopy.github.io/ctao-data-explorer/
 
 ### Backend
 
-- Python >=3.10
+- Python >=3.12
 - FastAPI
 - Uvicorn
 - Aiofiles
@@ -46,59 +44,28 @@ Documentation is available online at https://aopy.github.io/ctao-data-explorer/
 - Postgres
 - Redis
 
+See `pyproject.toml` for more details.
+
 ### Frontend
 
 - Node.js
 - React.js
 - Axios
 
-## Installation
+See `js/package.json` for more details.
 
-Here are the initial instructions previous to the containerization of the application. For deployment that will be used in production see the [Deployment section in the docs](http://ctao-data-explorer-a09d9e.gitlab-pages.cta-observatory.org/developer-guide/deployment/).
+## Installation and deployment
 
-### Backend Setup
-
-   ```bash
-   # Clone the repository
-   git clone https://gitlab.obspm.fr/oates/ctao-data-explorer.git
-   cd ctao-data-explorer
-   # Create and activate a conda environment
-   conda create -n ctao-backend python=3.12.7
-   conda activate ctao-backend
-   # Install dependencies
-   conda install -c conda-forge fastapi uvicorn aiofiles pyvo numpy requests cryptography hiredis \
-    fastapi-users-db-sqlalchemy authlib itsdangerous asyncpg httpx xmltodict alembic psycopg2
-   # Set up PostgreSQL
-   psql -U postgres
-   CREATE DATABASE fastapi_db;
-   CREATE USER user WITH PASSWORD 'password'; # Adjust user name and password
-   GRANT ALL PRIVILEGES ON DATABASE fastapi_db TO user;
-   # Apply Alembic migrations
-   alembic upgrade head
-   # Set up Redis
-   export REDIS_URL="redis://localhost:6379/0"
-   set -o allexport 
-   source .env
-   set +o allexport
-   # Run backend and auth service
-   uvicorn api.main:app --reload --port 8000
-   uvicorn auth_service.main:app --reload --port 8001
-   ```
-### Frontend Setup
-
-   ```bash
-   cd ctao-data-explorer/js
-   npm install
-   npm run build
-   ```
+For local development on Kubernetes (recommended), see the [Development Environment guide](http://ctao-data-explorer-a09d9e.gitlab-pages.cta-observatory.org/developer-guide/deployment/local/).
+Legacy setups (directly on host) are documented in the [Legacy deployment guide](http://ctao-data-explorer-a09d9e.gitlab-pages.cta-observatory.org/developer-guide/deployment/legacy/).
 
 ## Usage
 
-> **Warning**  
-> This deployment is hosted by the Paris Astronomical Data Center (PADC).  
+> **Warning**
+> This deployment is hosted by the Paris Astronomical Data Center (PADC).
 > It is not the official production server; features and APIs may change.
 
-1. **Open the site:**  
+1. **Open the site:**
    <https://padc-ctao-data-explorer.obspm.fr/> → you land on **Search**.
 
 2. **Build a query (Search page)**
@@ -111,7 +78,7 @@ Here are the initial instructions previous to the containerization of the applic
        - **MET (s)** — *Mission Elapsed Time, seconds since the fixed CTAO reference epoch*
        - You may fill **any** of these; the others auto-fill and stay in sync.
      - **MET epoch (fixed):** `2001-01-01 00:00:00 TT`
-   - Click **Search** to run or **Clear Form** to reset.  
+   - Click **Search** to run or **Clear Form** to reset.
    _Tip: you can use either position, time, or both._
 
 3. **Explore results (Results page)**
