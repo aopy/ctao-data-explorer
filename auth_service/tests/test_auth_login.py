@@ -1,7 +1,11 @@
+from __future__ import annotations
+
 import json
 import time
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 
+import httpx
 import pytest
 from ctao_shared.constants import (
     COOKIE_NAME_MAIN_SESSION,
@@ -16,6 +20,7 @@ from ctao_shared.constants import (
 from auth_service.config import get_auth_settings
 from auth_service.crypto import decrypt_token, encrypt_token
 from auth_service.oauth_client import get_oauth
+from auth_service.routers import auth as auth_router
 
 oauth = get_oauth()
 
@@ -68,9 +73,9 @@ async def test_login_stores_encrypted_refresh_token_in_redis(
     # Refresh token must be present and encrypted
     enc_rt = session.get(SESSION_REFRESH_TOKEN_KEY)
     assert enc_rt is not None, "Refresh token missing from Redis session"
-    assert (
-        enc_rt != "real-refresh-token"
-    ), "Refresh token must be stored encrypted, not as plaintext"
+    assert enc_rt != "real-refresh-token", (
+        "Refresh token must be stored encrypted, not as plaintext"
+    )
     # Fernet-encrypted tokens always start with "gAAAAA"
     assert enc_rt.startswith("gAAAAA"), f"Unexpected encrypted RT format: {enc_rt[:10]}"
 
@@ -128,25 +133,25 @@ async def test_access_token_refresh_updates_session_in_redis(
     updated = json.loads(raw)
 
     # Access token must be updated
-    assert (
-        updated[SESSION_ACCESS_TOKEN_KEY] == "new-access-token"
-    ), "Access token was not updated in Redis"
+    assert updated[SESSION_ACCESS_TOKEN_KEY] == "new-access-token", (
+        "Access token was not updated in Redis"
+    )
 
     # Expiry must be pushed well into the future
-    assert (
-        updated[SESSION_ACCESS_TOKEN_EXPIRY_KEY] > time.time() + 60
-    ), "New expiry is not far enough in the future"
+    assert updated[SESSION_ACCESS_TOKEN_EXPIRY_KEY] > time.time() + 60, (
+        "New expiry is not far enough in the future"
+    )
 
     # Refresh token must be rotated and still encrypted
     new_enc_rt = updated.get(SESSION_REFRESH_TOKEN_KEY)
     assert new_enc_rt is not None, "Refresh token missing after rotation"
     assert new_enc_rt != old_enc_rt, "Refresh token was not rotated"
-    assert (
-        new_enc_rt != "new-refresh-token"
-    ), "Rotated refresh token must be stored encrypted, not plaintext"
-    assert (
-        decrypt_token(new_enc_rt) == "new-refresh-token"
-    ), "Decrypted rotated RT does not match expected value"
+    assert new_enc_rt != "new-refresh-token", (
+        "Rotated refresh token must be stored encrypted, not plaintext"
+    )
+    assert decrypt_token(new_enc_rt) == "new-refresh-token", (
+        "Decrypted rotated RT does not match expected value"
+    )
 
 
 @pytest.mark.anyio
@@ -161,9 +166,9 @@ async def test_logout_clears_redis_session_and_cookie(
     assert session_id is not None, "as_user did not set session cookie on client"
 
     # Confirm key exists before logout
-    assert (
-        await fake_redis.get(f"{SESSION_KEY_PREFIX}{session_id}") is not None
-    ), "Session should exist in Redis before logout"
+    assert await fake_redis.get(f"{SESSION_KEY_PREFIX}{session_id}") is not None, (
+        "Session should exist in Redis before logout"
+    )
 
     csrf_token = "test-csrf-token"
 
@@ -183,9 +188,158 @@ async def test_logout_clears_redis_session_and_cookie(
 
     # Cookie must be cleared via Set-Cookie header
     set_cookie = r.headers.get("set-cookie", "")
-    assert (
-        COOKIE_NAME_MAIN_SESSION in set_cookie
-    ), "Session cookie name not found in Set-Cookie header"
-    assert (
-        "max-age=0" in set_cookie.lower() or "max_age=0" in set_cookie.lower()
-    ), "Cookie was not expired (max-age=0 not found in Set-Cookie)"
+    assert COOKIE_NAME_MAIN_SESSION in set_cookie, (
+        "Session cookie name not found in Set-Cookie header"
+    )
+    assert "max-age=0" in set_cookie.lower() or "max_age=0" in set_cookie.lower(), (
+        "Cookie was not expired (max-age=0 not found in Set-Cookie)"
+    )
+
+
+@pytest.mark.anyio
+async def test_logout_revokes_refresh_token_and_returns_end_session_url(
+    auth_client,
+    as_user,
+    fake_redis,
+    monkeypatch,
+):
+    metadata_url = "https://iam.example/.well-known/openid-configuration"
+    revocation_url = "https://iam.example/revoke"
+    end_session_url = "https://iam.example/logout"
+
+    monkeypatch.setenv("OIDC_SERVER_METADATA_URL", metadata_url)
+    monkeypatch.setenv("CTAO_CLIENT_ID", "client-id")
+    monkeypatch.setenv("CTAO_CLIENT_SECRET", "client-secret")
+    monkeypatch.setenv("FRONTEND_BASE_URL", "http://localhost:3000/")
+    get_auth_settings.cache_clear()
+    auth_router._settings.cache_clear()
+    auth_router._oidc_metadata_url.cache_clear()
+
+    calls: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+
+        if str(request.url) == metadata_url:
+            return httpx.Response(
+                200,
+                json={
+                    "revocation_endpoint": revocation_url,
+                    "end_session_endpoint": end_session_url,
+                },
+            )
+
+        if str(request.url) == revocation_url:
+            body = request.content.decode()
+            assert "token_type_hint=refresh_token" in body
+            assert "token=" in body
+            return httpx.Response(200, json={})
+
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+
+    real_async_client = httpx.AsyncClient
+
+    def fake_async_client(*args, **kwargs):
+        kwargs["transport"] = transport
+        return real_async_client(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", fake_async_client)
+
+    _, session_id = await as_user(
+        access_token="dummy-access-token",
+        refresh_token_plain="dummy-refresh-token",
+    )
+
+    token = "csrf-token"
+    auth_client.cookies.set(COOKIE_NAME_XSRF, token)
+
+    r = await auth_client.post(
+        "/auth/logout_session",
+        headers={HEADER_NAME_XSRF: token},
+    )
+
+    assert r.status_code == 200
+    data = r.json()
+
+    assert data["status"] == "logout successful"
+    assert data["logout_url"] is not None
+
+    parsed = urlparse(data["logout_url"])
+    query = parse_qs(parsed.query)
+
+    assert f"{parsed.scheme}://{parsed.netloc}{parsed.path}" == end_session_url
+    assert query["post_logout_redirect_uri"] == ["http://localhost:3000/"]
+    assert query["client_id"] == ["client-id"]
+    assert query["id_token_hint"] == ["dummy-id-token"]
+
+    assert await fake_redis.get(f"{SESSION_KEY_PREFIX}{session_id}") is None
+
+    requested_urls = [str(call.url) for call in calls]
+    assert metadata_url in requested_urls
+    assert revocation_url in requested_urls
+
+
+@pytest.mark.anyio
+async def test_logout_uses_configured_end_session_endpoint_when_metadata_omits_it(
+    auth_client,
+    as_user,
+    fake_redis,
+    monkeypatch,
+):
+    metadata_url = "https://iam.example/.well-known/openid-configuration"
+    revocation_url = "https://iam.example/revoke"
+    end_session_url = "https://iam.example/logout"
+
+    monkeypatch.setenv("OIDC_SERVER_METADATA_URL", metadata_url)
+    monkeypatch.setenv("OIDC_END_SESSION_ENDPOINT", end_session_url)
+    monkeypatch.setenv("CTAO_CLIENT_ID", "client-id")
+    monkeypatch.setenv("CTAO_CLIENT_SECRET", "client-secret")
+    monkeypatch.setenv("FRONTEND_BASE_URL", "http://localhost:3000/")
+
+    get_auth_settings.cache_clear()
+    auth_router._settings.cache_clear()
+    auth_router._oidc_metadata_url.cache_clear()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if str(request.url) == metadata_url:
+            return httpx.Response(
+                200,
+                json={
+                    "revocation_endpoint": revocation_url,
+                },
+            )
+
+        if str(request.url) == revocation_url:
+            return httpx.Response(200)
+
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    real_async_client = httpx.AsyncClient
+
+    def fake_async_client(*args, **kwargs):
+        kwargs["transport"] = transport
+        return real_async_client(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", fake_async_client)
+
+    _, session_id = await as_user(
+        access_token="dummy-access-token",
+        refresh_token_plain="dummy-refresh-token",
+    )
+
+    token = "csrf-token"
+    auth_client.cookies.set(COOKIE_NAME_XSRF, token)
+
+    r = await auth_client.post(
+        "/auth/logout_session",
+        headers={HEADER_NAME_XSRF: token},
+    )
+
+    assert r.status_code == 200
+    data = r.json()
+    assert data["logout_url"] is not None
+    assert data["logout_url"].startswith(end_session_url)
+    assert await fake_redis.get(f"{SESSION_KEY_PREFIX}{session_id}") is None

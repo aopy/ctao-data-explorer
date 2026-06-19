@@ -14,11 +14,11 @@ from ctao_shared.constants import (
     SESSION_KEY_PREFIX,
     SESSION_REFRESH_TOKEN_KEY,
 )
+from ctao_shared.testing.fakeredis import FakeRedis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from api.tests.fakeredis import FakeRedis
 from auth_service.crypto import encrypt_token
 from auth_service.db import get_async_session
 from auth_service.db_base import Base
@@ -121,6 +121,7 @@ def as_user(db_session, fake_redis, auth_client):
         access_token: str = "dummy-access-token",
         refresh_token_plain: str = "dummy-refresh-token",
         expires_in: int = 3600,
+        id_token: str | None = "dummy-id-token",
     ):
         sub = iam_subject_id or f"test-sub-{uuid.uuid4().hex[:8]}"
 
@@ -142,6 +143,7 @@ def as_user(db_session, fake_redis, auth_client):
             "iam_email": email,
             "first_name": first_name,
             "last_name": last_name,
+            "iam_id_token": id_token,
             SESSION_ACCESS_TOKEN_KEY: access_token,
             SESSION_ACCESS_TOKEN_EXPIRY_KEY: time.time() + expires_in,
             SESSION_REFRESH_TOKEN_KEY: enc_rt,

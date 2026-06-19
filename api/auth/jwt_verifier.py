@@ -152,7 +152,7 @@ class JwtVerifier:
             given_name=cast(str | None, claims.get("given_name")),
             family_name=cast(str | None, claims.get("family_name")),
             name=cast(str | None, claims.get("name")),
-            claims=cast(dict[str, Any], claims),
+            claims=claims,
         )
 
 

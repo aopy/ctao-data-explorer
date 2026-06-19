@@ -398,15 +398,21 @@ function TabsApp() {
           withCredentials: true,
         }
       )
-      .then(() => {
+      .then((res) => {
         setUser(null);
         localStorage.removeItem("hadSession");
         setResults(null);
         setAllCoordinates([]);
         setSelectedIds([]);
         setAllBasketGroups([]);
-        navigate("/search", { replace: true });
-      })
+
+        const logoutUrl = res?.data?.logout_url;
+        if (logoutUrl) {
+          window.location.assign(logoutUrl);
+          return;
+        }
+          navigate("/search", { replace: true });
+        })
       .catch(() => {
         setUser(null);
         navigate("/search", { replace: true });

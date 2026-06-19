@@ -1,14 +1,16 @@
 import base64
 import mimetypes
+import re
 import time
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, cast
-from urllib.parse import urlparse
+from typing import Any, NewType, cast
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 import xmltodict
+from ctao_shared.security import require_xsrf_dependency
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from starlette.responses import Response
@@ -68,6 +70,96 @@ OPUS_ALLOWED_NETLOCS: set[str] = {n for n in {_host_netloc, _svc_netloc} if n}
 
 
 # helpers
+OpusUrl = NewType("OpusUrl", str)
+
+OPUS_PATH_SEGMENT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$")
+
+
+def _validate_opus_path_segment(value: str, *, field_name: str) -> str:
+    """
+    Validate a user-controlled OPUS path segment before using it in an outbound URL.
+
+    This intentionally allows common OPUS/job identifiers while rejecting path
+    separators, empty values, traversal, query fragments, and unusual characters.
+    """
+    value = value.strip()
+    if not OPUS_PATH_SEGMENT_RE.fullmatch(value):
+        raise HTTPException(status_code=400, detail=f"Invalid {field_name}")
+    return value
+
+
+def _validated_service_url(*parts: str) -> OpusUrl:
+    safe_parts = [
+        _validate_opus_path_segment(part, field_name="OPUS path segment") for part in parts
+    ]
+    return OpusUrl(_service_url(*safe_parts))
+
+
+def _validated_rest_url(*parts: str) -> OpusUrl:
+    safe_parts = [
+        _validate_opus_path_segment(part, field_name="OPUS path segment") for part in parts
+    ]
+    return OpusUrl(_rest_url(*safe_parts))
+
+
+def _is_under_allowed_opus_base(parsed_url) -> bool:
+    """
+    Ensure a URL points to the configured OPUS service/rest base or known OPUS
+    result-store endpoints, not just any path on an allowed host.
+    """
+    if parsed_url.scheme not in {"https", "http"}:
+        return False
+
+    if parsed_url.netloc not in OPUS_ALLOWED_NETLOCS:
+        return False
+
+    candidate_path = parsed_url.path.rstrip("/") or "/"
+    candidate_path_slash = candidate_path + "/"
+
+    allowed_bases = [
+        urlparse(OPUS_SERVICE_URL),
+        urlparse(_opus_cfg()["OPUS_REST_BASE"]),
+    ]
+
+    for base in allowed_bases:
+        base_path = base.path.rstrip("/") or "/"
+        base_path_slash = base_path + "/"
+
+        if parsed_url.netloc == base.netloc and (
+            candidate_path == base_path or candidate_path_slash.startswith(base_path_slash)
+        ):
+            return True
+
+    if candidate_path in {"/store", "/store_old"}:
+        return True
+
+    return False
+
+
+def _validate_opus_href(href: str) -> OpusUrl:
+    """
+    Validate an absolute OPUS href before proxy-fetching it.
+
+    The URL must:
+    - use http/https
+    - target an allowed OPUS netloc
+    - stay under the configured OPUS service/rest base path
+    - not contain credentials or fragments
+    """
+    parsed = urlparse(href)
+
+    if parsed.username or parsed.password:
+        raise HTTPException(status_code=400, detail="Invalid href: credentials are not allowed")
+
+    if parsed.fragment:
+        raise HTTPException(status_code=400, detail="Invalid href: fragments are not allowed")
+
+    if not _is_under_allowed_opus_base(parsed):
+        raise HTTPException(status_code=400, detail="Invalid href: OPUS URL is not allowed")
+
+    return OpusUrl(urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", parsed.query, "")))
+
+
 def _rest_url(*parts: str) -> str:
     """Join parts under the REST root (legacy endpoints)."""
     base = _opus_cfg()["OPUS_REST_BASE"].rstrip("/")
@@ -135,6 +227,17 @@ def _build_job_form(params: "QuickLookParams") -> dict[str, str]:
     if params.obsids:
         form["obsids"] = params.obsids
     return form
+
+
+def _validated_redirect_url(loc: str) -> OpusUrl:
+    parsed = urlparse(loc)
+    if parsed.username or parsed.password:
+        raise HTTPException(400, "Redirect to disallowed URL")
+    if parsed.fragment:
+        raise HTTPException(400, "Redirect to disallowed URL")
+    if not _is_under_allowed_opus_base(parsed):
+        raise HTTPException(400, "Redirect to disallowed URL")
+    return OpusUrl(urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", parsed.query, "")))
 
 
 async def _opus_create_job(form: dict[str, str], headers: dict[str, str]) -> tuple[str, str]:
@@ -289,9 +392,10 @@ async def get_job(
     uid = user.sub
     headers = _basic_headers(uid)
 
-    url = _service_url(job_id)
+    url = _validated_service_url(job_id)
     async with httpx.AsyncClient(timeout=30) as client:
-        r = await client.get(url, headers=headers)
+        r = await client.get(str(url), headers=headers)
+
     if r.status_code >= 400:
         raise HTTPException(r.status_code, r.text)
 
@@ -315,15 +419,19 @@ async def list_results(
     uid = user.sub
     headers = _basic_headers(uid)
 
-    url = _service_url(job_id, "results")
+    url = _validated_service_url(job_id, "results")
     async with httpx.AsyncClient(timeout=30) as client:
-        r = await client.get(url, headers=headers)
+        r = await client.get(str(url), headers=headers)
     if r.status_code >= 400:
         raise HTTPException(r.status_code, r.text)
     return _xml_to_json(r.text)
 
 
-@router.post("/jobs", response_model=OpusJobCreateResponse)
+@router.post(
+    "/jobs",
+    response_model=OpusJobCreateResponse,
+    dependencies=[Depends(require_xsrf_dependency)],
+)
 async def create_job(
     params: QuickLookParams,
     user: Any = Depends(get_current_user_with_iam_sub),
@@ -374,17 +482,17 @@ def _guess_preview_mime(name: str, rid: str | None) -> str:
     return ctype or "application/octet-stream"
 
 
-async def _get_with_auth(url: str, headers: dict[str, str]) -> httpx.Response:
+async def _get_with_auth(url: OpusUrl, headers: dict[str, str]) -> httpx.Response:
     async with httpx.AsyncClient(follow_redirects=False, timeout=30) as client:
-        resp = await client.get(url, headers=headers)
+        resp = await client.get(str(url), headers=headers)
+
         if 300 <= resp.status_code < 400:
             loc = resp.headers.get("Location") or resp.headers.get("location")
             if not loc:
                 return resp
-            p = urlparse(loc)
-            if p.netloc not in OPUS_ALLOWED_NETLOCS:
-                raise HTTPException(400, "Redirect to disallowed host")
-            return await client.get(loc, headers=headers)
+            safe = _validated_redirect_url(loc)
+            return await client.get(str(safe), headers=headers)
+
         return resp
 
 
@@ -402,28 +510,28 @@ async def fetch_by_href(
     uid = user.sub
     headers = _basic_headers(uid)
 
-    parsed = urlparse(href)
-    if parsed.netloc not in OPUS_ALLOWED_NETLOCS:
-        raise HTTPException(400, "Invalid href")
+    safe_href = _validate_opus_href(href)
+    parsed = urlparse(str(safe_href))
 
-    name_guess = filename or Path(urlparse(href).path).name or f"{job_id}_{rid or 'result'}"
-    content_type = _guess_preview_mime(name_guess, rid) if inline else None
+    safe_job_id = _validate_opus_path_segment(job_id, field_name="job_id")
+    safe_rid = _validate_opus_path_segment(rid, field_name="rid") if rid else None
 
-    resp = await _get_with_auth(href, headers)
-    if resp.status_code == 404 and rid:
-        # legacy location
-        legacy_url = _rest_url("store_old", job_id, rid)
+    name_guess = filename or Path(parsed.path).name or f"{safe_job_id}_{safe_rid or 'result'}"
+    content_type = _guess_preview_mime(name_guess, safe_rid) if inline else None
+
+    resp = await _get_with_auth(safe_href, headers)
+    if resp.status_code == 404 and safe_rid:
+        legacy_url = _validated_rest_url("store_old", safe_job_id, safe_rid)
         resp = await _get_with_auth(legacy_url, headers)
 
-        # special endpoints under service root
-        if resp.status_code == 404 and rid.lower() in (
+        if resp.status_code == 404 and safe_rid.lower() in (
             "stdout",
             "stderr",
             "provjson",
             "provxml",
             "provsvg",
         ):
-            special_url = _service_url(job_id, rid.lower())
+            special_url = _validated_service_url(safe_job_id, safe_rid.lower())
             resp = await _get_with_auth(special_url, headers)
 
     if resp.status_code >= 400:

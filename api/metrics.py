@@ -12,6 +12,8 @@ from api.config import get_api_settings as get_settings
 # HTTP instrumentation
 _security = HTTPBasic()
 
+_instrumented_apps: set[int] = set()
+
 
 def _metrics_auth(credentials: HTTPBasicCredentials = Depends(_security)) -> None:
     s = get_settings()
@@ -30,9 +32,14 @@ def _metrics_auth(credentials: HTTPBasicCredentials = Depends(_security)) -> Non
 
 
 def setup_metrics(app: FastAPI) -> None:
+    global _instrumented_apps
+    if id(app) in _instrumented_apps:
+        return
+
     s = get_settings()
     if not s.METRICS_ENABLED:
         return
+
     app.router.routes = [
         r
         for r in app.router.routes
@@ -59,6 +66,8 @@ def setup_metrics(app: FastAPI) -> None:
         )
     else:
         instr.expose(app, endpoint=s.METRICS_ROUTE, include_in_schema=False)
+
+    _instrumented_apps.add(id(app))
 
 
 # Custom app metrics

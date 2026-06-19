@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable, MutableMapping
 from functools import lru_cache
+from typing import Any
 
 import httpx
+from ctao_shared.constants import COOKIE_NAME_XSRF, HEADER_NAME_XSRF
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
@@ -50,6 +52,24 @@ def _filtered_request_headers(req: Request) -> dict[str, str]:
     return out
 
 
+def _attach_xsrf_forwarding(req: Request, headers: dict[str, str]) -> None:
+    """
+    Forward the double-submit CSRF pair to downstream services.
+
+    We intentionally do not forward the main session cookie. The API only needs
+    the readable XSRF cookie plus the matching X-XSRF-TOKEN header for CSRF
+    validation; authentication is still handled by the injected Bearer token.
+    """
+    xsrf_cookie = req.cookies.get(COOKIE_NAME_XSRF)
+    xsrf_header = req.headers.get(HEADER_NAME_XSRF)
+
+    if xsrf_header:
+        headers[HEADER_NAME_XSRF] = xsrf_header
+
+    if xsrf_cookie:
+        headers["Cookie"] = f"{COOKIE_NAME_XSRF}={xsrf_cookie}"
+
+
 def _filtered_response_headers(headers: Iterable[tuple[str, str]]) -> dict[str, str]:
     out: dict[str, str] = {}
     for k, v in headers:
@@ -69,10 +89,19 @@ def _join_url(base: str, path: str) -> str:
     return f"{base}/{path}" if path else base
 
 
-_ASGI_TARGETS: dict[str, object] = {}  # injected in tests
+ASGIApp = Callable[
+    [
+        MutableMapping[str, Any],
+        Callable[[], Awaitable[MutableMapping[str, Any]]],
+        Callable[[MutableMapping[str, Any]], Awaitable[None]],
+    ],
+    Awaitable[None],
+]
+
+_ASGI_TARGETS: dict[str, ASGIApp] = {}
 
 
-def register_asgi_target(name: str, app: object) -> None:
+def register_asgi_target(name: str, app: ASGIApp) -> None:
     _ASGI_TARGETS[name] = app
 
 
@@ -103,6 +132,7 @@ async def relay(
 
     # Build outgoing request pieces
     headers = _filtered_request_headers(request)
+    _attach_xsrf_forwarding(request, headers)
     headers["Authorization"] = f"Bearer {access_token}"
 
     body = await request.body()
@@ -115,7 +145,9 @@ async def relay(
             raise HTTPException(status_code=500, detail="ASGI relay target not registered")
 
         transport = httpx.ASGITransport(app=asgi_app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://asgi") as client:
+        async with (
+            httpx.AsyncClient(transport=transport, base_url="http://asgi") as client
+        ):  # NOSONAR(python:S5332) — ASGITransport never opens a socket, the scheme is a placeholder to satisfy httpx's API
             r = await client.request(
                 method=request.method,
                 url="/" + (path or ""),

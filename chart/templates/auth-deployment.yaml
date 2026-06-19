@@ -1,0 +1,146 @@
+{{- if .Values.auth.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ctao-data-explorer.fullname" . }}-auth
+  labels:
+    {{- include "ctao-data-explorer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: auth
+spec:
+  replicas: {{ .Values.auth.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "ctao-data-explorer.name" . }}-auth
+  template:
+    metadata:
+      labels:
+        {{- include "ctao-data-explorer.selectorLabels" . | nindent 8 }}
+        app: {{ include "ctao-data-explorer.name" . }}-auth
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+
+      initContainers:
+        - name: wait-for-postgres
+          image: {{ .Values.global.dockerProxy }}/busybox:1.36
+          command:
+            - sh
+            - -c
+            - >
+              until nc -z {{ include "ctao-data-explorer.postgresql.host" . }} {{ .Values.postgresql.service.port }};
+              do echo "waiting for postgres"; sleep 2; done
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "64Mi"
+            limits:
+              cpu: "1000m"
+              memory: "128Mi"
+        - name: wait-for-redis
+          image: {{ .Values.global.dockerProxy }}/busybox:1.36
+          command:
+            - sh
+            - -c
+            - >
+              until nc -z {{ include "ctao-data-explorer.redis.host" . }} {{ .Values.redis.service.port }};
+              do echo "waiting for redis"; sleep 2; done
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+
+      containers:
+        - name: auth
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.auth.image.repository }}:{{ .Values.auth.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.auth.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.auth.containerSecurityContext | nindent 12 }}
+          ports:
+            - containerPort: {{ .Values.auth.service.port }}
+              name: http
+          {{- if .Values.iam_external.caCertSecret }}
+          volumeMounts:
+            - name: iam-ca-cert
+              mountPath: /etc/ssl/certs/iam-ca.pem
+              subPath: test-ca.pem
+              readOnly: true
+          {{- end }}
+          env:
+            - name: AUTH_REDIS_URL
+              value: {{ include "ctao-data-explorer.redisUrl" . | quote }}
+            - name: AUTH_DATABASE_URL
+              value: {{ include "ctao-data-explorer.databaseUrl" . | quote }}
+            - name: REDIS_URL
+              value: {{ include "ctao-data-explorer.redisUrl" . | quote }}
+            - name: DATABASE_URL
+              value: {{ include "ctao-data-explorer.databaseUrl" . | quote }}
+            - name: SESSION_SECRET_KEY_OIDC
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ctao-data-explorer.authSecretName" . }}
+                  key: SESSION_SECRET_KEY_OIDC
+
+            {{- range $k, $v := .Values.auth.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+
+            {{- if .Values.iam_external.enabled }}
+            {{- $issuer := tpl (required "iam_external.issuer is required" .Values.iam_external.issuer) . }}
+            - name: OIDC_ISSUER
+              value: {{ $issuer | quote }}
+            - name: OIDC_SERVER_METADATA_URL
+              value: {{ printf "%s/.well-known/openid-configuration" ($issuer | trimSuffix "/") | quote }}
+            {{- if .Values.iam_external.caCertSecret }}
+            - name: SSL_CERT_FILE
+              value: /etc/ssl/certs/iam-ca.pem
+            {{- end }}
+            {{- end }}
+            - name: TOKEN_RELAY_TARGETS_JSON
+              value: {{ dict "dataaccess" (printf "http://%s-backend:%d" (include "ctao-data-explorer.fullname" .) (.Values.backend.service.port | int)) "download" (printf "http://%s-download:%d/api/v1" (include "ctao-data-explorer.fullname" .) (.Values.download.service.port | int)) | toJson | quote }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.auth.secrets.existingSecret | default (printf "%s-auth-secrets" (include "ctao-data-explorer.fullname" .)) }}
+
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+
+          resources:
+            {{- toYaml .Values.auth.resources | nindent 12 }}
+      {{- if .Values.iam_external.caCertSecret }}
+      volumes:
+        - name: iam-ca-cert
+          secret:
+            secretName: {{ tpl .Values.iam_external.caCertSecret $ }}
+      {{- end }}
+{{- end }}

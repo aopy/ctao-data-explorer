@@ -50,7 +50,7 @@ js/.env
 
 # Environment file
 .env
-
+.env.test
 
 # CTAO AIV Toolkit files
 .toolkit
@@ -66,3 +66,36 @@ logs.txt
 # Test reports
 */coverage.xml
 */report.xml
+
+# Dynamic versioning files
+*/_version.py
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Mkdocs build directory
+public/
+
+# Sphinx documentation
+docs/_build/
+docs/api
+
+scripts/

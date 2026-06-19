@@ -14,7 +14,7 @@ async def test_energy_only_search_uses_overlap_conditions(client, app, monkeypat
     async def fake_get_cols(tap_url: str, table: str) -> set[str]:
         return {"energy_min", "energy_max"}
 
-    monkeypatch.setattr("api.main.get_tap_table_columns", fake_get_cols)
+    monkeypatch.setattr("api.services.search_coords.get_tap_table_columns", fake_get_cols)
 
     # Stub TAP execution and assert filters are present in where_conditions
     tab = Table(
@@ -28,7 +28,7 @@ async def test_energy_only_search_uses_overlap_conditions(client, app, monkeypat
         assert any("energy_min <=" in w for w in where_conditions)
         return (None, tab, "SELECT ...")
 
-    monkeypatch.setattr("api.main.perform_query_with_conditions", fake_perform)
+    monkeypatch.setattr("api.services.search_coords.perform_query_with_conditions", fake_perform)
 
     # Ensure redis is empty for deterministic behavior
     app.state.redis.store.clear()
@@ -58,7 +58,7 @@ async def test_energy_only_search_rejects_if_energy_columns_missing(client, monk
     async def fake_get_cols(tap_url: str, table: str) -> set[str]:
         return {"s_ra", "s_dec"}  # no energy columns
 
-    monkeypatch.setattr("api.main.get_tap_table_columns", fake_get_cols)
+    monkeypatch.setattr("api.services.search_coords.get_tap_table_columns", fake_get_cols)
 
     r = await client.get(
         "/api/search_coords",
@@ -83,7 +83,7 @@ async def test_optional_only_obs_config_search_applies_filters(client, app, monk
     async def fake_get_cols(tap_url: str, table: str) -> set[str]:
         return {"tracking_type", "pointing_mode", "obs_mode"}
 
-    monkeypatch.setattr("api.main.get_tap_table_columns", fake_get_cols)
+    monkeypatch.setattr("api.services.search_coords.get_tap_table_columns", fake_get_cols)
 
     tab = Table(
         names=("obs_publisher_did", "tracking_type", "pointing_mode", "obs_mode"),
@@ -98,7 +98,7 @@ async def test_optional_only_obs_config_search_applies_filters(client, app, monk
         assert any("obs_mode = 'default'" in w.lower() for w in where_conditions)
         return (None, tab, "SELECT ...")
 
-    monkeypatch.setattr("api.main.perform_query_with_conditions", fake_perform)
+    monkeypatch.setattr("api.services.search_coords.perform_query_with_conditions", fake_perform)
     app.state.redis.store.clear()
 
     r = await client.get(
@@ -128,8 +128,8 @@ async def test_schema_unavailable_energy_probe_true_allows_energy_search(client,
         assert cols == ["energy_min", "energy_max"]
         return True
 
-    monkeypatch.setattr("api.main.get_tap_table_columns", fake_get_cols)
-    monkeypatch.setattr("api.main.tap_supports_columns", fake_probe)
+    monkeypatch.setattr("api.services.search_coords.get_tap_table_columns", fake_get_cols)
+    monkeypatch.setattr("api.services.search_coords.tap_supports_columns", fake_probe)
 
     tab = Table(
         names=("obs_publisher_did", "energy_min", "energy_max"),
@@ -141,7 +141,7 @@ async def test_schema_unavailable_energy_probe_true_allows_energy_search(client,
         assert any("energy_max >=" in w for w in where_conditions)
         return (None, tab, "SELECT ...")
 
-    monkeypatch.setattr("api.main.perform_query_with_conditions", fake_perform)
+    monkeypatch.setattr("api.services.search_coords.perform_query_with_conditions", fake_perform)
     app.state.redis.store.clear()
 
     r = await client.get(
@@ -167,8 +167,8 @@ async def test_schema_unavailable_probe_errors_returns_503(client, monkeypatch):
     async def fake_probe(tap_url: str, table: str, cols: list[str]) -> bool:
         raise RuntimeError("TAP down")
 
-    monkeypatch.setattr("api.main.get_tap_table_columns", fake_get_cols)
-    monkeypatch.setattr("api.main.tap_supports_columns", fake_probe)
+    monkeypatch.setattr("api.services.search_coords.get_tap_table_columns", fake_get_cols)
+    monkeypatch.setattr("api.services.search_coords.tap_supports_columns", fake_probe)
 
     r = await client.get(
         "/api/search_coords",

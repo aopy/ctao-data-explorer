@@ -1,0 +1,47 @@
+# Download Service (FastAPI, stateless)
+# Builder stage: install dependencies with uv
+FROM harbor.cta-observatory.org/proxy_cache/python:3.12-slim AS builder
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+COPY --from=harbor.cta-observatory.org/proxy_cache/astral/uv:0.11.11 /uv /uvx /bin/
+
+ARG SETUPTOOLS_SCM_PRETEND_VERSION=0.1.0
+ENV UV_PYTHON_DOWNLOADS=0 \
+    UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    SETUPTOOLS_SCM_PRETEND_VERSION=$SETUPTOOLS_SCM_PRETEND_VERSION
+
+WORKDIR /app
+
+# Install dependencies
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --no-dev --no-install-project --no-editable
+
+# Copy the download service and shared modules
+COPY download_service ./download_service
+COPY ctao_shared ./ctao_shared
+
+# Install the project
+RUN uv sync --locked --no-dev --no-editable
+
+# Runtime stage
+FROM harbor.cta-observatory.org/proxy_cache/python:3.12-slim
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+RUN useradd --create-home --shell /bin/bash appuser
+
+COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
+
+USER appuser
+
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+EXPOSE 8002
+
+CMD ["uvicorn", "download_service.main:app", "--host", "0.0.0.0", "--port", "8002"]

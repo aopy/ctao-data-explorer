@@ -25,9 +25,9 @@
     "webpack": "4.42.0"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "NODE_OPTIONS=--openssl-legacy-provider react-scripts build",
-    "test": "react-scripts test",
+    "start": "craco start",
+    "build": "NODE_OPTIONS=--openssl-legacy-provider craco build",
+    "test": "craco test",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {
@@ -52,6 +52,8 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
+    "jest-junit": "^17.0.0",
+    "@craco/craco": "^7.1.0",
     "svgo": "^4.0.0"
   }
 }

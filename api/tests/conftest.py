@@ -1,15 +1,15 @@
 import asyncio
+import contextlib
 import inspect
 import json
 import os
 import time
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Generator
+from types import SimpleNamespace
 
 import httpx
 import pytest
-from auth_service.db_base import Base as AuthBase
-from auth_service.models import UserTable
 from ctao_shared.constants import (
     COOKIE_NAME_MAIN_SESSION,
     SESSION_ACCESS_TOKEN_EXPIRY_KEY,
@@ -21,8 +21,10 @@ from ctao_shared.constants import (
     SESSION_KEY_PREFIX,
     SESSION_USER_ID_KEY,
 )
+from ctao_shared.testing.fakeredis import FakeRedis
+from dotenv import load_dotenv
 from fastapi import FastAPI
-from sqlalchemy import select
+from prometheus_client import REGISTRY
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -31,12 +33,12 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import StaticPool
 
+import api.metrics as _metrics
 from api.auth.deps import get_required_identity
 from api.auth.deps_optional import get_optional_identity
 from api.auth.jwt_verifier import VerifiedIdentity
 from api.db import get_async_session
 from api.db_base import Base as ApiBase
-from api.tests.fakeredis import FakeRedis
 
 try:
     from starlette.testclient import LifespanManager
@@ -47,6 +49,8 @@ TEST_EMAIL = "u@example.org"
 TEST_GIVEN_NAME = "Ada"
 TEST_FAMILY_NAME = "Lovelace"
 TEST_NAME = "Ada Lovelace"
+
+load_dotenv(".env.test", override=False)
 
 
 @pytest.fixture(scope="session")
@@ -62,7 +66,7 @@ def event_loop():
 
 
 @pytest.fixture(scope="session")
-def engine() -> AsyncEngine:
+def engine() -> Generator[AsyncEngine, None, None]:
     eng = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -71,14 +75,11 @@ def engine() -> AsyncEngine:
         echo=False,
     )
 
-    import auth_service.models  # noqa: F401
-
     import api.models  # noqa: F401
 
     async def _init() -> None:
         async with eng.begin() as conn:
             await conn.run_sync(ApiBase.metadata.create_all)
-            await conn.run_sync(AuthBase.metadata.create_all)
 
     asyncio.run(_init())
     yield eng
@@ -186,41 +187,10 @@ def force_api_optional_identity(app: FastAPI):
     app.dependency_overrides.pop(get_optional_identity, None)
 
 
-# auth_service client + helper for session-cookie tests
-
-
 @pytest.fixture
-async def auth_client(db_session, fake_redis):
-    from auth_service.main import app as auth_app  # lazy import
-    from auth_service.redis_client import get_redis_client
-
-    async def _override_db():
-        yield db_session
-
-    def _override_redis():
-        return fake_redis
-
-    auth_app.dependency_overrides[get_async_session] = _override_db
-    auth_app.dependency_overrides[get_redis_client] = _override_redis
-
-    def _make_asgi_transport_for(app: FastAPI) -> httpx.ASGITransport:
-        params = inspect.signature(httpx.ASGITransport.__init__).parameters
-        if "lifespan" in params:
-            return httpx.ASGITransport(app=app, lifespan="on")
-        return httpx.ASGITransport(app=app)
-
-    transport = _make_asgi_transport_for(auth_app)
-    async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
-        yield client
-
-    auth_app.dependency_overrides.clear()
-
-
-@pytest.fixture
-def as_user(db_session, fake_redis, client):
+def as_user(app: FastAPI, fake_redis, client):
     """
-    Create an auth_service session in FakeRedis and set the session cookie
-    on the API test client (used by auth_service tests, not by API bearer auth).
+    Create the minimum API session state needed by session-cookie based tests.
     """
 
     async def _maker(
@@ -228,19 +198,17 @@ def as_user(db_session, fake_redis, client):
         first_name: str = TEST_GIVEN_NAME,
         last_name: str = TEST_FAMILY_NAME,
         iam_subject_id: str | None = None,
+        app_user_id: int | None = None,
     ):
         sub = iam_subject_id or f"test-sub-{uuid.uuid4().hex[:8]}"
+        user_id = app_user_id or int(uuid.uuid4().int % 2_000_000_000)
 
-        res = await db_session.execute(select(UserTable).where(UserTable.iam_subject_id == sub))
-        user = res.scalars().first()
-        if not user:
-            user = UserTable(iam_subject_id=sub, hashed_password="")
-            db_session.add(user)
-            await db_session.flush()
+        redis_client = getattr(app.state, "redis", None) or fake_redis
+        app.state.redis = redis_client
 
         session_id = str(uuid.uuid4())
         session_payload = {
-            SESSION_USER_ID_KEY: user.id,
+            SESSION_USER_ID_KEY: user_id,
             SESSION_IAM_SUB_KEY: sub,
             SESSION_IAM_EMAIL_KEY: email,
             SESSION_IAM_GIVEN_NAME_KEY: first_name,
@@ -248,11 +216,48 @@ def as_user(db_session, fake_redis, client):
             SESSION_ACCESS_TOKEN_KEY: "dummy",
             SESSION_ACCESS_TOKEN_EXPIRY_KEY: time.time() + 3600,
         }
-        await fake_redis.setex(
-            f"{SESSION_KEY_PREFIX}{session_id}", 8 * 3600, json.dumps(session_payload)
+
+        await redis_client.setex(
+            f"{SESSION_KEY_PREFIX}{session_id}",
+            8 * 3600,
+            json.dumps(session_payload),
         )
 
         client.cookies.set(COOKIE_NAME_MAIN_SESSION, session_id)
+
+        user = SimpleNamespace(
+            id=user_id,
+            iam_subject_id=sub,
+            email=email,
+            given_name=first_name,
+            family_name=last_name,
+        )
         return user, session_id
 
     return _maker
+
+
+@pytest.fixture(autouse=True)
+def reset_metrics():
+    """Cleans up Prometheus global registry and instrumentation state between tests.
+
+    setup_metrics() registers metrics into the global Prometheus registry.
+    Since tests create multiple FastAPI app instances, this leads to duplicate
+    metric registration unless cleaned up.
+
+    This fixture ensures isolation between tests without requiring a full
+    refactor to injected CollectorRegistry usage.
+    """
+    before = set(REGISTRY._names_to_collectors.keys())
+
+    _metrics._instrumented_apps.clear()  # reset instrumentation guard
+
+    yield
+
+    # remove collectors registered during the test
+    after = set(REGISTRY._names_to_collectors.keys())
+    for name in after - before:
+        collector = REGISTRY._names_to_collectors.get(name)
+        if collector:
+            with contextlib.suppress(Exception):
+                REGISTRY.unregister(collector)
