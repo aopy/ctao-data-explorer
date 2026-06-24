@@ -57,3 +57,13 @@ async def test_search_coords_requires_at_least_one_criterion(client):
     r = await client.get("/api/search_coords")
     assert r.status_code == 400
     assert "Provide at least one search criterion." in r.json()["detail"]
+
+
+@pytest.mark.anyio
+async def test_frontend_config_endpoint(client):
+    response = await client.get("/api/config/frontend")
+    assert response.status_code == 200
+    assert response.json() == {
+        "default_tap_url": "http://voparis-tap-he.obspm.fr/tap",
+        "default_obscore_table": "ctao_sdc.obscore",
+    }

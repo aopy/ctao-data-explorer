@@ -1,0 +1,1 @@
+Load ObsCore table name and TAP server URL from env variables.

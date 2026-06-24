@@ -17,6 +17,9 @@ import { offset, flip, shift } from '@floating-ui/dom';
 const FORM_STATE_SESSION_KEY = 'searchFormStateBeforeLogin';
 const FORM_STATE_PERSIST_KEY = 'searchFormStatePersist';
 
+const FALLBACK_TAP_URL = 'http://voparis-tap-he.obspm.fr/tap';
+const FALLBACK_OBSCORE_TABLE = 'hess_dr.obscore_sdc';
+
 const defaultFormValues = {
   objectName: '', useSimbad: true, useNed: false,
   coordinateSystem: COORD_SYS_EQ_DEG, coord1: '', coord2: '', searchRadius: '5',
@@ -25,8 +28,8 @@ const defaultFormValues = {
   obsEndDateObj: null, obsEndTime: '', obsEndMJD: '',
   metStartSeconds: '',
   metEndSeconds: '',
-  tapUrl: 'http://voparis-tap-he.obspm.fr/tap',
-  obscoreTable: 'hess_dr.obscore_sdc',
+  tapUrl: FALLBACK_TAP_URL,
+  obscoreTable: FALLBACK_OBSCORE_TABLE,
   showAdvanced: false,
 
   energyMin: '',
@@ -108,6 +111,11 @@ const ymdFromDate = (d) => {
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 };
+
+export async function fetchFrontendConfig() {
+  const response = await publicApiClient.get('/config/frontend');
+  return response.data;
+}
 
 const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
@@ -253,6 +261,35 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     useEnergySearch, useObsConfig, useObsProgram, useObsConditions,
     openEnergySearch, openObsConfig, openObsProgram, openObsConditions,
   ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadFrontendConfig() {
+      try {
+        const config = await fetchFrontendConfig();
+        if (cancelled) return;
+
+        const configuredTapUrl = config.default_tap_url || FALLBACK_TAP_URL;
+        const configuredObscoreTable = config.default_obscore_table || FALLBACK_OBSCORE_TABLE;
+
+        setTapUrl((prev) =>
+          !prev || prev === FALLBACK_TAP_URL ? configuredTapUrl : prev
+        );
+
+        setObscoreTable((prev) =>
+          !prev || prev === FALLBACK_OBSCORE_TABLE ? configuredObscoreTable : prev
+        );
+      } catch (error) {
+        console.warn('Could not load frontend config, using fallback defaults', error);
+      }
+    }
+
+    loadFrontendConfig();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // mark hydrated on first render
   useEffect(() => {
