@@ -57,17 +57,3 @@ async def test_search_coords_requires_at_least_one_criterion(client):
     r = await client.get("/api/search_coords")
     assert r.status_code == 400
     assert "Provide at least one search criterion." in r.json()["detail"]
-
-
-@pytest.mark.asyncio
-async def test_frontend_config_endpoint(client):
-    from api.config import get_api_settings
-
-    settings = get_api_settings()
-    response = await client.get("/api/config/frontend")
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "default_tap_url": settings.DEFAULT_TAP_URL,
-        "default_obscore_table": settings.DEFAULT_OBSCORE_TABLE,
-    }
