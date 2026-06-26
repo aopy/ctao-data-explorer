@@ -1,0 +1,1 @@
+Allow browser based single file download via LFN column in the SDC ObsCore table.
