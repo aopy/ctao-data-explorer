@@ -217,6 +217,12 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   const [tapUrl, setTapUrl] = useState(initialFormState.tapUrl);
   const [obscoreTable, setObscoreTable] = useState(initialFormState.obscoreTable);
   const [showAdvanced, setShowAdvanced] = useState(initialFormState.showAdvanced);
+  const initialServerDefaultsRef = useRef({
+    tapUrl: initialFormState.serverDefaultTapUrl || FALLBACK_TAP_URL,
+    obscoreTable: initialFormState.serverDefaultObscoreTable || FALLBACK_OBSCORE_TABLE,
+  });
+  const serverDefaultsRef = useRef(initialServerDefaultsRef.current);
+  const [serverDefaults, setServerDefaults] = useState(initialServerDefaultsRef.current);
 
   const persistDebounceRef = useRef(null);
   const didHydrateRef = useRef(false);
@@ -233,6 +239,8 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
         obsEndTime, obsEndMJD,
         metStartSeconds, metEndSeconds,
         tapUrl, obscoreTable, showAdvanced,
+        serverDefaultTapUrl: serverDefaultsRef.current.tapUrl,
+        serverDefaultObscoreTable: serverDefaultsRef.current.obscoreTable,
         energyMin, energyMax,
         trackingMode, pointingMode, obsMode,
         proposalId, proposalTitle, proposalContact, proposalType,
@@ -252,7 +260,7 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     obsStartDateObj, obsStartTime, obsStartMJD,
     obsEndDateObj, obsEndTime, obsEndMJD,
     metStartSeconds, metEndSeconds,
-    tapUrl, obscoreTable, showAdvanced,
+    tapUrl, obscoreTable, showAdvanced, serverDefaults,
     energyMin, energyMax,
     trackingMode, pointingMode, obsMode,
     proposalId, proposalTitle, proposalContact, proposalType,
@@ -271,14 +279,22 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
         const configuredTapUrl = config.default_tap_url || FALLBACK_TAP_URL;
         const configuredObscoreTable = config.default_obscore_table || FALLBACK_OBSCORE_TABLE;
+        const previousServerDefaults = initialServerDefaultsRef.current;
 
         setTapUrl((prev) =>
-          !prev || prev === FALLBACK_TAP_URL ? configuredTapUrl : prev
+          !prev || prev === previousServerDefaults.tapUrl ? configuredTapUrl : prev
         );
 
         setObscoreTable((prev) =>
-          !prev || prev === FALLBACK_OBSCORE_TABLE ? configuredObscoreTable : prev
+          !prev || prev === previousServerDefaults.obscoreTable ? configuredObscoreTable : prev
         );
+
+        const nextServerDefaults = {
+          tapUrl: configuredTapUrl,
+          obscoreTable: configuredObscoreTable,
+        };
+        serverDefaultsRef.current = nextServerDefaults;
+        setServerDefaults(nextServerDefaults);
       } catch (error) {
         console.warn('Could not load frontend config, using fallback defaults', error);
       }
@@ -316,7 +332,7 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     obsStartDateObj, obsStartTime, obsStartMJD,
     obsEndDateObj, obsEndTime, obsEndMJD,
     metStartSeconds, metEndSeconds,
-    tapUrl, obscoreTable, showAdvanced,
+    tapUrl, obscoreTable, showAdvanced, serverDefaults,
     energyMin, energyMax,
     trackingMode, pointingMode, obsMode,
     proposalId, proposalTitle, proposalContact, proposalType,
@@ -581,6 +597,8 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
           obsEndTime, obsEndMJD,
           metStartSeconds, metEndSeconds,
           tapUrl, obscoreTable, showAdvanced,
+          serverDefaultTapUrl: serverDefaultsRef.current.tapUrl,
+          serverDefaultObscoreTable: serverDefaultsRef.current.obscoreTable,
           energyMin, energyMax,
           trackingMode, pointingMode, obsMode,
           proposalId, proposalTitle, proposalContact, proposalType,
@@ -1166,8 +1184,8 @@ const handleClearForm = () => {
   setObsEndTime(defaultFormValues.obsEndTime);
   setObsEndMJD(defaultFormValues.obsEndMJD);
 
-  setTapUrl(defaultFormValues.tapUrl);
-  setObscoreTable(defaultFormValues.obscoreTable);
+  setTapUrl(serverDefaultsRef.current.tapUrl);
+  setObscoreTable(serverDefaultsRef.current.obscoreTable);
   setShowAdvanced(defaultFormValues.showAdvanced);
 
   // optional fields
