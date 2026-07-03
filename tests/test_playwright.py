@@ -56,6 +56,24 @@ def _login(page: Page):
     page.screenshot(path=f"{SCREENSHOTS_DIR}/login_after_redirect.png")
 
 
+def _resolve_crab_with_sdc_radius(page: Page, radius: str = "40") -> None:
+    source_input = page.locator("#objectNameInput")
+    expect(source_input).to_be_visible()
+    source_input.fill("crab")
+
+    resolve_button = page.get_by_role("button", name="Resolve", exact=True)
+    expect(resolve_button).to_be_visible()
+    resolve_button.click()
+
+    expect(page.locator("#coord1Input")).not_to_have_value("")
+    expect(page.locator("#coord2Input")).not_to_have_value("")
+
+    # The SDC ObsCore table does not contain rows within the old default
+    # 5 deg radius around Crab. Use a wider radius to keep the e2e tests
+    # focused on result/basket/download UI behavior.
+    page.locator("#radiusInput").fill(radius)
+
+
 @pytest.mark.verifies_usecase("SUSS-UC-050-19")
 def test_login(page: Page):
     """Authenticate via IAM and verify restricted tabs appear after login.
@@ -185,14 +203,7 @@ def test_authenticated_basket_add(page: Page):
     with allure.step("Log in, resolve source crab"):
         page.goto(frontend_url, wait_until="networkidle")
         _login(page)
-        source_input = page.locator("#objectNameInput")
-        expect(source_input).to_be_visible()
-        source_input.fill("crab")
-        resolve_button = page.get_by_role("button", name="Resolve", exact=True)
-        expect(resolve_button).to_be_visible()
-        resolve_button.click()
-        expect(page.locator("#coord1Input")).not_to_have_value("")
-        expect(page.locator("#coord2Input")).not_to_have_value("")
+        _resolve_crab_with_sdc_radius(page)
 
     with allure.step("Run search and wait for results rows"):
         search_button = page.get_by_role("button", name="Search", exact=True)
@@ -239,6 +250,9 @@ def test_authenticated_basket_add(page: Page):
 def test_query_by_object_name(page: Page):
     """Query observations by astronomical object name and verify results are shown.
 
+    The SDC test table does not currently return rows within the default 5 deg
+    radius around Crab, so the test uses a wider radius after resolving the source.
+
     Steps:
     1. Navigate to the frontend.
     2. Assert the page title contains "CTAO Data Explorer".
@@ -265,18 +279,7 @@ def test_query_by_object_name(page: Page):
         )
 
     with allure.step("Fill in object name and resolve to coordinates"):
-        source_input = page.locator("#objectNameInput")
-        expect(source_input).to_be_visible()
-        source_input.fill("crab")
-
-        resolve_button = page.get_by_role("button", name="Resolve", exact=True)
-        expect(resolve_button).to_be_visible()
-        resolve_button.click()
-
-        coord1_input = page.locator("#coord1Input")
-        coord2_input = page.locator("#coord2Input")
-        expect(coord1_input).not_to_have_value("")
-        expect(coord2_input).not_to_have_value("")
+        _resolve_crab_with_sdc_radius(page)
 
         fn = f"{SCREENSHOTS_DIR}/test_frontend_screenshot_2_resolve.png"
         s = page.screenshot(path=fn)
@@ -352,7 +355,7 @@ def test_query_by_sky_coordinates(page: Page):
 
     Steps:
     1. Navigate to the frontend.
-    2. Enter RA=83.63, Dec=22.01 (Crab Nebula), radius=3 deg.
+    2. Enter RA=83.63, Dec=22.01 (Crab Nebula), radius=40 deg.
     3. Click Search.
     4. Assert the URL navigates to the /results page.
     5. Assert at least one `.rdt_TableRow` is rendered (results table populated).
@@ -361,7 +364,7 @@ def test_query_by_sky_coordinates(page: Page):
         page.goto(frontend_url, wait_until="networkidle")
         page.locator("#coord1Input").fill("83.63")
         page.locator("#coord2Input").fill("22.01")
-        page.locator("#radiusInput").fill("3")
+        page.locator("#radiusInput").fill("40")
 
     with allure.step("Click Search and assert navigation to /results"):
         search_button = page.get_by_role("button", name="Search", exact=True)
@@ -422,14 +425,8 @@ def test_direct_download_visible(page: Page):
     """
     with allure.step("Navigate to frontend, resolve source crab"):
         page.goto(frontend_url, wait_until="networkidle")
-        source_input = page.locator("#objectNameInput")
-        expect(source_input).to_be_visible()
-        source_input.fill("crab")
-        resolve_button = page.get_by_role("button", name="Resolve", exact=True)
-        expect(resolve_button).to_be_visible()
-        resolve_button.click()
-        expect(page.locator("#coord1Input")).not_to_have_value("")
-        expect(page.locator("#coord2Input")).not_to_have_value("")
+        _resolve_crab_with_sdc_radius(page)
+
         fn = f"{SCREENSHOTS_DIR}/test_frontend_screenshot_4_search_input.png"
         s = page.screenshot(path=fn)
         allure.attach(
@@ -484,10 +481,7 @@ def test_download_file(page: Page, mock_dcache):
     with allure.step("Log in, resolve source crab"):
         page.goto(frontend_url, wait_until="networkidle")
         _login(page)
-        page.locator("#objectNameInput").fill("crab")
-        page.get_by_role("button", name="Resolve", exact=True).click()
-        expect(page.locator("#coord1Input")).not_to_have_value("")
-        expect(page.locator("#coord2Input")).not_to_have_value("")
+        _resolve_crab_with_sdc_radius(page)
         fn = f"{SCREENSHOTS_DIR}/test_download_resolved.png"
         s = page.screenshot(path=fn)
         allure.attach(
@@ -666,10 +660,7 @@ def test_download_file_without_login(page: Page):
     """
     with allure.step("Navigate to frontend, resolve source crab"):
         page.goto(frontend_url, wait_until="networkidle")
-        page.locator("#objectNameInput").fill("crab")
-        page.get_by_role("button", name="Resolve", exact=True).click()
-        expect(page.locator("#coord1Input")).not_to_have_value("")
-        expect(page.locator("#coord2Input")).not_to_have_value("")
+        _resolve_crab_with_sdc_radius(page)
         fn = f"{SCREENSHOTS_DIR}/test_download_no_login_resolved.png"
         s = page.screenshot(path=fn)
         allure.attach(
@@ -713,10 +704,7 @@ def test_download_file_button_reset(page: Page):
     with allure.step("Log in, resolve source crab"):
         page.goto(frontend_url, wait_until="networkidle")
         _login(page)
-        page.locator("#objectNameInput").fill("crab")
-        page.get_by_role("button", name="Resolve", exact=True).click()
-        expect(page.locator("#coord1Input")).not_to_have_value("")
-        expect(page.locator("#coord2Input")).not_to_have_value("")
+        _resolve_crab_with_sdc_radius(page)
         fn = f"{SCREENSHOTS_DIR}/test_download_reset_resolved.png"
         s = page.screenshot(path=fn)
         allure.attach(
@@ -772,10 +760,7 @@ def test_download_file_loading_state(page: Page):
     with allure.step("Log in, resolve source crab"):
         page.goto(frontend_url, wait_until="networkidle")
         _login(page)
-        page.locator("#objectNameInput").fill("crab")
-        page.get_by_role("button", name="Resolve", exact=True).click()
-        expect(page.locator("#coord1Input")).not_to_have_value("")
-        expect(page.locator("#coord2Input")).not_to_have_value("")
+        _resolve_crab_with_sdc_radius(page)
         fn = f"{SCREENSHOTS_DIR}/test_download_loading_resolved.png"
         s = page.screenshot(path=fn)
         allure.attach(
@@ -843,10 +828,7 @@ def test_download_multiple_files(page: Page):
     with allure.step("Log in, resolve source crab"):
         page.goto(frontend_url, wait_until="networkidle")
         _login(page)
-        page.locator("#objectNameInput").fill("crab")
-        page.get_by_role("button", name="Resolve", exact=True).click()
-        expect(page.locator("#coord1Input")).not_to_have_value("")
-        expect(page.locator("#coord2Input")).not_to_have_value("")
+        _resolve_crab_with_sdc_radius(page)
         fn = f"{SCREENSHOTS_DIR}/test_download_multiple_resolved.png"
         s = page.screenshot(path=fn)
         allure.attach(
