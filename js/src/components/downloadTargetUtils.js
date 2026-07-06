@@ -25,7 +25,20 @@ export function getDatalinkUrl(row) {
   return null;
 }
 
+function looksLikeLfn(value) {
+  return typeof value === "string" && value.trim().startsWith("lfn:/");
+}
+
 export function getDirectDownloadUrl(row) {
+  /*
+   * Prefer the ObsCore LFN when available.
+   *
+   * For the SDC table, access_url may point to DataLink metadata while the
+   * actual storage-independent file reference is in the lfn column.
+   * The download service resolves lfn:/... through its configured prefix map.
+   */
+  if (looksLikeLfn(row.lfn)) return row.lfn.trim();
+
   return (
     row.storage_url ||
     row.surl ||
@@ -108,16 +121,15 @@ export async function resolveDownloadUrlFromDatalink(datalinkUrl) {
 }
 
 export async function resolveDownloadUrlForRow(row) {
-  const datalinkUrl = getDatalinkUrl(row);
-
-  if (datalinkUrl) {
-    return resolveDownloadUrlFromDatalink(datalinkUrl);
-  }
-
   const directUrl = getDirectDownloadUrl(row);
   if (directUrl) {
     return directUrl;
   }
 
-  throw new Error("No download URL or DataLink URL found for this row.");
+  const datalinkUrl = getDatalinkUrl(row);
+  if (datalinkUrl) {
+    return resolveDownloadUrlFromDatalink(datalinkUrl);
+  }
+
+  throw new Error("No LFN, download URL, or DataLink URL found for this row.");
 }
