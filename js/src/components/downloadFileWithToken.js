@@ -38,11 +38,11 @@ function triggerBlobDownload(blob, filename) {
   window.URL.revokeObjectURL(objectUrl);
 }
 
-export async function requestDownloadDescriptor(fileUrl) {
+export async function requestDownloadDescriptor(fileRef) {
   const response = await axios.post(
     `${AUTH_PREFIX}/download/signed-urls`,
     {
-      files: [fileUrl],
+      files: [fileRef],
       validity: 'PT1H',
     },
     {
@@ -83,8 +83,8 @@ export async function downloadWithBearerDescriptor(descriptor) {
   triggerBlobDownload(response.data, filename);
 }
 
-export async function prepareAndDownloadFile(fileUrl) {
-  const descriptor = await requestDownloadDescriptor(fileUrl);
+export async function prepareAndDownloadFile(fileRef) {
+  const descriptor = await requestDownloadDescriptor(fileRef);
   await downloadWithBearerDescriptor(descriptor);
   return descriptor;
 }

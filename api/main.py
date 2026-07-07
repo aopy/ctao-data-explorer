@@ -22,6 +22,7 @@ from api.metrics import setup_metrics
 from api.opus import router as opus_router
 from api.query_history import query_history_router
 from api.redis_client import close_redis, get_api_redis_pool
+from api.routers.config import router as config_router
 from api.routers.datalink import router as datalink_router
 from api.routers.health import router as health_router
 from api.routers.object_lookup import router as object_lookup_router
@@ -142,6 +143,7 @@ def create_app() -> FastAPI:
     app.include_router(opus_router)
     app.include_router(query_history_router)
     app.include_router(coord_router)
+    app.include_router(config_router)
 
     serve_frontend = _env_truthy("SERVE_FRONTEND", "0")
     static_dir = os.getenv("STATIC_DIR", "./js/build")

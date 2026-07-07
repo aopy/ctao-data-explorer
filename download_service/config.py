@@ -31,7 +31,7 @@ class DownloadSettings(BaseSettings):
     DOWNLOAD_ALLOWED_STORAGE_HOSTS_JSON: str = "[]"
 
     # LFN prefix map for development/testing:
-    # {"lfn:/sdc/": "https://globe-door.ifh.de:2880/pnfs/ifh.de/acs/sdc/"}
+    # DOWNLOAD_LFN_PREFIX_MAP_JSON='{"lfn:/data/":"https://webdav-cta.pic.es:8454/CTAO/Open-SDC/data/"}'
     DOWNLOAD_LFN_PREFIX_MAP_JSON: str = "{}"
 
     # Health checks

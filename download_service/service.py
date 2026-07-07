@@ -60,6 +60,15 @@ class LfnResolver:
         """
         _ = rse_preference
 
+        if not is_lfn(lfn):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "INVALID_REQUEST",
+                    "message": "Invalid LFN. Expected value starting with 'lfn:/'.",
+                },
+            )
+
         for prefix, target_prefix in self.settings.lfn_prefix_map.items():
             if lfn.startswith(prefix):
                 suffix = lfn.removeprefix(prefix).lstrip("/")
@@ -68,8 +77,8 @@ class LfnResolver:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
-                "error": "INVALID_REQUEST",
-                "message": "LFN resolution is not configured for this prefix",
+                "error": "RESOLUTION_FAILED",
+                "message": f"LFN resolution is not configured for this prefix: {lfn}",
             },
         )
 
