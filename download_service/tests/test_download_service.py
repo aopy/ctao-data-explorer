@@ -8,6 +8,7 @@ from httpx import ASGITransport, AsyncClient, Response
 
 from download_service.config import get_download_settings
 from download_service.main import create_app
+from download_service.service import LfnResolver
 from download_service.token_exchange import TokenExchangeDenied
 
 
@@ -236,4 +237,28 @@ async def test_signed_urls_uses_configured_token_exchange_scope_and_audience(
     assert data["signed_urls"][0]["access_token"] == "FILE-TOKEN"
     assert data["signed_urls"][0]["storage_url"] == (
         "https://globe-door.ifh.de:2880/pnfs/ifh.de/acs/cta/diskonly/oidc-test-bas/public/test-file.txt"
+    )
+
+
+@pytest.mark.anyio
+async def test_lfn_resolver_maps_configured_prefix(monkeypatch):
+    monkeypatch.setenv("IAM_TOKEN_ENDPOINT", "https://iam.example/token")
+    monkeypatch.setenv("DOWNLOAD_SERVICE_CLIENT_ID", "client-id")
+    monkeypatch.setenv("DOWNLOAD_SERVICE_CLIENT_SECRET", "client-secret")
+    monkeypatch.setenv(
+        "DOWNLOAD_LFN_PREFIX_MAP_JSON",
+        '{"lfn:/data/":"https://webdav-cta.pic.es:8454/CTAO/Open-SDC/data/"}',
+    )
+
+    get_download_settings.cache_clear()
+    settings = get_download_settings()
+
+    resolver = LfnResolver(settings)
+
+    resolved = await resolver.resolve(
+        "lfn:/data/CTAO-N/events_5000000001.fits",
+    )
+
+    assert resolved == (
+        "https://webdav-cta.pic.es:8454/CTAO/Open-SDC/data/CTAO-N/events_5000000001.fits"
     )

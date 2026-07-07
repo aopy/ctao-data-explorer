@@ -88,6 +88,9 @@ backend:
     targetCPUUtilizationPercentage: 80
 
   env:
+    # TAP serve and ObsCore table
+    DEFAULT_TAP_URL: "http://voparis-tap-he.obspm.fr/tap"
+    DEFAULT_OBSCORE_TABLE: "ctao_sdc.obscore"
     # OPUS
     OPUS_ROOT: "https://voparis-uws-test.obspm.fr"
     OPUS_SERVICE: "gammapy_source_analysis"
