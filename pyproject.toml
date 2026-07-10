@@ -64,6 +64,13 @@ doc = [
     "numpydoc",
     "ctao-sphinx-theme~=0.1.2",
     "towncrier",
+    "myst-nb",
+    "jupyterlab",
+    "ipykernel",
+    "pyvo",
+    "astropy",
+    "pandas",
+    "matplotlib",
 ]
 dev = [
     "prek>=0.3.13",
