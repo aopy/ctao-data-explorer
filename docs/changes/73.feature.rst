@@ -1,1 +1,1 @@
-Add initial jupyter notebook tutorials.
+Add jupyter notebook tutorials demonstrating how to access telescope observation metadata using Virtual Observatory TAP protocols.
