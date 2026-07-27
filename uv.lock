@@ -806,7 +806,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'test'" },
     { name = "pytest-cov", marker = "extra == 'test'" },
     { name = "pytest-playwright", marker = "extra == 'test'" },
-    { name = "pytest-requirements", marker = "extra == 'test'" },
+    { name = "pytest-requirements", marker = "extra == 'test'", specifier = "==0.3.1rc1" },
     { name = "python-dotenv" },
     { name = "python-multipart", specifier = ">=0.0.26,<0.1" },
     { name = "pyvo", specifier = ">=1,<2" },
@@ -1698,14 +1698,14 @@ wheels = [
 
 [[package]]
 name = "pytest-requirements"
-version = "0.2.0"
+version = "0.3.1rc1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pytest" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2f/d6/ee697ffa8f6c232ef74ed5040b405da1b604558c9b998599e6ef61f24975/pytest_requirements-0.2.0.tar.gz", hash = "sha256:a10fd3feb1551efaf4bd085dc3d33a90cfd4c02dabd9a7729261d9149b5a797b", size = 10976, upload-time = "2025-02-28T09:31:05.647Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6e/39/49e2976c195939dfee1316d0109126ada365d2c79ec3af4b7dd13ca68fa0/pytest_requirements-0.3.1rc1.tar.gz", hash = "sha256:c203b2ac6e99969fa38774ab95837595d1544899aa7cf8b2742657f63bdc6ed7", size = 12567, upload-time = "2026-07-02T08:58:48Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/30/74/bbe6a26edee651441bba59309e250f27b4d806afcb8592d04913634d099b/pytest_requirements-0.2.0-py3-none-any.whl", hash = "sha256:64181bc5e24b63d0cee692a356eecd103d84cd10417c3463c89a0dcba845cfa3", size = 4707, upload-time = "2025-02-28T09:31:04.059Z" },
+    { url = "https://files.pythonhosted.org/packages/05/49/26523a09912b1d965bd911ef66de331ffd2f5921f51a32179475214c82ac/pytest_requirements-0.3.1rc1-py3-none-any.whl", hash = "sha256:970782ef3351c8917f5a2d0d1911d65f65af73f051507df8490907461aea3425", size = 7028, upload-time = "2026-07-02T08:58:46.855Z" },
 ]
 
 [[package]]

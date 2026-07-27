@@ -1,6 +1,6 @@
 include:
   - project: cta-computing/common/aiv-toolkit
-    ref: b4d52cdb1beb0648305052f3a0e1859014ec2df7
+    ref: fd778100794138efc3c068c8fd8d4053f05e72f3
     file: ci-functions.yml
   - aiv-config.yml
 
@@ -53,8 +53,8 @@ pre-commit-hooks:
 
 hadolint:
   script:
-    - hadolint Dockerfile.auth Dockerfile.backend Dockerfile.download Dockerfile.frontend
-      Dockerfile.playwright
+    - hadolint Dockerfile.auth Dockerfile.backend Dockerfile.download
+      Dockerfile.frontend Dockerfile.playwright
 
 build:
   tags:
@@ -233,6 +233,7 @@ collect-test-artifacts:
       - "*/coverage.xml"
       - js/coverage/cobertura-coverage.xml
       - js/coverage/lcov.info
+      - allure.tar.gz
     reports:
       junit: report.xml
 
