@@ -51,7 +51,7 @@ dynamic = ["version"]
 [project.optional-dependencies]
 test = [
   "pytest",
-  "pytest-requirements",
+  "pytest-requirements==0.3.1-rc1",
   "pytest-cov",
   "allure-pytest",
   "pytest-playwright"
