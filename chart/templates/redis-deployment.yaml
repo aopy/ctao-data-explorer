@@ -26,7 +26,7 @@ spec:
         fsGroup: 999
       containers:
         - name: redis
-          image: {{ .Values.global.dockerProxy }}/redis:8-alpine
+          image: {{ .Values.global.dockerProxy }}/redis:8.10.0-alpine
           securityContext:
             runAsNonRoot: true
             runAsUser: 999
