@@ -2,16 +2,20 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
-from importlib.metadata import version
+import os
+from importlib.metadata import PackageNotFoundError, version as get_version
 
 # -- Project information -------------------------------------------------------
 project = "CTAO Data Explorer"
 copyright = "Paris Observatory / PADC & collaborators"
 author = "Paris Observatory / PADC & collaborators"
 
-version = version("ctao-data-explorer")
-# The full version, including alpha/beta/rc tags.
-release = version
+try:
+    release = get_version("ctao-data-explorer")
+except PackageNotFoundError:
+    release = os.environ.get("SETUPTOOLS_SCM_PRETEND_VERSION", "0.1.0+local")
+
+version = release
 
 
 # -- General configuration -------------------------------------------------------
@@ -24,13 +28,21 @@ extensions = [
     "sphinx_autodoc_typehints",
     "sphinx_design",
     "sphinx_changelog",
+    "myst_nb",
 ]
 
-
-source_suffix = {".rst": "restructuredtext"}
+source_suffix = {
+    ".rst": "restructuredtext",
+    ".ipynb": "myst-nb",
+}
 
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "**.ipynb_checkpoints", "changes"]
+
+nb_execution_mode = os.environ.get("NB_EXECUTION_MODE", "off")
+nb_execution_timeout = 120
+nb_execution_raise_on_error = True
+
 
 # Default language for syntax highlighting
 highlight_language = "python"
