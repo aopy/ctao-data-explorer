@@ -79,12 +79,6 @@
   width: 15rem;
 }
 
-/* Sticky sub-navigation below the fixed header */
-.subnav{
-  background-color: transparent;
-  border-bottom: 0;
-}
-
 /* Make tabs scrollable horizontally on small screens */
 .nav-tabs-overflow {
   overflow-x: auto;
