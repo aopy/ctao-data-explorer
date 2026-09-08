@@ -21,7 +21,7 @@ repos:
         name: mypy check
         entry: uv run mypy
         require_serial: true
-        language: unsupported
+        language: system
         pass_filenames: false
 
   - repo: https://github.com/pre-commit/pre-commit-hooks

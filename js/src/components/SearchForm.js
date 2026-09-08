@@ -1,7 +1,6 @@
 import React, {
   useState, useEffect, useCallback, forwardRef, useImperativeHandle, useRef
 } from 'react';
-import { apiClient } from "../apiClients";
 import { publicApiClient } from "../apiClients";
 import { saveQueryHistoryIfLoggedIn } from "./history";
 import DatePicker from 'react-datepicker';
@@ -360,7 +359,8 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   const [suggestions, setSuggestions] = useState([]);
   const [highlight, setHighlight] = useState(-1);
   const debounceRef = useRef(null);
-  const latestSeq = useRef(0);
+  const suggestionSeq = useRef(0);
+  const resolveSeq = useRef(0);
   const lastAccepted = useRef('');
   const [justSelected, setJustSelected] = useState(false);
 
@@ -409,7 +409,7 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
       if (suggestions.length > 0 && highlight >= 0) return;
       e.preventDefault();
       e.stopPropagation();
-      handleResolve(objectName, null);
+      handleResolve();
       return;
     }
 
@@ -553,7 +553,6 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
 
   async function convertMetTo(targetScale, seconds) {
-  // const { data } = await apiClient.post('/convert_time', {
   const { data } = await publicApiClient.post('/convert_time', {
     value: String(seconds),
     input_format: 'met',
@@ -658,7 +657,6 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
   try {
     // Convert from current system to all representations
-    // const { data } = await apiClient.post('/convert_coords', {
     const { data } = await publicApiClient.post('/convert_coords', {
       coord1: c1,
       coord2: c2,
@@ -679,7 +677,6 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
   async function convertIsoToScaleMjd(iso, scale) {
     // iso like "YYYY-MM-DDThh:mm:ss"
-    // const { data } = await apiClient.post('/convert_time', {
     const { data } = await publicApiClient.post('/convert_time', {
       value: iso, input_format: 'isot', input_scale: scale
     });
@@ -689,7 +686,6 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     };
   }
   async function convertMjdToScaleIso(mjd, scale) {
-    // const { data } = await apiClient.post('/convert_time', {
     const { data } = await publicApiClient.post('/convert_time', {
       value: String(mjd), input_format: 'mjd', input_scale: scale
     });
@@ -715,7 +711,6 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
         const d = String(srcDate.getDate()).padStart(2, '0');
         const iso = `${y}-${m}-${d}T${(srcTime || '00:00:00')}`;
 
-        // const { data } = await apiClient.post('/convert_time', {
         const { data } = await publicApiClient.post('/convert_time', {
           value: iso, input_format: 'isot', input_scale: inputScale
         });
@@ -761,7 +756,6 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
           return;
         }
 
-        // const { data } = await apiClient.post('/convert_time', {
         const { data } = await publicApiClient.post('/convert_time', {
           value: String(mjdNum), input_format: 'mjd', input_scale: inputScale
         });
@@ -825,7 +819,6 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   };
 
   async function syncFromMet(rawSec, epochIso, targetScale='tt') {
-    // const { data } = await apiClient.post('/convert_time', {
     const { data } = await publicApiClient.post('/convert_time', {
       value: String(rawSec),
       input_format: 'met',
@@ -937,7 +930,6 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
     // convert current start fields
     if (obsStartMJD) {
-      // const { data } = await apiClient.post('/convert_time', {
       const { data } = await publicApiClient.post('/convert_time', {
         value: String(parseMjdInput(obsStartMJD)),
         input_format: 'mjd',
@@ -955,7 +947,6 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     } else if (obsStartDateObj && obsStartTime) {
       await syncFromCalendar('start', obsStartDateObj, obsStartTime, prev, next);
       // syncFromCalendar writes MJD in the target scale
-      // const { data } = await apiClient.post('/convert_time', {
       const { data } = await publicApiClient.post('/convert_time', {
         value: `${ymdFromDate(obsStartDateObj)}T${obsStartTime}`,
         input_format: 'isot',
@@ -966,7 +957,6 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
     // convert current END fields
     if (obsEndMJD) {
-      // const { data } = await apiClient.post('/convert_time', {
       const { data } = await publicApiClient.post('/convert_time', {
         value: String(parseMjdInput(obsEndMJD)),
         input_format: 'mjd',
@@ -983,7 +973,6 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
       setMetEndSeconds(formatSecs(ttMjdToMetSeconds(data.tt_mjd)));
     } else if (obsEndDateObj && obsEndTime) {
       await syncFromCalendar('end', obsEndDateObj, obsEndTime, prev, next);
-      // const { data } = await apiClient.post('/convert_time', {
       const { data } = await publicApiClient.post('/convert_time', {
         value: `${ymdFromDate(obsEndDateObj)}T${obsEndTime}`,
         input_format: 'isot',
@@ -1004,93 +993,232 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
   useEffect(() => {
     const plain = objectName.trim();
-    if (justSelected) { setJustSelected(false); return; }
-    if (plain.length < 4 && !/^(m\d{1,3}|ngc\d{1,4}|ic\d{1,4})$/i.test(plain)) {
-      setSuggestions([]); return;
+
+    if (justSelected) {
+      setJustSelected(false);
+      return;
     }
+
+    if (
+      plain.length < 4 &&
+      !/^(m\s*0*\d{1,3}|ngc\s*0*\d{1,4}|ic\s*0*\d{1,4})$/i.test(plain)
+    ) {
+      suggestionSeq.current++;
+      setSuggestions([]);
+      setHighlight(-1);
+      return;
+    }
+
     clearTimeout(debounceRef.current);
-    if (plain === lastAccepted.current) { setSuggestions([]); return; }
+
+    if (plain === lastAccepted.current) {
+      suggestionSeq.current++;
+      setSuggestions([]);
+      setHighlight(-1);
+      return;
+    }
+
+    const mySeq = ++suggestionSeq.current;
+
     debounceRef.current = setTimeout(() => {
-      //apiClient.get('/object_suggest', {
-      publicApiClient.get('/object_suggest', {
-        params: { q: objectName.trim(), use_simbad: useSimbad, use_ned: useNed, limit: 15 }
-      })
-        .then(res => setSuggestions(res.data.results || []))
-        .catch(()  => setSuggestions([]));
+      publicApiClient
+        .get("/object_suggest", {
+          params: {
+            q: plain,
+            use_simbad: useSimbad,
+            use_ned: useNed,
+            limit: 15,
+          },
+        })
+        .then((res) => {
+          if (mySeq !== suggestionSeq.current) return;
+
+          setSuggestions(res.data.results || []);
+          setHighlight(-1);
+        })
+        .catch(() => {
+          if (mySeq !== suggestionSeq.current) return;
+
+          setSuggestions([]);
+          setHighlight(-1);
+        });
     }, 300);
+
     return () => clearTimeout(debounceRef.current);
   }, [objectName, useSimbad, useNed, justSelected]);
 
-  function applySuggestion(name, service) {
-    setObjectName(name);
-    lastAccepted.current = name.trim();
-    handleResolve(name, service);
-    setSuggestions([]); setHighlight(-1);
+  function applySuggestion(suggestion) {
+    if (!suggestion) return;
+
+    const displayName = String(
+      suggestion.display_name ||
+        suggestion.matched_name ||
+        suggestion.canonical_name ||
+        suggestion.name ||
+        ""
+    ).trim();
+
+    const resolveName = String(
+      suggestion.resolve_name ||
+        suggestion.canonical_name ||
+        suggestion.name ||
+        displayName ||
+        ""
+    ).trim();
+
+    const service = String(suggestion.service || "")
+      .trim()
+      .toUpperCase() || null;
+
+    if (!displayName || !resolveName) return;
+
+    setObjectName(displayName);
+
+    lastAccepted.current = displayName;
+
+    setSuggestions([]);
+    setHighlight(-1);
+
+    handleResolve({
+      displayName,
+      resolveName,
+      service,
+    });
   }
+
   const handleKeyDown = (e) => {
+    if (e.key === "Escape") {
+      if (suggestions.length) {
+        e.preventDefault();
+        setSuggestions([]);
+        setHighlight(-1);
+      }
+      return;
+    }
     if (!suggestions.length) return;
-    if (e.key === 'ArrowDown') { e.preventDefault(); setHighlight(h => (h + 1) % suggestions.length); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setHighlight(h => (h - 1 + suggestions.length) % suggestions.length); }
-    else if (e.key === 'Enter' && highlight >= 0) { e.preventDefault(); const { name, service } = suggestions[highlight]; applySuggestion(name, service); }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlight((current) =>
+        (current + 1) % suggestions.length
+      );
+      return;
+    }
+
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlight((current) =>
+        (current - 1 + suggestions.length) % suggestions.length
+      );
+      return;
+    }
+
+    if (e.key === 'Enter' && highlight >= 0) {
+      e.preventDefault();
+      e.stopPropagation();
+      applySuggestion(suggestions[highlight]);
+    }
   };
 
-  const handleResolve = async (arg, overrideService = null) => {
-  const target = typeof arg === 'string' ? arg.trim() : objectName.trim();
-  if (arg && arg.preventDefault) arg.preventDefault();
-  if (!target) return;
+  const handleResolve = async (selection = null) => {
+    const displayName =
+      (
+        selection?.displayName ||
+        objectName
+      ).trim();
 
-  // prevent suggestions reopening after a successful resolve
-  clearTimeout(debounceRef.current);
-  setSuggestions([]);
-  setHighlight(-1);
-  lastAccepted.current = target;
+    const resolveName =
+      (
+        selection?.resolveName ||
+        displayName
+      ).trim();
 
-  setIsSubmitting(true);
-  setWarningMessage('');
+    const overrideService =
+      selection?.service?.trim().toUpperCase() ||
+      null;
 
-  const mySeq = ++latestSeq.current;
+    if (!displayName || !resolveName) return;
 
-  try {
-    // const res = await apiClient.post('/object_resolve', {
-    const res = await publicApiClient.post('/object_resolve', {
-      object_name: target,
-      use_simbad: overrideService ? (overrideService === 'SIMBAD') : useSimbad,
-      use_ned: overrideService ? (overrideService === 'NED') : useNed
-    });
+    clearTimeout(debounceRef.current);
 
-    if (mySeq !== latestSeq.current) return;
+    suggestionSeq.current++;
 
-    const first = res.data?.results?.[0];
-    if (first?.ra != null && first?.dec != null) {
+    setSuggestions([]);
+    setHighlight(-1);
+
+    lastAccepted.current = displayName;
+
+    setIsSubmitting(true);
+    setWarningMessage("");
+
+    const mySeq = ++resolveSeq.current;
+
+    try {
+      const response = await publicApiClient.post('/object_resolve', {
+        object_name: displayName,
+        resolve_name: resolveName,
+        use_simbad: overrideService
+          ? overrideService === 'SIMBAD'
+          : useSimbad,
+        use_ned: overrideService
+          ? overrideService === 'NED'
+          : useNed,
+      });
+
+      if (mySeq !== resolveSeq.current) return;
+
+      const first = response.data?.results?.[0];
+
+      if (first?.ra == null || first?.dec == null) {
+        setWarningMessage(`Could not resolve "${displayName}"`);
+        return;
+      }
+
       try {
-        // const convRes = await apiClient.post('/convert_coords', {
         const convRes = await publicApiClient.post('/convert_coords', {
           coord1: String(first.ra),
           coord2: String(first.dec),
           system: 'deg',
         });
 
-        if (mySeq !== latestSeq.current) return;
+        if (mySeq !== resolveSeq.current) return;
 
-        if (convRes.data?.error) throw new Error(convRes.data.error);
+        if (convRes.data?.error) {
+          throw new Error(convRes.data.error);
+        }
 
-        applyConvertedToTarget(convRes.data, coordinateSystem);
+        applyConvertedToTarget(
+          convRes.data,
+          coordinateSystem,
+        );
       } catch {
-        // fallback: just put degrees
+        if (mySeq !== resolveSeq.current) return;
+
         setCoordinateSystem(COORD_SYS_EQ_DEG);
         setCoord1(String(first.ra));
         setCoord2(String(first.dec));
       }
 
-      setWarningMessage(`Resolved ${target} via ${first.service}`);
-    } else {
-      setWarningMessage(`Could not resolve "${target}"`);
-    }
-    } catch (err) {
-      if (mySeq !== latestSeq.current) return;
-      setWarningMessage(`Error resolving object: ${err?.message || 'Unknown error'}`);
+      if (mySeq !== resolveSeq.current) return;
+
+      setWarningMessage(
+        `Resolved ${displayName} via ${first.service}.`
+      );
+    } catch (error) {
+      if (mySeq !== resolveSeq.current) return;
+
+      const detail =
+        error.response?.data?.detail ||
+        error.message ||
+        'Unknown error';
+
+      setWarningMessage(
+        `Error resolving object: ${detail}`
+      );
     } finally {
-      if (mySeq === latestSeq.current) setIsSubmitting(false);
+      if (mySeq === resolveSeq.current) {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -1125,7 +1253,6 @@ const handleStartMjdChange = (e) => {
 const handleStartMjdBlur = async () => {
   const mjdNum = parseMjdInput(obsStartMJD);
   if (!Number.isFinite(mjdNum)) return;
-  // const { data } = await apiClient.post('/convert_time', {
   const { data } = await publicApiClient.post('/convert_time', {
     value: String(mjdNum), input_format: 'mjd', input_scale: timeScale
   });
@@ -1158,7 +1285,6 @@ const handleEndMjdChange = (e) => {
 const handleEndMjdBlur = async () => {
   const mjdNum = parseMjdInput(obsEndMJD);
   if (!Number.isFinite(mjdNum)) return;
-  // const { data } = await apiClient.post('/convert_time', {
   const { data } = await publicApiClient.post('/convert_time', {
     value: String(mjdNum), input_format: 'mjd', input_scale: timeScale
   });
@@ -1227,6 +1353,13 @@ const handleClearForm = () => {
   setTimeTouched(false);
   setTimeWarning('');
 
+  setSuggestions([]);
+  setHighlight(-1);
+  lastAccepted.current = "";
+  suggestionSeq.current++;
+  resolveSeq.current++;
+  setJustSelected(false);
+
   try { sessionStorage.removeItem(FORM_STATE_PERSIST_KEY); } catch {}
 };
 
@@ -1262,7 +1395,6 @@ const handleClearForm = () => {
         const systemForBackend =
           (coordinateSystem === COORD_SYS_EQ_HMS) ? 'hmsdms' :
           (coordinateSystem === COORD_SYS_GAL)    ? 'gal'    : 'deg';
-        // const parseResponse = await apiClient.post('/parse_coords', {
         const parseResponse = await publicApiClient.post('/parse_coords', {
           coord1: coord1Input, coord2: coord2Input, system: systemForBackend
         });
@@ -1361,7 +1493,6 @@ const handleClearForm = () => {
         }
 
         // Convert MET → TT MJD (query is in TT)
-        // const startConv = await apiClient.post('/convert_time', {
         const startConv = await publicApiClient.post('/convert_time', {
           value: metStartSeconds,
           input_format: 'met',
@@ -1370,7 +1501,6 @@ const handleClearForm = () => {
           met_epoch_scale: MET_EPOCH_SCALE,
         });
 
-        // const endConv = await apiClient.post('/convert_time', {
         const endConv = await publicApiClient.post('/convert_time', {
           value: metEndSeconds,
           input_format: 'met',
@@ -1464,7 +1594,6 @@ const handleClearForm = () => {
 
     // call API
     try {
-      // const response = await apiClient.get('/search_coords', { params: finalReqParams });
       const response = await publicApiClient.get('/search_coords', { params: finalReqParams });
       const payload = response.data;
       const nRows = Array.isArray(payload?.data) ? payload.data.length : 0;
@@ -1525,24 +1654,86 @@ const handleClearForm = () => {
                     id="objectNameInput"
                     className="form-control"
                     value={objectName}
-                    onChange={e => setObjectName(e.target.value)}
+                    onChange={(event) => {
+                      setObjectName(event.target.value);
+                      lastAccepted.current = '';
+                      setHighlight(-1);
+                    }}
                     onKeyDown={handleKeyDown}
                     placeholder="e.g. Crab Nebula"
                     disabled={isSubmitting}
                     autoComplete="off"
-                    onBlur={() => setTimeout(() => setSuggestions([]), 150)}
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-expanded={suggestions.length > 0}
+                    aria-controls="object-suggestion-list"
+                    aria-activedescendant={
+                      highlight >= 0
+                        ? `object-suggestion-${highlight}`
+                        : undefined
+                    }
+                    onBlur={() => {
+                      setTimeout(() => {
+                        setSuggestions([]);
+                        setHighlight(-1);
+                      }, 150);
+                    }}
                   />
                   {suggestions.length > 0 && (
-                    <ul className="list-group position-absolute top-100 start-0 w-100 shadow"
-                        style={{maxHeight: '16rem', overflowY: 'auto', zIndex: 1030}}>
-                      {suggestions.map((s, idx) => (
-                        <li key={idx}
-                            className={`list-group-item list-group-item-action ${idx === highlight ? 'active' : ''}`}
-                            onClick={() => applySuggestion(s.name, s.service)}>
-                          {s.name}
-                          <span className="badge bg-secondary ms-1">{s.service}</span>
-                        </li>
-                      ))}
+                    <ul
+                      id="object-suggestion-list"
+                      role="listbox"
+                      className="list-group position-absolute top-100 start-0 w-100 shadow"
+                      style={{
+                        maxHeight: "16rem",
+                        overflowY: "auto",
+                        zIndex: 1030,
+                      }}
+                    >
+                      {suggestions.map((suggestion, idx) => {
+                        const displayName = String(
+                          suggestion.display_name ||
+                            suggestion.matched_name ||
+                            suggestion.canonical_name ||
+                            suggestion.name ||
+                            ""
+                        ).trim();
+
+                        return (
+                          <li
+                            id={`object-suggestion-${idx}`}
+                            role="option"
+                            aria-selected={idx === highlight}
+                            key={[
+                              suggestion.service,
+                              suggestion.resolve_name,
+                              suggestion.canonical_name,
+                              idx,
+                            ].join(":")}
+                            className="list-group-item p-0"
+                          >
+                            <button
+                              type="button"
+                              className={
+                                "list-group-item list-group-item-action border-0 rounded-0 " +
+                                `d-flex align-items-center justify-content-between w-100 ${
+                                  idx === highlight ? "active" : ""
+                                }`
+                              }
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                              }}
+                              onClick={() => applySuggestion(suggestion)}
+                            >
+                              <span>{displayName}</span>
+
+                              <span className="badge bg-secondary ms-2">
+                                {suggestion.service}
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
                     </ul>
                   )}
                 </div>
@@ -1551,7 +1742,7 @@ const handleClearForm = () => {
                     type="button"
                     className="btn btn-ctao-galaxy"
                     disabled={!objectName || isSubmitting}
-                    onClick={(e) => handleResolve(e)}
+                    onClick={() => handleResolve()}
                   >
                     Resolve
                   </button>
