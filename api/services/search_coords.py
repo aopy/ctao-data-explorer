@@ -716,11 +716,15 @@ async def search_coords_impl(
     )
 
     where_sql = build_where_clause(where_conditions)
+
+    # No TOP restriction here. The complete result returned by TAP is needed
+    # by the map and charts, while the table paginates the rows client-side.
     adql_query_str = build_select_query(
         str(fields["obscore_table"]["value"]),
         where_sql,
-        limit=100,
+        limit=None,
     )
+
     cache_key = build_cache_key_from_adql(adql_query_str)
 
     if redis_client:
@@ -730,22 +734,40 @@ async def search_coords_impl(
             SearchResult,
             metric_name="search",
         )
+
         if cached_obj is not None:
             return cached_obj
 
+    # Ensure perform_query_with_conditions runs exactly the same ADQL used
+    # for the cache key.
+    fields["adql_query_str"] = {"value": adql_query_str}
+
     try:
-        error, res_table, _ = perform_query_with_conditions(fields, where_conditions, limit=100)
+        error, tap_query_result, _ = perform_query_with_conditions(
+            fields,
+            where_conditions,
+            limit=None,
+        )
     except Exception as exc:
         logger.error(
             "search_coords: Exception during perform_query call: %s",
             exc,
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="Failed during query execution.") from exc
+        raise HTTPException(
+            status_code=500,
+            detail="Failed during query execution.",
+        ) from exc
 
     if error is not None:
-        logger.error("search_coords: Query function returned error: %s", error)
+        logger.error(
+            "search_coords: Query function returned error: %s",
+            error,
+        )
         raise HTTPException(status_code=400, detail=error)
+
+    res_table = getattr(tap_query_result, "table", tap_query_result)
+    tap_overflow = bool(getattr(tap_query_result, "overflow", False))
 
     try:
         columns, data = astropy_table_to_list(res_table)
@@ -753,7 +775,24 @@ async def search_coords_impl(
         data_list = [list(row) for row in data] if data else []
 
         columns_with, data_with = augment_with_datalink(columns_list, data_list)
-        search_result_obj = SearchResult(columns=columns_with, data=data_with)
+        returned_rows = len(data_with)
+
+        truncation_message = None
+
+        if tap_overflow:
+            truncation_message = (
+                "The TAP service reported QUERY_STATUS=OVERFLOW. "
+                f"The interface is displaying the {returned_rows} rows "
+                "returned by the service, but additional matching rows may exist."
+            )
+
+        search_result_obj = SearchResult(
+            columns=columns_with,
+            data=data_with,
+            total_rows=returned_rows,
+            truncated=tap_overflow,
+            truncation_message=truncation_message,
+        )
 
         if redis_client:
             await redis_set_json_model(

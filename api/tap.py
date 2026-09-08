@@ -4,6 +4,7 @@ import logging
 import math
 import time
 import traceback
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -15,6 +16,13 @@ from requests import Response, Session
 from .metrics import vo_observe_call
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TapQueryResult:
+    table: Table | None
+    query: str
+    overflow: bool = False
 
 
 def build_spatial_icrs_condition(ra: float, dec: float, radius_deg: float) -> str:
@@ -42,38 +50,55 @@ def build_where_clause(conditions: list[str]) -> str:
     return " AND ".join(parts) if parts else "1=1"
 
 
-def build_select_query(table: str, where: str, limit: int = 100, columns: str = "*") -> str:
+def build_select_query(
+    table: str,
+    where: str,
+    limit: int | None = None,
+    columns: str = "*",
+) -> str:
     """
-    Compose the final SELECT with WHERE.
+    Compose a SELECT query with an optional TOP limit.
+
+    When limit is None, no client-side TOP restriction is added. The TAP
+    service may still enforce its own MAXREC limit.
     """
-    return f"SELECT TOP {int(limit)} {columns} FROM {table} WHERE {where}"
+    top_clause = f"TOP {int(limit)} " if limit is not None else ""
+    return f"SELECT {top_clause}{columns} FROM {table} WHERE {where}"
 
 
 def perform_query_with_conditions(
-    fields: dict[str, Any], conditions: list[str], limit: int = 100
-) -> tuple[str | None, Table | None, str]:
+    fields: dict[str, Any],
+    conditions: list[str],
+    limit: int | None = None,
+) -> tuple[str | None, TapQueryResult, str]:
     url = fields["tap_url"]["value"]
     obscore_table = fields["obscore_table"]["value"]
     timeout = 5
 
     error: str | None = None
-    astro_table: Table | None = None
     query = ""
+    query_result = TapQueryResult(table=None, query="")
 
     try:
-        t = Tap(url)
-        t.connect(timeout)
+        tap = Tap(url)
+        tap.connect(timeout)
 
-        # if caller already computed ADQL reuse it
+        # Reuse prebuilt ADQL when supplied by the caller
         prebuilt = fields.get("adql_query_str", {}).get("value")
+
         if isinstance(prebuilt, str) and prebuilt.strip():
             query = prebuilt
         else:
             where = build_where_clause(conditions)
-            query = build_select_query(obscore_table, where, limit=limit)
+            query = build_select_query(
+                obscore_table,
+                where,
+                limit=limit,
+            )
 
         logger.debug("Running ADQL Query: %s", query)
-        exception, tap_results = t.query(query)
+
+        exception, tap_results = tap.query(query)
 
         if exception:
             error = f"Got exception with TAP query: {exception}"
@@ -81,20 +106,65 @@ def perform_query_with_conditions(
             error = "TAP query succeeded but returned no results object."
         else:
             astro_table = _process_tap_results(tap_results)
-            if astro_table is None and error is None:
+            overflow = _tap_results_overflowed(tap_results)
+
+            query_result = TapQueryResult(
+                table=astro_table,
+                query=query,
+                overflow=overflow,
+            )
+
+            if astro_table is None:
                 error = "Failed processing TAP results after query."
+
     except Exception as outer_exception:
         error = f"Failed TAP operation: {outer_exception}"
         logger.exception("Error during TAP operation: %s", outer_exception)
-        traceback.print_exc()
-        astro_table = None
 
     logger.debug(
-        "Returning from perform_query_with_conditions: error=%s, table type=%s",
+        "Returning from perform_query_with_conditions: error=%s, table type=%s, overflow=%s",
         error,
-        type(astro_table),
+        type(query_result.table),
+        query_result.overflow,
     )
-    return error, astro_table, query
+
+    return error, query_result, query
+
+
+def _tap_results_overflowed(tap_results: vo.dal.TAPResults) -> bool:
+    """
+    Return True when the TAP service reports QUERY_STATUS=OVERFLOW.
+
+    TAP services may apply a server-side MAXREC even when the ADQL query
+    contains no TOP clause.
+    """
+    try:
+        status = getattr(tap_results, "query_status", None)
+
+        if status is not None:
+            return str(status).strip().upper() == "OVERFLOW"
+    except Exception:
+        logger.debug(
+            "Could not inspect TAP query_status.",
+            exc_info=True,
+        )
+
+    try:
+        infos = getattr(tap_results, "infos", None) or {}
+
+        for key, value in infos.items():
+            key_text = str(key).upper()
+            value_text = str(value).upper()
+
+            if "QUERY_STATUS" in key_text and "OVERFLOW" in value_text:
+                return True
+    except Exception:
+        logger.debug(
+            "Could not inspect TAP INFO elements.",
+            exc_info=True,
+        )
+
+    return False
 
 
 def _process_tap_results(tap_results: vo.dal.TAPResults) -> Table | None:
@@ -226,7 +296,9 @@ def astropy_table_to_list(table: Table | None) -> tuple[list[str], list[list[Any
         return [], []
 
 
-def perform_coords_query(fields: dict[str, Any]) -> tuple[str | None, Table | None, str]:
+def perform_coords_query(
+    fields: dict[str, Any],
+) -> tuple[str | None, TapQueryResult, str]:
     conds = [
         build_spatial_icrs_condition(
             fields["target_raj2000"]["value"],
@@ -234,20 +306,24 @@ def perform_coords_query(fields: dict[str, Any]) -> tuple[str | None, Table | No
             fields["search_radius"]["value"],
         )
     ]
-    return perform_query_with_conditions(fields, conds, limit=100)
+    return perform_query_with_conditions(fields, conds, limit=None)
 
 
-def perform_time_query(fields: dict[str, Any]) -> tuple[str | None, Table | None, str]:
+def perform_time_query(
+    fields: dict[str, Any],
+) -> tuple[str | None, TapQueryResult, str]:
     conds = [
         build_time_overlap_condition(
             fields["search_mjd_start"]["value"],
             fields["search_mjd_end"]["value"],
         )
     ]
-    return perform_query_with_conditions(fields, conds, limit=100)
+    return perform_query_with_conditions(fields, conds, limit=None)
 
 
-def perform_coords_time_query(fields: dict[str, Any]) -> tuple[str | None, Table | None, str]:
+def perform_coords_time_query(
+    fields: dict[str, Any],
+) -> tuple[str | None, TapQueryResult, str]:
     conds = [
         build_spatial_icrs_condition(
             fields["target_raj2000"]["value"],
@@ -259,4 +335,4 @@ def perform_coords_time_query(fields: dict[str, Any]) -> tuple[str | None, Table
             fields["search_mjd_end"]["value"],
         ),
     ]
-    return perform_query_with_conditions(fields, conds, limit=100)
+    return perform_query_with_conditions(fields, conds, limit=None)
