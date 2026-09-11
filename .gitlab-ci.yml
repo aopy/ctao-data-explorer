@@ -54,14 +54,14 @@ pre-commit-hooks:
 hadolint:
   script:
     - hadolint Dockerfile.auth Dockerfile.backend Dockerfile.download
-      Dockerfile.frontend Dockerfile.playwright
+      Dockerfile.frontend
 
 build:
   tags:
     - desy-test-cluster
   parallel:
     matrix:
-      - IMAGE: ["frontend", "backend", "auth", "playwright", "download"]
+      - IMAGE: ["frontend", "backend", "auth", "download"]
   before_script:
     - |
       if [ "$IMAGE" = "backend" ] || [ "$IMAGE" = "auth" ] || [ "$IMAGE" = "download" ]; then

@@ -23,8 +23,8 @@ dev:
     dangerouslyDisableHostCheck: false
   test_pod:
     image:
-      repository: suss/ctao-data-explorer-playwright
-      tag:
+      repository: common/aiv-playwright
+      tag: v5.6.0
       pullPolicy: IfNotPresent
     resources:
       limits:
