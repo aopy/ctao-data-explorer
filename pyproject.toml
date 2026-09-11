@@ -55,6 +55,7 @@ test = [
   "pytest-cov",
   "allure-pytest",
   "pytest-playwright",
+  "playwright==1.61.0",
   "pytest-asyncio",
 ]
 doc = [
