@@ -121,8 +121,17 @@ function getVisibleDataRows() {
 }
 
 function getRowForObservation(obsId) {
-  const cell = screen.getByText(obsId);
-  return cell.closest('[role="row"]');
+  const table = screen.getByRole("table");
+  const cell = within(table).getByText(obsId);
+  const row = cell.closest('[role="row"]');
+
+  if (!row) {
+    throw new Error(
+      `Could not find table row for ${obsId}`
+    );
+  }
+
+  return row;
 }
 
 function getRowCheckbox(obsId) {
@@ -224,16 +233,23 @@ describe("ResultsTable pagination and selection", () => {
     );
 
     await waitFor(() => {
-      expect(
-        screen.getByTestId("selected-ids")
-        ).toHaveTextContent(
-          "obs-001,obs-026"
-        );
-      });
+      const selectedIds = screen
+      .getByTestId("selected-ids")
+      .textContent
+      .split(",")
+      .filter(Boolean)
+      .sort();
 
-    expect(
-      onSelectionChange
-    ).toHaveBeenLastCalledWith([
+    expect(selectedIds).toEqual([
+      "obs-001",
+      "obs-026",
+    ]);
+  });
+
+    const lastSelection =
+      onSelectionChange.mock.calls.at(-1)[0];
+
+    expect([...lastSelection].sort()).toEqual([
       "obs-001",
       "obs-026",
     ]);
@@ -444,4 +460,111 @@ describe("ResultsTable pagination and selection", () => {
       ).toHaveValue("50");
     }
   );
+
+  test(
+    "deselects a row correctly after sorting changes the visible page",
+    async () => {
+      const user = userEvent.setup();
+      const onSelectionChange = jest.fn();
+
+      render(
+        <ControlledResultsTable
+          results={makeResults(30)}
+          onSelectionChange={onSelectionChange}
+        />
+      );
+
+      await user.selectOptions(
+        screen.getByLabelText(/rows per page/i),
+        "10"
+      );
+
+      await waitFor(() => {
+        expect(getVisibleDataRows()).toHaveLength(10);
+      });
+
+      // before sorting, page 1 contains obs-001 ... obs-010
+      expect(
+        screen.getByText("obs-001")
+      ).toBeInTheDocument();
+
+      expect(
+        screen.getByText("obs-010")
+      ).toBeInTheDocument();
+
+      expect(
+        screen.queryByText("obs-030")
+      ).not.toBeInTheDocument();
+
+      const obsIdHeader = screen.getByRole(
+        "columnheader",
+        {
+          name: /obs\. id/i,
+        }
+      );
+
+      // first click sorts ascending, second click descending
+      await user.click(obsIdHeader);
+      await user.click(obsIdHeader);
+
+      // Descending page 1 should now contain rows that were
+      // not on the original unsorted first page
+      await waitFor(() => {
+        expect(
+          screen.getByText("obs-030")
+        ).toBeInTheDocument();
+      });
+
+      expect(
+        screen.queryByText("obs-001")
+      ).not.toBeInTheDocument();
+
+      const checkbox =
+        getRowCheckbox("obs-030");
+
+      // select the newly visible row
+      await user.click(checkbox);
+
+      await waitFor(() => {
+        expect(
+          screen.getByTestId("selected-ids")
+        ).toHaveTextContent("obs-030");
+      });
+
+      expect(
+        getRowCheckbox("obs-030")
+      ).toBeChecked();
+
+      expect(
+        screen.getByRole("button", {
+          name: /add 1 selected/i,
+        })
+      ).toBeEnabled();
+
+      await user.click(
+        getRowCheckbox("obs-030")
+      );
+
+      await waitFor(() => {
+        expect(
+          screen.getByTestId("selected-ids")
+        ).toBeEmptyDOMElement();
+      });
+
+      expect(
+        getRowCheckbox("obs-030")
+      ).not.toBeChecked();
+
+      expect(
+        screen.getByRole("button", {
+          name: /add 0 selected/i,
+        })
+      ).toBeDisabled();
+
+      expect(
+        onSelectionChange
+      ).toHaveBeenLastCalledWith([]);
+    }
+  );
+
 });

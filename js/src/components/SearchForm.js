@@ -1,17 +1,29 @@
 import React, {
-  useState, useEffect, useCallback, forwardRef, useImperativeHandle, useRef
-} from 'react';
-import { publicApiClient } from "../apiClients";
-import { saveQueryHistoryIfLoggedIn } from "./history";
-import DatePicker from 'react-datepicker';
-import "react-datepicker/dist/react-datepicker.css";
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
+import PropTypes from "prop-types";
+import DatePicker from "react-datepicker";
+import {
+  flip,
+  offset,
+  shift,
+} from "@floating-ui/dom";
+
+import {publicApiClient} from "../apiClients";
+import {saveQueryHistoryIfLoggedIn} from "./history";
 import {
   COORD_SYS_EQ_DEG,
   COORD_SYS_EQ_HMS,
-  COORD_SYS_GAL
-} from './datetimeUtils';
-import './styles.css';
-import { offset, flip, shift } from '@floating-ui/dom';
+  COORD_SYS_GAL,
+} from "./datetimeUtils";
+
+import "react-datepicker/dist/react-datepicker.css";
+import "./styles.css";
 
 const FORM_STATE_SESSION_KEY = 'searchFormStateBeforeLogin';
 const FORM_STATE_PERSIST_KEY = 'searchFormStatePersist';
@@ -116,7 +128,8 @@ export async function fetchFrontendConfig() {
   return response.data;
 }
 
-const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
+const SearchForm = forwardRef(
+  ({setResults, isLoggedIn}, ref) => {
 
   const loadInitialState = () => {
     // one-shot restore used for OIDC login flow
@@ -217,11 +230,26 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   const [obscoreTable, setObscoreTable] = useState(initialFormState.obscoreTable);
   const [showAdvanced, setShowAdvanced] = useState(initialFormState.showAdvanced);
   const initialServerDefaultsRef = useRef({
-    tapUrl: initialFormState.serverDefaultTapUrl || FALLBACK_TAP_URL,
-    obscoreTable: initialFormState.serverDefaultObscoreTable || FALLBACK_OBSCORE_TABLE,
+    tapUrl:
+      initialFormState.serverDefaultTapUrl ||
+      FALLBACK_TAP_URL,
+    obscoreTable:
+      initialFormState.serverDefaultObscoreTable ||
+      FALLBACK_OBSCORE_TABLE,
   });
-  const serverDefaultsRef = useRef(initialServerDefaultsRef.current);
-  const [serverDefaults, setServerDefaults] = useState(initialServerDefaultsRef.current);
+
+  const serverDefaultsRef = useRef(
+    initialServerDefaultsRef.current
+  );
+
+  const [serverDefaults, setServerDefaults] = useState(
+    initialServerDefaultsRef.current
+  );
+
+  const [
+    isFrontendConfigLoading,
+    setIsFrontendConfigLoading,
+  ] = useState(true);
 
   const persistDebounceRef = useRef(null);
   const didHydrateRef = useRef(false);
@@ -271,31 +299,50 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
   useEffect(() => {
     let cancelled = false;
+
     async function loadFrontendConfig() {
       try {
         const config = await fetchFrontendConfig();
         if (cancelled) return;
 
-        const configuredTapUrl = config.default_tap_url || FALLBACK_TAP_URL;
-        const configuredObscoreTable = config.default_obscore_table || FALLBACK_OBSCORE_TABLE;
-        const previousServerDefaults = initialServerDefaultsRef.current;
+        const configuredTapUrl =
+          config.default_tap_url || FALLBACK_TAP_URL;
+        const configuredObscoreTable =
+          config.default_obscore_table ||
+          FALLBACK_OBSCORE_TABLE;
+
+        const previousServerDefaults =
+          initialServerDefaultsRef.current;
 
         setTapUrl((prev) =>
-          !prev || prev === previousServerDefaults.tapUrl ? configuredTapUrl : prev
+          !prev || prev === previousServerDefaults.tapUrl
+            ? configuredTapUrl
+            : prev
         );
 
         setObscoreTable((prev) =>
-          !prev || prev === previousServerDefaults.obscoreTable ? configuredObscoreTable : prev
+          !prev ||
+          prev === previousServerDefaults.obscoreTable
+            ? configuredObscoreTable
+            : prev
         );
 
         const nextServerDefaults = {
           tapUrl: configuredTapUrl,
           obscoreTable: configuredObscoreTable,
         };
+
         serverDefaultsRef.current = nextServerDefaults;
         setServerDefaults(nextServerDefaults);
       } catch (error) {
-        console.warn('Could not load frontend config, using fallback defaults', error);
+        console.warn(
+          "Could not load frontend config, using fallback defaults",
+          error
+        );
+      } finally {
+        if (!cancelled) {
+          setIsFrontendConfigLoading(false);
+        }
       }
     }
 
@@ -341,8 +388,14 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
     openEnergySearch, openObsConfig, openObsProgram, openObsConditions,
   ]);
 
-  const [warningMessage, setWarningMessage] = useState('');
+  const [warningMessage, setWarningMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingAll, setIsLoadingAll] = useState(false);
+
+  const isBusy =
+    isSubmitting ||
+    isLoadingAll ||
+    isFrontendConfigLoading;
 
   // Track if user interacted with time inputs this session
   const [timeTouched, setTimeTouched] = useState(false);
@@ -393,7 +446,7 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
   const handleFormKeyDownCapture = (e) => {
     if (e.key !== 'Enter') return;
     const target = e.target;
-    if (isSubmitting) {
+    if (isBusy) {
       e.preventDefault();
       return;
     }
@@ -485,7 +538,7 @@ const SearchForm = forwardRef(({ setResults, isLoggedIn }, ref) => {
 
   const handleEnterSearchFromTimeField = (e, which) => {
     if (e.key !== "Enter") return;
-    if (isSubmitting) {
+    if (isBusy) {
       e.preventDefault();
       return;
     }
@@ -1363,9 +1416,67 @@ const handleClearForm = () => {
   try { sessionStorage.removeItem(FORM_STATE_PERSIST_KEY); } catch {}
 };
 
+  const handleShowAllData = async () => {
+    if (isFrontendConfigLoading) return;
+    persistNow();
+    setWarningMessage("");
+    setTimeWarning("");
+    setIsLoadingAll(true);
+    setLastChangedType(null);
+
+    const requestParams = {
+      show_all: true,
+      tap_url: tapUrl,
+      obscore_table: obscoreTable,
+    };
+
+    try {
+      const response = await publicApiClient.get(
+        "/search_coords",
+        {
+          params: requestParams,
+        }
+      );
+
+      const payload = response.data;
+      const rowCount = Array.isArray(payload?.data)
+        ? payload.data.length
+        : 0;
+
+      if (rowCount === 0) {
+        setWarningMessage(
+          "No data are available in the selected ObsCore table."
+        );
+        return;
+      }
+
+      setResults(payload);
+
+      await saveQueryHistoryIfLoggedIn({
+        isLoggedIn,
+        queryParams: requestParams,
+        results: payload,
+      });
+    } catch (error) {
+      const detail =
+        error.response?.data?.detail ||
+        error.message ||
+        "Unknown search error.";
+
+      setWarningMessage(
+        `Could not load the available data: ${detail}`
+      );
+    } finally {
+      setIsLoadingAll(false);
+      setLastChangedType(null);
+    }
+  };
+
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (isFrontendConfigLoading) return;
 
     persistNow();
     setWarningMessage('');
@@ -1414,7 +1525,8 @@ const handleClearForm = () => {
         }
       } catch (err) {
         setWarningMessage(`Coordinate Error: ${err.message || 'Parsing failed.'}`);
-        setIsSubmitting(false); return;
+        setIsSubmitting(false);
+        return;
       }
     }
     }
@@ -1637,7 +1749,7 @@ const handleClearForm = () => {
                   id="useConeSearchSwitch"
                   checked={useConeSearch}
                   onChange={(e) => setUseConeSearch(e.target.checked)}
-                  disabled={isSubmitting}
+                  disabled={isBusy}
                 />
                 <label className="form-check-label" htmlFor="useConeSearchSwitch">Use</label>
               </div>
@@ -1656,17 +1768,21 @@ const handleClearForm = () => {
                     value={objectName}
                     onChange={(event) => {
                       setObjectName(event.target.value);
-                      lastAccepted.current = '';
+                      lastAccepted.current = "";
                       setHighlight(-1);
                     }}
                     onKeyDown={handleKeyDown}
                     placeholder="e.g. Crab Nebula"
-                    disabled={isSubmitting}
+                    disabled={isBusy}
                     autoComplete="off"
                     role="combobox"
                     aria-autocomplete="list"
                     aria-expanded={suggestions.length > 0}
-                    aria-controls="object-suggestion-list"
+                    aria-controls={
+                      suggestions.length > 0
+                        ? "object-suggestion-list"
+                        : undefined
+                    }
                     aria-activedescendant={
                       highlight >= 0
                         ? `object-suggestion-${highlight}`
@@ -1701,9 +1817,6 @@ const handleClearForm = () => {
 
                         return (
                           <li
-                            id={`object-suggestion-${idx}`}
-                            role="option"
-                            aria-selected={idx === highlight}
                             key={[
                               suggestion.service,
                               suggestion.resolve_name,
@@ -1713,6 +1826,9 @@ const handleClearForm = () => {
                             className="list-group-item p-0"
                           >
                             <button
+                              id={`object-suggestion-${idx}`}
+                              role="option"
+                              aria-selected={idx === highlight}
                               type="button"
                               className={
                                 "list-group-item list-group-item-action border-0 rounded-0 " +
@@ -1741,19 +1857,19 @@ const handleClearForm = () => {
                   <button
                     type="button"
                     className="btn btn-ctao-galaxy"
-                    disabled={!objectName || isSubmitting}
+                    disabled={!objectName || isBusy}
                     onClick={() => handleResolve()}
                   >
                     Resolve
                   </button>
                   <div className="form-check form-check-inline ms-3">
                     <input className="form-check-input" type="checkbox" id="useSimbadCheck"
-                           checked={useSimbad} onChange={() => setUseSimbad(!useSimbad)} disabled={isSubmitting}/>
+                           checked={useSimbad} onChange={() => setUseSimbad(!useSimbad)} disabled={isBusy}/>
                     <label className="form-check-label" htmlFor="useSimbadCheck">SIMBAD</label>
                   </div>
                   <div className="form-check form-check-inline">
                     <input className="form-check-input" type="checkbox" id="useNedCheck"
-                           checked={useNed} onChange={() => setUseNed(!useNed)} disabled={isSubmitting}/>
+                           checked={useNed} onChange={() => setUseNed(!useNed)} disabled={isBusy}/>
                     <label className="form-check-label" htmlFor="useNedCheck">NED</label>
                   </div>
                 </div>
@@ -1775,7 +1891,7 @@ const handleClearForm = () => {
                         coordinateSystem === opt.value ? 'btn-primary' : 'btn-outline-primary'
                       }`}
                       onClick={() => switchCoordinateSystem(opt.value)}
-                      disabled={isSubmitting}
+                      disabled={isBusy}
                     >
                       {opt.label}
                     </button>
@@ -1786,14 +1902,14 @@ const handleClearForm = () => {
                 <div className="col-md">
                   <label htmlFor="coord1Input" className="form-label">{coord1Label}</label>
                   <input type="text" className="form-control" id="coord1Input" value={coord1}
-                         onChange={(e) => setCoord1(e.target.value)} disabled={isSubmitting}
+                         onChange={(e) => setCoord1(e.target.value)} disabled={isBusy}
                          aria-label={coord1Label}/>
                   <small className="text-muted">{coord1Example}</small>
                 </div>
                 <div className="col-md">
                   <label htmlFor="coord2Input" className="form-label">{coord2Label}</label>
                   <input type="text" className="form-control" id="coord2Input" value={coord2}
-                         onChange={(e) => setCoord2(e.target.value)} disabled={isSubmitting}
+                         onChange={(e) => setCoord2(e.target.value)} disabled={isBusy}
                          aria-label={coord2Label}/>
                   <small className="text-muted">{coord2Example}</small>
                 </div>
@@ -1804,7 +1920,7 @@ const handleClearForm = () => {
                 <label htmlFor="radiusInput" className="form-label">Radius (deg)</label>
                 <input type="number" className="form-control" id="radiusInput"
                        value={searchRadius} onChange={(e) => setSearchRadius(e.target.value)}
-                       min="0" max="90" step="any" disabled={isSubmitting}/>
+                       min="0" max="90" step="any" disabled={isBusy}/>
               </div>
             </div>
           </div>
@@ -1827,7 +1943,7 @@ const handleClearForm = () => {
                   id="useTimeSearchSwitch"
                   checked={useTimeSearch}
                   onChange={(e) => setUseTimeSearch(e.target.checked)}
-                  disabled={isSubmitting}
+                  disabled={isBusy}
                 />
                 <label className="form-check-label" htmlFor="useTimeSearchSwitch">Use</label>
               </div>
@@ -1845,7 +1961,7 @@ const handleClearForm = () => {
                   type="button"
                   className={`btn btn-sm ${timeScale === opt ? 'btn-primary' : 'btn-outline-primary'}`}
                   onClick={() => handleTimeScaleChange({ target: { value: opt } })}
-                  disabled={isSubmitting}
+                  disabled={isBusy}
                 >
                   {opt.toUpperCase()}
                 </button>
@@ -1875,7 +1991,7 @@ const handleClearForm = () => {
                 placeholderText="YYYY-MM-DD"
                 className="form-control form-control-sm"
                 wrapperClassName="w-100"
-                disabled={isSubmitting}
+                disabled={isBusy}
                 showMonthDropdown
                 showYearDropdown
                 dropdownMode="select"
@@ -1912,7 +2028,7 @@ const handleClearForm = () => {
               onFocus={() => setIsEditingStartTime(true)}
               onBlur={() => { setIsEditingStartTime(false); setLastChangedType('start_dt'); }}
               aria-label="Start time"
-              disabled={isSubmitting}
+              disabled={isBusy}
               onKeyDown={(e) => handleEnterSearchFromTimeField(e, "startTime")}
             />
           </div>
@@ -1929,7 +2045,7 @@ const handleClearForm = () => {
                 aria-label="Start MJD"
                 value={obsStartMJD}
                 onChange={handleStartMjdChange}
-                disabled={isSubmitting}
+                disabled={isBusy}
                 title={obsStartMJD}
                 onKeyDown={(e) => handleEnterSearchFromTimeField(e, "startMjd")}
               />
@@ -1946,7 +2062,7 @@ const handleClearForm = () => {
                 placeholder="Start"
                 value={metStartSeconds}
                 onChange={handleMetStartChange}
-                disabled={isSubmitting}
+                disabled={isBusy}
                 title={String(metStartSeconds || '')}
                 onKeyDown={(e) => handleEnterSearchFromTimeField(e, "startMet")}
               />
@@ -1970,7 +2086,7 @@ const handleClearForm = () => {
                 placeholderText="YYYY-MM-DD"
                 className="form-control form-control-sm"
                 wrapperClassName="w-100"
-                disabled={isSubmitting}
+                disabled={isBusy}
                 showMonthDropdown
                 showYearDropdown
                 dropdownMode="select"
@@ -2007,7 +2123,7 @@ const handleClearForm = () => {
               onFocus={() => setIsEditingEndTime(true)}
               onBlur={() => { setIsEditingEndTime(false); setLastChangedType('end_dt'); }}
               aria-label="End time"
-              disabled={isSubmitting}
+              disabled={isBusy}
               onKeyDown={(e) => handleEnterSearchFromTimeField(e, "endTime")}
             />
           </div>
@@ -2024,7 +2140,7 @@ const handleClearForm = () => {
                 aria-label="End MJD"
                 value={obsEndMJD}
                 onChange={handleEndMjdChange}
-                disabled={isSubmitting}
+                disabled={isBusy}
                 title={obsEndMJD}
                 onKeyDown={(e) => handleEnterSearchFromTimeField(e, "endMjd")}
               />
@@ -2041,7 +2157,7 @@ const handleClearForm = () => {
                 placeholder="End"
                 value={metEndSeconds}
                 onChange={handleMetEndChange}
-                disabled={isSubmitting}
+                disabled={isBusy}
                 title={String(metEndSeconds || '')}
                 onKeyDown={(e) => handleEnterSearchFromTimeField(e, "endMet")}
               />
@@ -2070,8 +2186,14 @@ const handleClearForm = () => {
                  aria-labelledby="headingEnergy" >
               <div className="accordion-body">
                 <div className="form-check form-switch mb-2">
-                  <input className="form-check-input" type="checkbox" id="useEnergySwitch"
-                         checked={useEnergySearch} onChange={() => setUseEnergySearch(v => !v)} />
+                  <input
+                    className="form-check-input"
+                    type="checkbox"
+                    id="useEnergySwitch"
+                    checked={useEnergySearch}
+                    onChange={() => setUseEnergySearch((value) => !value)}
+                    disabled={isBusy}
+                  />
                   <label className="form-check-label" htmlFor="useEnergySwitch">Use Energy Search</label>
                 </div>
 
@@ -2080,13 +2202,13 @@ const handleClearForm = () => {
                     <label className="form-label">Energy min</label>
                     <input type="number" className="form-control"
                            value={energyMin} onChange={(e) => setEnergyMin(e.target.value)}
-                           disabled={isSubmitting} />
+                           disabled={isBusy} />
                   </div>
                   <div className="col-md-6">
                     <label className="form-label">Energy max</label>
                     <input type="number" className="form-control"
                            value={energyMax} onChange={(e) => setEnergyMax(e.target.value)}
-                           disabled={isSubmitting} />
+                           disabled={isBusy} />
                   </div>
                 </div>
               </div>
@@ -2108,7 +2230,7 @@ const handleClearForm = () => {
               <div className="accordion-body">
                 <div className="form-check form-switch mb-2">
                   <input className="form-check-input" type="checkbox" id="useObsConfigSwitch"
-                         checked={useObsConfig} onChange={() => setUseObsConfig(v => !v)} />
+                         checked={useObsConfig} onChange={() => setUseObsConfig(v => !v)} disabled={isBusy} />
                   <label className="form-check-label" htmlFor="useObsConfigSwitch">Use Observation Configuration</label>
                 </div>
 
@@ -2119,7 +2241,7 @@ const handleClearForm = () => {
                       className="form-select"
                       value={trackingMode}
                       onChange={(e) => { setTrackingMode(e.target.value); setUseObsConfig(true); }}
-                      disabled={isSubmitting}
+                      disabled={isBusy}
                     >
                       <option value="">(Any)</option>
                       <option value="sidereal">Sidereal</option>
@@ -2132,7 +2254,7 @@ const handleClearForm = () => {
                       className="form-select"
                       value={pointingMode}
                       onChange={(e) => { setPointingMode(e.target.value); setUseObsConfig(true); }}
-                      disabled={isSubmitting}
+                      disabled={isBusy}
                     >
                       <option value="">(Any)</option>
                       <option value="parallel">Parallel</option>
@@ -2145,7 +2267,7 @@ const handleClearForm = () => {
                       className="form-select"
                       value={obsMode}
                       onChange={(e) => { setObsMode(e.target.value); setUseObsConfig(true); }}
-                      disabled={isSubmitting}
+                      disabled={isBusy}
                     >
                       <option value="">(Any)</option>
                       <option value="default">Default</option>
@@ -2174,7 +2296,7 @@ const handleClearForm = () => {
               <div className="accordion-body">
                 <div className="form-check form-switch mb-2">
                   <input className="form-check-input" type="checkbox" id="useObsProgramSwitch"
-                         checked={useObsProgram} onChange={() => setUseObsProgram(v => !v)} />
+                         checked={useObsProgram} onChange={() => setUseObsProgram(v => !v)} disabled={isBusy} />
                   <label className="form-check-label" htmlFor="useObsProgramSwitch">Use Observation Program</label>
                 </div>
 
@@ -2183,14 +2305,14 @@ const handleClearForm = () => {
                     <label className="form-label">Proposal ID</label>
                     <input type="text" className="form-control"
                            value={proposalId} onChange={(e) => { setProposalId(e.target.value); setUseObsProgram(true); }}
-                           disabled={isSubmitting} />
+                           disabled={isBusy} />
                   </div>
 
                   <div className="col-md-6">
                     <label className="form-label">Proposal type</label>
                     <select className="form-select"
                             value={proposalType} onChange={(e) => { setProposalType(e.target.value); setUseObsProgram(true); }}
-                            disabled={isSubmitting}>
+                            disabled={isBusy}>
                       <option value="">(Any)</option>
                       <option value="ToO">ToO</option>
                     </select>
@@ -2200,14 +2322,14 @@ const handleClearForm = () => {
                     <label className="form-label">Proposal title</label>
                     <input type="text" className="form-control"
                            value={proposalTitle} onChange={(e) => { setProposalTitle(e.target.value); setUseObsProgram(true); }}
-                           disabled={isSubmitting} />
+                           disabled={isBusy} />
                   </div>
 
                   <div className="col-md-6">
                     <label className="form-label">Proposal contact person</label>
                     <input type="text" className="form-control"
                            value={proposalContact} onChange={(e) => { setProposalContact(e.target.value); setUseObsProgram(true); }}
-                           disabled={isSubmitting} />
+                           disabled={isBusy} />
                   </div>
                 </div>
               </div>
@@ -2229,7 +2351,7 @@ const handleClearForm = () => {
               <div className="accordion-body">
                 <div className="form-check form-switch mb-2">
                   <input className="form-check-input" type="checkbox" id="useObsConditionsSwitch"
-                         checked={useObsConditions} onChange={() => setUseObsConditions(v => !v)} />
+                         checked={useObsConditions} onChange={() => setUseObsConditions(v => !v)} disabled={isBusy} />
                   <label className="form-check-label" htmlFor="useObsConditionsSwitch">Use Observation Conditions</label>
                 </div>
 
@@ -2238,7 +2360,7 @@ const handleClearForm = () => {
                     <label className="form-label">Moon level</label>
                     <select className="form-select"
                             value={moonLevel} onChange={(e) => { setMoonLevel(e.target.value); setUseObsConditions(true); }}
-                            disabled={isSubmitting}>
+                            disabled={isBusy}>
                       <option value="None">None</option>
                       <option value="Dark">Dark</option>
                       <option value="Moderate">Moderate</option>
@@ -2249,7 +2371,7 @@ const handleClearForm = () => {
                     <label className="form-label">Sky brightness</label>
                     <select className="form-select"
                             value={skyBrightness} onChange={(e) => { setSkyBrightness(e.target.value); setUseObsConditions(true); }}
-                            disabled={isSubmitting}>
+                            disabled={isBusy}>
                       <option value="None">None</option>
                       <option value="Dark">Dark</option>
                       <option value="Moderate">Moderate</option>
@@ -2265,7 +2387,7 @@ const handleClearForm = () => {
           {/* Advanced */}
           <div className="mb-3">
             <button className="btn btn-link btn-sm p-0" type="button"
-                    onClick={() => setShowAdvanced(!showAdvanced)} aria-expanded={showAdvanced}>
+                    onClick={() => setShowAdvanced(!showAdvanced)} aria-expanded={showAdvanced} disabled={isBusy}>
               {showAdvanced ? 'Hide' : 'Show'} Advanced Settings
             </button>
             {showAdvanced && (
@@ -2273,24 +2395,50 @@ const handleClearForm = () => {
                 <div className="mb-3">
                   <label htmlFor="tapUrlInput" className="form-label">TAP Server URL</label>
                   <input type="text" className="form-control" id="tapUrlInput"
-                         value={tapUrl} onChange={(e) => setTapUrl(e.target.value)} disabled={isSubmitting}/>
+                         value={tapUrl} onChange={(e) => setTapUrl(e.target.value)} disabled={isBusy}/>
                 </div>
                 <div>
                   <label htmlFor="obsCoreTableInput" className="form-label">ObsCore Table Name</label>
                   <input type="text" className="form-control" id="obsCoreTableInput"
-                         value={obscoreTable} onChange={(e) => setObscoreTable(e.target.value)} disabled={isSubmitting}/>
+                         value={obscoreTable} onChange={(e) => setObscoreTable(e.target.value)} disabled={isBusy}/>
                 </div>
               </div>
             )}
           </div>
 
           {/* Buttons */}
-          <div className="d-flex justify-content-end mb-3">
+          <div className="d-flex flex-wrap justify-content-end gap-2 mb-3">
             <button
               type="button"
-              className="btn btn-ctao-galaxy me-2"
+              className="btn btn-outline-primary"
+              onClick={handleShowAllData}
+              disabled={isBusy}
+              title="Display all rows returned by the selected ObsCore table"
+            >
+              {isLoadingAll ? (
+                <>
+                  <span
+                    className="spinner-border spinner-border-sm me-2"
+                    role="status"
+                    aria-hidden="true"
+                  />
+                  {" "}
+                  Loading all data...
+                </>
+              ) : (
+                <>
+                  <i className="bi bi-table me-2" />
+                  {" "}
+                  Show all available data
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-ctao-galaxy"
               onClick={handleClearForm}
-              disabled={isSubmitting}
+              disabled={isBusy}
             >
               Clear Form
             </button>
@@ -2298,11 +2446,16 @@ const handleClearForm = () => {
             <button
               type="submit"
               className="btn btn-primary"
-              disabled={isSubmitting}
+              disabled={isBusy}
             >
               {isSubmitting ? (
                 <>
-                  <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
+                  <span
+                    className="spinner-border spinner-border-sm me-2"
+                    role="status"
+                    aria-hidden="true"
+                  />
+                  {" "}
                   Searching...
                 </>
               ) : (
@@ -2319,5 +2472,10 @@ const handleClearForm = () => {
     </div>
   );
 });
+
+SearchForm.propTypes = {
+  setResults: PropTypes.func.isRequired,
+  isLoggedIn: PropTypes.bool,
+};
 
 export default SearchForm;
