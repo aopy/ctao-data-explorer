@@ -261,6 +261,10 @@ redis:
   enabled: true
 
   master:
+    updateStrategy:
+      type: Recreate
+      rollingUpdate: null
+
     persistence:
       enabled: true
       size: 1Gi

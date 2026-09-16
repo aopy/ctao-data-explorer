@@ -1,0 +1,1 @@
+Configure Redis upgrades to recreate the pod before remounting its ReadWriteOnce PVC.
