@@ -257,7 +257,7 @@ const EmRangeChart = ({
     return [
       {
         type: "scatter",
-        mode: "markers+text",
+        mode: "markers",
         x: chartRanges.map((item) =>
           Math.sqrt(item.energyMin * item.energyMax)
         ),
@@ -265,15 +265,6 @@ const EmRangeChart = ({
         marker: {
           size: isAggregated ? 18 : 12,
           opacity: 0.01,
-        },
-        text: chartRanges.map((item) =>
-          isAggregated && item.count > 1
-            ? String(item.count)
-            : ""
-        ),
-        textposition: "middle center",
-        textfont: {
-          size: 11,
         },
         customdata: chartRanges.map((item) => ({
           ids: item.ids,

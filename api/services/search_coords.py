@@ -52,6 +52,7 @@ COORD_SYS_ALIASES: dict[str, str] = {
 class SearchCoordsParams(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
+    show_all: bool = False
     coordinate_system: str | None = None
     ra: float | None = None
     dec: float | None = None
@@ -252,13 +253,21 @@ def _process_coords(params: SearchCoordsParams) -> CoordInfo:
 
 
 def _validate_at_least_one_criterion(
+    *,
+    show_all: bool,
     coords_present: bool,
     time_present: bool,
     energy_filter_requested: bool,
     other_filter_requested: bool,
 ) -> None:
+    if show_all:
+        return
+
     if not (coords_present or time_present or energy_filter_requested or other_filter_requested):
-        raise HTTPException(status_code=400, detail="Provide at least one search criterion.")
+        raise HTTPException(
+            status_code=400,
+            detail="Provide at least one search criterion.",
+        )
 
 
 def _build_fields_base(params: SearchCoordsParams) -> dict[str, Any]:
@@ -281,6 +290,9 @@ def _build_history_params(params: SearchCoordsParams, coord: CoordInfo) -> dict[
         "search_radius": params.search_radius,
         "coordinate_system": coord.coordinate_system,
     }
+
+    if params.show_all:
+        out["show_all"] = True
 
     if coord.coordinate_system in (COORD_SYS_EQ_DEG, COORD_SYS_EQ_HMS):
         _add_if(out, "ra", params.ra)
@@ -600,15 +612,26 @@ async def search_coords_impl(
         params.obscore_table,
     )
 
-    time_info = _process_time(params)
-    coord = _process_coords(params)
-    coords_present, time_present = _apply_time_coord_fields(fields, time_info, coord)
+    if params.show_all:
+        time_info = TimeInfo(False)
+        coord = CoordInfo(False)
+    else:
+        time_info = _process_time(params)
+        coord = _process_coords(params)
 
-    energy_filter_requested = params.energy_min is not None or params.energy_max is not None
+    coords_present, time_present = _apply_time_coord_fields(
+        fields,
+        time_info,
+        coord,
+    )
 
-    other_filter_requested = any(
-        v is not None
-        for v in (
+    energy_filter_requested = not params.show_all and (
+        params.energy_min is not None or params.energy_max is not None
+    )
+
+    other_filter_requested = not params.show_all and any(
+        value is not None
+        for value in (
             params.tracking_mode,
             params.pointing_mode,
             params.obs_mode,
@@ -622,37 +645,14 @@ async def search_coords_impl(
     )
 
     _validate_at_least_one_criterion(
-        coords_present,
-        time_present,
-        energy_filter_requested,
-        other_filter_requested,
+        show_all=params.show_all,
+        coords_present=coords_present,
+        time_present=time_present,
+        energy_filter_requested=energy_filter_requested,
+        other_filter_requested=other_filter_requested,
     )
 
     where_conditions: list[str] = []
-
-    if coords_present:
-        where_conditions.append(
-            build_spatial_icrs_condition(
-                float(fields["target_raj2000"]["value"]),
-                float(fields["target_dej2000"]["value"]),
-                float(fields["search_radius"]["value"]),
-            )
-        )
-
-    if time_present:
-        where_conditions.append(
-            build_time_overlap_condition(
-                float(fields["search_mjd_start"]["value"]),
-                float(fields["search_mjd_end"]["value"]),
-            )
-        )
-
-    await _apply_energy_filter(
-        params=params,
-        tap_schema_available=tap_schema_available,
-        tap_cols=tap_cols,
-        where_conditions=where_conditions,
-    )
 
     ctx = TapColumnContext(
         tap_schema_available=tap_schema_available,
@@ -664,56 +664,83 @@ async def search_coords_impl(
         probe_cache={},
     )
 
-    enum_filters: list[tuple[str, str | None]] = [
-        ("tracking_type", params.tracking_mode),
-        ("pointing_mode", params.pointing_mode),
-        ("obs_mode", params.obs_mode),
-        ("proposal_type", params.proposal_type),
-        ("moon_level", params.moon_level),
-        ("sky_brightness", params.sky_brightness),
-    ]
+    if not params.show_all:
+        if coords_present:
+            where_conditions.append(
+                build_spatial_icrs_condition(
+                    float(fields["target_raj2000"]["value"]),
+                    float(fields["target_dej2000"]["value"]),
+                    float(fields["search_radius"]["value"]),
+                )
+            )
 
-    for col, val in enum_filters:
-        await _add_optional_enum_eq(
+        if time_present:
+            where_conditions.append(
+                build_time_overlap_condition(
+                    float(fields["search_mjd_start"]["value"]),
+                    float(fields["search_mjd_end"]["value"]),
+                )
+            )
+
+        await _apply_energy_filter(
+            params=params,
+            tap_schema_available=tap_schema_available,
+            tap_cols=tap_cols,
+            where_conditions=where_conditions,
+        )
+
+        enum_filters: list[tuple[str, str | None]] = [
+            ("tracking_type", params.tracking_mode),
+            ("pointing_mode", params.pointing_mode),
+            ("obs_mode", params.obs_mode),
+            ("proposal_type", params.proposal_type),
+            ("moon_level", params.moon_level),
+            ("sky_brightness", params.sky_brightness),
+        ]
+
+        for col, val in enum_filters:
+            await _add_optional_enum_eq(
+                ctx=ctx,
+                where_conditions=where_conditions,
+                tap_url=params.tap_url,
+                obscore_table=params.obscore_table,
+                col=col,
+                val=val,
+            )
+
+        await _add_optional_text_eq(
             ctx=ctx,
             where_conditions=where_conditions,
             tap_url=params.tap_url,
             obscore_table=params.obscore_table,
-            col=col,
-            val=val,
+            col="proposal_id",
+            val=params.proposal_id,
         )
 
-    await _add_optional_text_eq(
-        ctx=ctx,
-        where_conditions=where_conditions,
-        tap_url=params.tap_url,
-        obscore_table=params.obscore_table,
-        col="proposal_id",
-        val=params.proposal_id,
-    )
-    await _add_optional_text_like(
-        ctx=ctx,
-        where_conditions=where_conditions,
-        tap_url=params.tap_url,
-        obscore_table=params.obscore_table,
-        col="proposal_title",
-        val=params.proposal_title,
-    )
-    await _add_optional_text_like(
-        ctx=ctx,
-        where_conditions=where_conditions,
-        tap_url=params.tap_url,
-        obscore_table=params.obscore_table,
-        col="proposal_contact",
-        val=params.proposal_contact,
-    )
+        await _add_optional_text_like(
+            ctx=ctx,
+            where_conditions=where_conditions,
+            tap_url=params.tap_url,
+            obscore_table=params.obscore_table,
+            col="proposal_title",
+            val=params.proposal_title,
+        )
 
-    _validate_optional_filters_outcome(
-        coords_present=coords_present,
-        time_present=time_present,
-        energy_filter_requested=energy_filter_requested,
-        ctx=ctx,
-    )
+        await _add_optional_text_like(
+            ctx=ctx,
+            where_conditions=where_conditions,
+            tap_url=params.tap_url,
+            obscore_table=params.obscore_table,
+            col="proposal_contact",
+            val=params.proposal_contact,
+        )
+
+        _validate_optional_filters_outcome(
+            coords_present=coords_present,
+            time_present=time_present,
+            energy_filter_requested=energy_filter_requested,
+            ctx=ctx,
+        )
 
     where_sql = build_where_clause(where_conditions)
 
@@ -725,7 +752,10 @@ async def search_coords_impl(
         limit=None,
     )
 
-    cache_key = build_cache_key_from_adql(adql_query_str)
+    cache_key = build_cache_key_from_adql(
+        adql_query_str,
+        params.tap_url,
+    )
 
     if redis_client:
         cached_obj = await redis_get_json_model(

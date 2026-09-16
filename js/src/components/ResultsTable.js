@@ -46,17 +46,6 @@ function rowObsId(row) {
   return String(row?.obs_id ?? "");
 }
 
-function mergeRowsByObsId(rows) {
-  const rowsById = new Map();
-  rows.forEach((row) => {
-    const id = rowObsId(row);
-    if (id) {
-      rowsById.set(id, row);
-    }
-  });
-  return Array.from(rowsById.values());
-}
-
 function ResultsPagination({
   currentPage,
   rowCount,
@@ -332,12 +321,6 @@ function ResultsTable({
     }
   }, [filteredCount, page, rowsPerPage]);
 
-  const paginatedRows = useMemo(() => {
-    const start = (page - 1) * rowsPerPage;
-    const end = start + rowsPerPage;
-    return filteredTableData.slice(start, end);
-  }, [filteredTableData, page, rowsPerPage]);
-
   const selectedIdSet = useMemo(
     () => new Set(selectedIds.map(String)),
     [selectedIds]
@@ -379,48 +362,13 @@ function ResultsTable({
 
   const handleSelectedTableRowsChange = useCallback(
     (state) => {
-      const selectedCurrentPageRows =
-        state.selectedRows ?? [];
-
-      const allFilteredRowsWereSelected =
-        filteredTableData.length > 0 &&
-        selectedRowsByIds.length === filteredTableData.length;
-
-      if (
-        allFilteredRowsWereSelected &&
-        selectedCurrentPageRows.length === 0
-      ) {
-        onRowSelected?.([]);
-        return;
-      }
-
-      const currentPageIds = new Set(
-        paginatedRows.map(rowObsId)
-      );
-
-      const selectedOutsideCurrentPage =
-        selectedRowsByIds.filter(
-          (row) =>
-            !currentPageIds.has(rowObsId(row))
-        );
-
-      const nextSelectedRows =
-        mergeRowsByObsId([
-          ...selectedOutsideCurrentPage,
-          ...selectedCurrentPageRows,
-        ]);
-
-      const nextSelectedIds =
-        nextSelectedRows.map(rowObsId);
+      const nextSelectedIds = (
+        state.selectedRows ?? []
+      ).map(rowObsId);
 
       onRowSelected?.(nextSelectedIds);
     },
-    [
-      onRowSelected,
-      filteredTableData.length,
-      paginatedRows,
-      selectedRowsByIds,
-    ]
+    [onRowSelected]
   );
 
   const downloadRow = useCallback(
