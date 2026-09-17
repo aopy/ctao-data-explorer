@@ -18,9 +18,28 @@ basket_items_association = Table(
 
 class SearchResult(BaseModel):
     columns: list[str] = Field(
-        ..., title="Column Names", description="List of column names in the result set"
+        ...,
+        title="Column Names",
+        description="List of column names in the result set",
     )
-    data: list[list[Any]] = Field(..., title="Data Rows", description="List of data rows")
+    data: list[list[Any]] = Field(
+        ...,
+        title="Data Rows",
+        description="Rows returned by the TAP service",
+    )
+    total_rows: int = Field(
+        default=0,
+        description="Number of rows returned by the TAP service",
+        ge=0,
+    )
+    truncated: bool = Field(
+        default=False,
+        description="Whether the TAP service reported a MAXREC overflow",
+    )
+    truncation_message: str | None = Field(
+        default=None,
+        description="Explanation shown when the TAP result was truncated",
+    )
 
 
 class QueryHistory(Base):

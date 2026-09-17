@@ -2,16 +2,27 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from fastapi import APIRouter, Body, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 
 from api.services.cache import redis_get_json_dict, redis_set_json_dict
 from api.services.object_lookup import (
-    SuggestResult,
+    Suggestion,
     object_resolve_impl,
     object_suggest_impl,
 )
 
 router = APIRouter()
+
+
+class ObjectResolveRequest(BaseModel):
+    object_name: str = Field(min_length=1, max_length=200)
+    resolve_name: str | None = Field(
+        default=None,
+        max_length=200,
+    )
+    use_simbad: bool = False
+    use_ned: bool = False
 
 
 @router.get("/api/object_suggest", tags=["object_resolve"])
@@ -20,21 +31,35 @@ async def object_suggest(
     q: str = Query(..., min_length=2, max_length=50),
     use_simbad: bool = True,
     use_ned: bool = False,
-    limit: int = 15,
-) -> SuggestResult:
+    limit: int = Query(15, ge=1, le=50),
+) -> dict[str, list[Suggestion]]:
     q = q.strip()
 
-    cache_key = f"suggest:{q.lower()}:{use_simbad}:{use_ned}:{limit}"
-    redis_client = getattr(request.app.state, "redis", None)
+    if len(q) < 2:
+        raise HTTPException(
+            status_code=422,
+            detail="Query must contain at least two non-whitespace characters.",
+        )
 
-    if redis_client:
+    cache_key = f"suggest:v5:{q.casefold()}:{use_simbad}:{use_ned}:{limit}"
+    redis_client = getattr(
+        request.app.state,
+        "redis",
+        None,
+    )
+
+    if redis_client is not None:
         cached = await redis_get_json_dict(
             redis_client,
             cache_key,
             metric_name="suggest",
         )
+
         if cached is not None:
-            return cast(SuggestResult, cached)
+            return cast(
+                dict[str, list[Suggestion]],
+                cached,
+            )
 
     result = await object_suggest_impl(
         q=q,
@@ -43,23 +68,43 @@ async def object_suggest(
         limit=limit,
     )
 
-    if redis_client:
-        await redis_set_json_dict(redis_client, cache_key, dict(result), ttl=86400)
+    response: dict[str, list[Suggestion]] = {
+        "results": result["results"],
+    }
 
-    return result
+    # Cache only if all enabled external services completed successfully
+    if redis_client is not None and result["complete"]:
+        await redis_set_json_dict(
+            redis_client,
+            cache_key,
+            response,
+            ttl=86400,
+        )
+
+    return response
 
 
 @router.post("/api/object_resolve", tags=["object_resolve"])
-async def object_resolve(data: dict[str, Any] = Body(...)) -> dict[str, list[dict[str, Any]]]:
-    object_name = str(data.get("object_name", "")).strip()
-    use_simbad = bool(data.get("use_simbad", False))
-    use_ned = bool(data.get("use_ned", False))
+async def object_resolve(
+    data: ObjectResolveRequest,
+) -> dict[str, list[dict[str, Any]]]:
+    object_name = data.object_name.strip()
+    resolve_name = data.resolve_name.strip() if data.resolve_name else object_name
 
     if not object_name:
-        raise HTTPException(status_code=400, detail="No object_name provided.")
+        raise HTTPException(
+            status_code=400,
+            detail="No object_name provided.",
+        )
+
+    if not resolve_name:
+        raise HTTPException(
+            status_code=400,
+            detail="No resolvable object identifier provided.",
+        )
 
     return await object_resolve_impl(
-        object_name=object_name,
-        use_simbad=use_simbad,
-        use_ned=use_ned,
+        resolve_name=resolve_name,
+        use_simbad=data.use_simbad,
+        use_ned=data.use_ned,
     )

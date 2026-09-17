@@ -16,8 +16,10 @@ def _cache_key_fingerprint(cache_key: object) -> str:
     return hashlib.sha256(str(cache_key).encode("utf-8")).hexdigest()[:12]
 
 
-def build_cache_key_from_adql(adql_query_str: str) -> str:
-    return "search:" + hashlib.sha256(adql_query_str.encode()).hexdigest()
+def build_cache_key_from_adql(adql_query_str: str, tap_url: str) -> str:
+    normalized_tap_url = tap_url.rstrip("/")
+    cache_material = f"{normalized_tap_url}\0{adql_query_str}"
+    return "search:" + hashlib.sha256(cache_material.encode()).hexdigest()
 
 
 async def redis_get_json_model[TModel: BaseModel](

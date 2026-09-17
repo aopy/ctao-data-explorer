@@ -51,10 +51,13 @@ dynamic = ["version"]
 [project.optional-dependencies]
 test = [
   "pytest",
-  "pytest-requirements",
+  "pytest-asyncio",
+  "pytest-requirements==0.3.1-rc1",
   "pytest-cov",
   "allure-pytest",
-  "pytest-playwright"
+  "pytest-playwright",
+  "playwright==1.61.0",
+  "pytest-asyncio",
 ]
 doc = [
     "sphinx",
@@ -64,6 +67,13 @@ doc = [
     "numpydoc",
     "ctao-sphinx-theme~=0.1.2",
     "towncrier",
+    "myst-nb",
+    "jupyterlab",
+    "ipykernel",
+    "pyvo",
+    "astropy",
+    "pandas",
+    "matplotlib",
 ]
 dev = [
     "prek>=0.3.13",

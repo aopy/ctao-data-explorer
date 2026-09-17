@@ -156,6 +156,7 @@ The following table lists the configurable parameters of the chart and their def
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `redis.enabled` | Enable Redis | `true` |
+| `redis.master.updateStrategy` | Redis Deployment update strategy | `{type: Recreate, rollingUpdate: null}` |
 | `redis.master.persistence.enabled` | Enable persistence | `false` |
 
 ### Ingress Parameters
