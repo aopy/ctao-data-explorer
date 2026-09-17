@@ -8,6 +8,8 @@ metadata:
     app.kubernetes.io/component: redis
 spec:
   replicas: 1
+  strategy:
+    {{- toYaml .Values.redis.master.updateStrategy | nindent 4 }}
   selector:
     matchLabels:
       {{- include "ctao-data-explorer.selectorLabels" . | nindent 6 }}
@@ -26,7 +28,7 @@ spec:
         fsGroup: 999
       containers:
         - name: redis
-          image: {{ .Values.global.dockerProxy }}/redis:8-alpine
+          image: {{ .Values.global.dockerProxy }}/redis:8.10.0-alpine
           securityContext:
             runAsNonRoot: true
             runAsUser: 999

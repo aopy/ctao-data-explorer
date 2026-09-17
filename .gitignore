@@ -95,7 +95,10 @@ MANIFEST
 public/
 
 # Sphinx documentation
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
 docs/_build/
+docs/.jupyter_cache/
 docs/api
 
 scripts/

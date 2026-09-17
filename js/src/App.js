@@ -171,6 +171,8 @@ function BasketItemModal({ show, onClose, basketItem }) {
 function TabsApp() {
   const navigate = useNavigate();
 
+  const location = useLocation();
+
   const [results, setResults] = useState(null);
   const [allCoordinates, setAllCoordinates] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -195,37 +197,68 @@ function TabsApp() {
 
   const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
-  const onDragSplitX = (e) => {
-    const el = topRowRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const pct = (x / rect.width) * 100;
-    setResultsSplitX(clamp(pct, 0, 100));
+  const onDragSplitX = (event) => {
+    const element = topRowRef.current;
+    if (!element) return;
+
+    const rect = element.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const percentage = (x / rect.width) * 100;
+
+    setResultsSplitX(clamp(percentage, 25, 75));
   };
 
-  const onDragSplitY = (e) => {
-    const el = resultsLayoutRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const y = e.clientY - rect.top;
-    const pct = (y / rect.height) * 100;
-    setResultsSplitY(clamp(pct, 0, 100));
+  const onDragSplitY = (event) => {
+    const element = resultsLayoutRef.current;
+    if (!element) return;
+
+    const rect = element.getBoundingClientRect();
+    const y = event.clientY - rect.top;
+    const percentage = (y / rect.height) * 100;
+
+    setResultsSplitY(clamp(percentage, 25, 80));
   };
 
-  const startPointerDrag = (onMove) => (e) => {
-    e.preventDefault();
-    const target = e.currentTarget;
-    target.setPointerCapture?.(e.pointerId);
+  const startPointerDrag = (axis, onMove) => (event) => {
+    if (event.button !== 0) {
+      return;
+    }
 
-    const move = (ev) => onMove(ev);
-    const up = () => {
+    event.preventDefault();
+
+    const target = event.currentTarget;
+    const pointerId = event.pointerId;
+    const resizeClass =
+      axis === "x"
+        ? "is-resizing-results-x"
+        : "is-resizing-results-y";
+
+    target.setPointerCapture?.(pointerId);
+    document.body.classList.add(resizeClass);
+
+    const move = (pointerEvent) => {
+      onMove(pointerEvent);
+    };
+
+    const finish = () => {
       window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+
+      document.body.classList.remove(resizeClass);
+
+      try {
+        if (target.hasPointerCapture?.(pointerId)) {
+          target.releasePointerCapture(pointerId);
+        }
+      } catch {
+        // Pointer capture may already have been released
+      }
     };
 
     window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
   };
 
   const handleIdsSelected = useCallback((ids) => {
@@ -266,6 +299,34 @@ function TabsApp() {
       })
     );
   };
+
+  useEffect(() => {
+    return () => {
+      document.body.classList.remove(
+        "is-resizing-results-x",
+        "is-resizing-results-y"
+      );
+    };
+  }, []);
+
+  useEffect(() => {
+    if (location.pathname !== "/results") {
+      return;
+    }
+
+    const main = document.querySelector(".app-main");
+    main?.scrollTo({
+      top: 0,
+      left: 0,
+      behavior: "auto",
+    });
+
+    window.scrollTo({
+      top: 0,
+      left: 0,
+      behavior: "auto",
+    });
+  }, [location.pathname]);
 
   useEffect(() => {
     installAuthInterceptors(authClient);
@@ -433,13 +494,34 @@ function TabsApp() {
         const id_index = data.columns.indexOf("obs_id");
         const s_fov_index = data.columns.indexOf("s_fov");
 
-        if (s_ra_index !== -1 && s_dec_index !== -1 && id_index !== -1 && s_fov_index !== -1) {
-          const coords = data.data.map((row) => ({
-            ra: parseFloat(row[s_ra_index]),
-            dec: parseFloat(row[s_dec_index]),
-            id: row[id_index].toString().trim(),
-            s_fov: parseFloat(row[s_fov_index]),
-          }));
+        if (
+          s_ra_index !== -1 &&
+          s_dec_index !== -1 &&
+          id_index !== -1
+        ) {
+          const coords = data.data
+            .map((row) => {
+              const ra = Number(row[s_ra_index]);
+              const dec = Number(row[s_dec_index]);
+
+              if (!Number.isFinite(ra) || !Number.isFinite(dec)) {
+                return null;
+              }
+
+              const fov =
+                s_fov_index !== -1
+                  ? Number(row[s_fov_index])
+                  : undefined;
+
+              return {
+                ra,
+                dec,
+                id: String(row[id_index] ?? "").trim(),
+                s_fov: Number.isFinite(fov) ? fov : undefined,
+              };
+            })
+            .filter(Boolean);
+
           setAllCoordinates(coords);
         }
       }
@@ -449,9 +531,8 @@ function TabsApp() {
     }, 0);
   };
 
-  const handleRowSelected = (state) => {
-    const ids = (state?.selectedRows || []).map((r) => r.obs_id.toString());
-    handleIdsSelected(ids);
+  const handleRowSelected = (ids = []) => {
+    handleIdsSelected(ids.map(String));
   };
 
   const handleOpenBasketItem = (item) => {
@@ -541,7 +622,11 @@ function TabsApp() {
           </ul>
         </div>
 
-        <main className="app-main container-fluid p-3">
+        <main
+          className={`app-main container-fluid p-3 ${
+            location.pathname === "/results" ? "app-main-results" : ""
+          }`}
+        >
           <Routes>
             {/* Default */}
             <Route path="/" element={<Navigate to="/search" replace />} />
@@ -564,8 +649,19 @@ function TabsApp() {
               element={
                 <RequireResults results={results}>
                   <div className="results-layout" ref={resultsLayoutRef}>
-                    <div className="results-top" ref={topRowRef} style={{ height: `${resultsSplitY}%` }}>
-                      <div className="results-pane" style={{ width: `${resultsSplitX}%` }}>
+                    <div
+                      className="results-top"
+                      ref={topRowRef}
+                      style={{
+                        flex: `0 0 calc(${resultsSplitY}% - 4px)`,
+                      }}
+                    >
+                      <div
+                        className="results-pane"
+                        style={{
+                          flex: `0 0 calc(${resultsSplitX}% - 4px)`,
+                        }}
+                      >
                         <div className="card card-noheader h-100">
                           <div className="card-body p-0 h-100" style={{ overflow: "hidden" }}>
                             <AladinLiteViewer
@@ -579,11 +675,16 @@ function TabsApp() {
 
                       <div
                         className="splitter splitter-vertical"
-                        onPointerDown={startPointerDrag(onDragSplitX)}
+                        onPointerDown={startPointerDrag("x", onDragSplitX)}
                         title="Drag to resize"
                       />
 
-                      <div className="results-pane" style={{ width: `${100 - resultsSplitX}%` }}>
+                      <div
+                        className="results-pane"
+                        style={{
+                          flex: `0 0 calc(${100 - resultsSplitX}% - 4px)`,
+                        }}
+                      >
                         <div className="card card-noheader h-100">
                           <div className="card-body d-flex flex-column h-100" style={{ overflow: "hidden", minHeight: 0 }}>
                             <ul className="nav nav-tabs" id="chartTabs" role="tablist">
@@ -614,24 +715,34 @@ function TabsApp() {
 
                     <div
                       className="splitter splitter-horizontal"
-                      onPointerDown={startPointerDrag(onDragSplitY)}
+                      onPointerDown={startPointerDrag("y", onDragSplitY)}
                       title="Drag to resize"
                     />
 
-                    <div className="results-bottom" style={{ height: `${100 - resultsSplitY}%` }}>
+                    <div
+                      className="results-bottom"
+                      style={{
+                        flex: `0 0 calc(${100 - resultsSplitY}% - 4px)`,
+                        minHeight: 0,
+                      }}
+                    >
                       <div className="card card-noheader h-100">
-                        <div className="card-body p-0 h-100" style={{ overflow: "hidden" }}>
-                          <div style={{ height: "100%", overflow: "auto" }}>
-                            <ResultsTable
-                              results={results}
-                              isLoggedIn={isLoggedIn}
-                              selectedIds={selectedIds}
-                              onRowSelected={handleRowSelected}
-                              allBasketGroups={allBasketGroups}
-                              activeBasketGroupId={activeBasketGroupId}
-                              onAddedBasketItem={handleBasketItemAdded}
-                            />
-                          </div>
+                        <div
+                          className="card-body p-0 h-100"
+                          style={{
+                            overflow: "hidden",
+                            minHeight: 0,
+                          }}
+                        >
+                          <ResultsTable
+                            results={results}
+                            isLoggedIn={isLoggedIn}
+                            selectedIds={selectedIds}
+                            onRowSelected={handleRowSelected}
+                            allBasketGroups={allBasketGroups}
+                            activeBasketGroupId={activeBasketGroupId}
+                            onAddedBasketItem={handleBasketItemAdded}
+                          />
                         </div>
                       </div>
                     </div>

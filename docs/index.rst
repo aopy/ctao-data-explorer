@@ -27,6 +27,7 @@ A web platform to **search, visualize, and analyze** high‑energy (gamma‑ray)
 
    user-guide/index
    developer-guide/index
+   tutorials/index
    admin/index
    release-notes
    credits

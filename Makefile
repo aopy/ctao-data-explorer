@@ -13,13 +13,13 @@ build-dev: setup-k8s-cluster
 	docker build -f Dockerfile.auth -t harbor.cta-observatory.org/suss/ctao-data-explorer-auth:dev .
 	docker build -f Dockerfile.download -t harbor.cta-observatory.org/suss/ctao-data-explorer-download:dev .
 	docker build -f Dockerfile.frontend -t harbor.cta-observatory.org/suss/ctao-data-explorer-frontend:dev .
-	docker build -f Dockerfile.playwright -t harbor.cta-observatory.org/suss/ctao-data-explorer-playwright:dev .
+	docker pull harbor.cta-observatory.org/common/aiv-playwright:v5.6.0
 	${KIND} -n ${KUBECLUSTER} load docker-image \
 		harbor.cta-observatory.org/suss/ctao-data-explorer-backend:dev \
 		harbor.cta-observatory.org/suss/ctao-data-explorer-auth:dev \
 		harbor.cta-observatory.org/suss/ctao-data-explorer-download:dev \
 		harbor.cta-observatory.org/suss/ctao-data-explorer-frontend:dev \
-		harbor.cta-observatory.org/suss/ctao-data-explorer-playwright:dev
+		harbor.cta-observatory.org/common/aiv-playwright:v5.6.0
 
 
 ###################

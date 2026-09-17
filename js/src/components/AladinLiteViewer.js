@@ -1,42 +1,109 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, {
+  useEffect,
+  useRef,
+  useCallback,
+  useState,
+} from "react";
 
 // Okabe–Ito colour-blind-safe palette
-const UNSELECTED_COLOR       = '#56B4E9'; // blue
-const SELECTED_COLOR         = '#F0E442'; // yellow
-const CIRCLE_COLOR_UNSELECTED= '#999999'; // grey
-const CIRCLE_COLOR_SELECTED  = '#F0E442'; // yellow
+const UNSELECTED_COLOR = "#56B4E9";
+const SELECTED_COLOR = "#F0E442";
+const CIRCLE_COLOR_UNSELECTED = "#999999";
+const CIRCLE_COLOR_SELECTED = "#F0E442";
 const MARKER_SIZE = 8;
 const CIRCLE_LINE_WIDTH = 1;
+
+const COORDINATE_PRECISION = 6;
+
+const positionKey = (ra, dec) =>
+  `${ra.toFixed(COORDINATE_PRECISION)}:${dec.toFixed(
+    COORDINATE_PRECISION
+  )}`;
 
 const AladinLiteViewer = ({ overlays = [], selectedIds = [], onSelectIds = () => {} }) => {
   const aladinRef = useRef(null);
   const aladinInstance = useRef(null);
   const resultsCatalogRef = useRef(null);
   const clickHandlerRef = useRef(null);
+  const mapClickHandlerRef = useRef(null);
+  const ignoreNextMapClickRef = useRef(false);
   const isRefreshingRef = useRef(false);
   const selectedIdsRef = useRef([]);
+  const selectedIdsSetRef = useRef(new Set());
+
+  const [lastClickedPosition, setLastClickedPosition] =
+    useState(null);
+
+  const [activePosition, setActivePosition] =
+    useState(null);
+
+  const onSelectIdsRef = useRef(onSelectIds);
+
+  useEffect(() => {
+    onSelectIdsRef.current = onSelectIds;
+  }, [onSelectIds]);
 
   const customDrawFunction = useCallback((source, canvasCtx, viewParams) => {
     const data = source.data || {};
-    const isSelected = data.isSelected;
-    const fovDeg = parseFloat(data.s_fov);
+    const ids = Array.isArray(data.ids)
+      ? data.ids.map(String)
+      : data.id
+        ? [String(data.id)]
+        : [];
+
+    const selectedIdsSet = selectedIdsSetRef.current;
+
+    const selectedCount = ids.filter((id) =>
+      selectedIdsSet.has(id)
+    ).length;
+
+    const isSelected =
+      ids.length > 0 && selectedCount === ids.length;
+
+    const isPartiallySelected =
+      selectedCount > 0 && selectedCount < ids.length;
+
+    const count = Number(data.count) || 1;
+    const fovDeg = Number(data.s_fov);
 
     canvasCtx.beginPath();
-    const baseSize = isSelected ? MARKER_SIZE + 3 : MARKER_SIZE;
-    canvasCtx.lineWidth = isSelected ? 2 : 0.5;
-    canvasCtx.strokeStyle = '#00000055';
-    canvasCtx.stroke();
-    canvasCtx.moveTo(source.x, source.y - baseSize * 0.7);
-    canvasCtx.lineTo(source.x - baseSize * 0.6, source.y + baseSize * 0.4);
-    canvasCtx.lineTo(source.x + baseSize * 0.6, source.y + baseSize * 0.4);
+
+    const groupSizeIncrease = count > 1
+      ? Math.min(5, Math.log2(count) * 1.5)
+      : 0;
+
+    const baseSize =
+      MARKER_SIZE + groupSizeIncrease;
+
+    canvasCtx.moveTo(
+      source.x,
+      source.y - baseSize * 0.7
+    );
+    canvasCtx.lineTo(
+      source.x - baseSize * 0.6,
+      source.y + baseSize * 0.4
+    );
+    canvasCtx.lineTo(
+      source.x + baseSize * 0.6,
+      source.y + baseSize * 0.4
+    );
     canvasCtx.closePath();
-    canvasCtx.fillStyle = isSelected ? SELECTED_COLOR : UNSELECTED_COLOR;
-    canvasCtx.lineWidth   = isSelected ? 2 : 0.5;
-    canvasCtx.strokeStyle = '#00000099';
+
+    canvasCtx.fillStyle = isSelected
+      ? SELECTED_COLOR
+      : UNSELECTED_COLOR;
+
+    canvasCtx.lineWidth =
+      isSelected || isPartiallySelected ? 2 : 0.5;
+
+    canvasCtx.strokeStyle = isPartiallySelected
+      ? SELECTED_COLOR
+      : "#00000099";
+
     canvasCtx.stroke();
     canvasCtx.fill();
 
-    if (!isNaN(fovDeg) && fovDeg > 0) {
+    if (Number.isFinite(fovDeg) && fovDeg > 0) {
             if (viewParams?.fov?.[0] && viewParams?.width > 0 && viewParams.fov[0] !== 0) {
                  const degPerPixel = viewParams.fov[0] / viewParams.width;
                  if (degPerPixel > 0) {
@@ -45,7 +112,10 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [], onSelectIds = () =>
                         canvasCtx.beginPath();
                         canvasCtx.arc(source.x, source.y, radiusPixels, 0, 2 * Math.PI, false);
                         canvasCtx.closePath();
-                        canvasCtx.strokeStyle = isSelected ? CIRCLE_COLOR_SELECTED : CIRCLE_COLOR_UNSELECTED;
+                        canvasCtx.strokeStyle =
+                          isSelected || isPartiallySelected
+                            ? CIRCLE_COLOR_SELECTED
+                            : CIRCLE_COLOR_UNSELECTED;
                         canvasCtx.lineWidth = CIRCLE_LINE_WIDTH;
                         canvasCtx.globalAlpha = 0.7;
                         canvasCtx.stroke();
@@ -56,6 +126,7 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [], onSelectIds = () =>
                 console.warn("Cannot draw circle: Invalid viewParams for calculation", viewParams);
             }
         }
+
     }, []);
 
   useEffect(() => {
@@ -92,33 +163,91 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [], onSelectIds = () =>
             });
 
             resultsCatalogRef.current = window.A.catalog({
-                name: 'SearchResults',
-                sourceSize: 10,
-                shape: customDrawFunction,
-                color: UNSELECTED_COLOR,
-                onClick: 'showPopup'
+              name: "SearchResults",
+              sourceSize: 10,
+              shape: customDrawFunction,
+              color: UNSELECTED_COLOR,
+              selectionColor: "rgba(0, 0, 0, 0)",
+              selectionLineWidth: 0,
             });
 
-            aladinInstance.current.addCatalog(resultsCatalogRef.current);
+            resultsCatalogRef.current.setSelectionColor?.(
+              "rgba(0, 0, 0, 0)"
+            );
+
+            resultsCatalogRef.current.setSelectionLineWidth?.(0);
+
+            aladinInstance.current.addCatalog(
+              resultsCatalogRef.current
+            );
 
             console.log("Aladin Instance and Catalog created.");
             clickHandlerRef.current = (obj) => {
-              if (isRefreshingRef.current) return;
-              const id = obj?.data?.id?.toString();
-              if (!id) {
-                onSelectIds([]);
+              if (isRefreshingRef.current) {
                 return;
               }
-              // toggle logic
-              const cur = selectedIdsRef.current;
-              const next = cur.includes(id)
-                ? cur.filter((x) => x !== id)
-                : [...cur, id];
-              onSelectIds(next);
-            }
-            aladinInstance.current.on('objectClicked', clickHandlerRef.current);
-            aladinInstance.current.on('mapClicked', () => onSelectIds([]));
-            updateMarkers(); // Update markers after init
+
+              const clickedIds = Array.isArray(obj?.data?.ids)
+                ? obj.data.ids.map(String)
+                : obj?.data?.id
+                  ? [String(obj.data.id)]
+                  : [];
+              if (!clickedIds.length) {
+                return;
+              }
+
+              ignoreNextMapClickRef.current = true;
+
+              window.setTimeout(() => {
+                ignoreNextMapClickRef.current = false;
+              }, 0);
+
+              setLastClickedPosition({
+                ids: clickedIds,
+                count: clickedIds.length,
+                ra: Number(obj.data.ra),
+                dec: Number(obj.data.dec),
+                sFov: Number(obj.data.s_fov),
+              });
+
+              setActivePosition(null);
+
+              const currentIds = selectedIdsRef.current.map(String);
+
+              const allSelected = clickedIds.every((id) =>
+                currentIds.includes(id)
+              );
+
+              const next = allSelected
+                ? currentIds.filter((id) => !clickedIds.includes(id))
+                : Array.from(new Set([...currentIds, ...clickedIds]));
+
+              onSelectIdsRef.current(next);
+            };
+
+            aladinInstance.current.on(
+              "objectClicked",
+              clickHandlerRef.current
+            );
+
+            mapClickHandlerRef.current = () => {
+              if (ignoreNextMapClickRef.current) {
+                return;
+              }
+
+              onSelectIdsRef.current([]);
+              setLastClickedPosition(null);
+              setActivePosition(null);
+
+              resultsCatalogRef.current?.deselectAll?.();
+            };
+
+            aladinInstance.current.on(
+              "mapClicked",
+              mapClickHandlerRef.current
+            );
+
+            updateMarkers();
 
       } catch (error) {
           console.error("Error initializing Aladin:", error);
@@ -132,23 +261,50 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [], onSelectIds = () =>
     return () => {
       isMounted = false;
       console.log("AladinLiteViewer unmounting...");
+
       if (aladinInstance.current && clickHandlerRef.current) {
-        aladinInstance.current.off?.('objectClicked', clickHandlerRef.current);
-        aladinInstance.current.off?.('mapClicked', () => {});
+        aladinInstance.current.off?.(
+          'objectClicked',
+          clickHandlerRef.current
+        );
+      }
+
+      if (aladinInstance.current && mapClickHandlerRef.current) {
+        aladinInstance.current.off?.(
+          'mapClicked',
+          mapClickHandlerRef.current
+        );
       }
     };
-  }, [customDrawFunction, onSelectIds]);
+    }, [customDrawFunction]);
 
-  useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
-
-  // effect to update markers when data changes
   useEffect(() => {
-    updateMarkers();
-  }, [overlays, selectedIds, customDrawFunction]);
+    setLastClickedPosition(null);
+    setActivePosition(null);
+  }, [overlays]);
+
+  useEffect(() => {
+    updateMarkers({
+      shouldAutoZoom: true,
+    });
+  }, [overlays, customDrawFunction]);
+
+  useEffect(() => {
+    selectedIdsRef.current = selectedIds;
+    selectedIdsSetRef.current = new Set(
+      selectedIds.map(String)
+    );
+
+    resultsCatalogRef.current?.setShape?.(
+      customDrawFunction
+    );
+  }, [selectedIds, customDrawFunction]);
+
+
 
 
   // update markers logic
-  const updateMarkers = () => {
+  const updateMarkers = ({ shouldAutoZoom = true } = {}) => {
     if (!aladinInstance.current || !resultsCatalogRef.current) {
         // console.log("Skipping updateMarkers: Aladin not ready.");
         return;
@@ -157,54 +313,84 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [], onSelectIds = () =>
 
     isRefreshingRef.current = true;
 
-    const resultsCatalog = resultsCatalogRef.current;
-    resultsCatalog.removeAll();
+    try {
+      const resultsCatalog = resultsCatalogRef.current;
+      resultsCatalog.removeAll();
 
-    const sources = [];
-    const validCoords = []; // For autoZoom
+      const groupedPositions = new Map();
 
-    overlays.forEach((coord) => {
-      const { ra, dec, id, s_fov } = coord;
+      overlays.forEach((coord) => {
+        const raNum = Number(coord.ra);
+        const decNum = Number(coord.dec);
+        const id = String(coord.id ?? "").trim();
+        const fov = Number(coord.s_fov);
 
-      // Ensure coordinates are valid numbers
-      const raNum = parseFloat(ra);
-      const decNum = parseFloat(dec);
-      if (isNaN(raNum) || isNaN(decNum)) {
-        console.warn('Invalid RA/Dec for overlay, skipping:', coord);
-        return;
-      }
+        if (
+          !Number.isFinite(raNum) ||
+          !Number.isFinite(decNum) ||
+          !id
+        ) {
+          console.warn("Invalid sky-map overlay, skipping:", coord);
+          return;
+        }
 
-      const isSelected = selectedIds.includes(id?.toString()); // Ensure comparison with string ID
-      console.log(`ID: ${id?.toString()}, IsSelected: ${isSelected}, Selected IDs:`, selectedIds);
+        const key = positionKey(raNum, decNum);
+        const existing = groupedPositions.get(key);
 
-      // create the source object with data for the draw function
-      const source = window.A.source(raNum, decNum, {
-        id: id?.toString() || 'N/A',
-        ra: raNum,
-        dec: decNum,
-        s_fov: parseFloat(s_fov), // Ensure s_fov is a number or NaN
-        isSelected: isSelected,
-        // Popup content:
-        // popupTitle: `Obs ID: ${id?.toString() || 'N/A'}`,
-        // popupDesc: `RA: ${raNum.toFixed(6)}, Dec: ${decNum.toFixed(6)}<br/>FOV: ${!isNaN(parseFloat(s_fov)) ? parseFloat(s_fov) + ' deg' : 'N/A'}`
+        if (existing) {
+          existing.ids.push(id);
+
+          if (Number.isFinite(fov)) {
+            existing.fovValues.push(fov);
+          }
+        } else {
+          groupedPositions.set(key, {
+            ra: raNum,
+            dec: decNum,
+            ids: [id],
+            fovValues: Number.isFinite(fov) ? [fov] : [],
+          });
+        }
       });
-      sources.push(source);
 
-      validCoords.push({ ra: raNum, dec: decNum }); // Add to list for zooming
-    });
+      const sources = [];
+      const validCoords = [];
 
-    resultsCatalog.addSources(sources); // Add all sources at once
-    console.log(`Added ${sources.length} sources to catalog.`);
+      groupedPositions.forEach((group) => {
 
-    isRefreshingRef.current = false;
+        const representativeFov = group.fovValues.length
+          ? Math.max(...group.fovValues)
+          : Number.NaN;
 
-    // Auto-zoom if we have valid coordinates
-    if (validCoords.length > 0) {
+        const source = window.A.source(group.ra, group.dec, {
+          id: group.ids[0],
+          ids: group.ids,
+          count: group.ids.length,
+          ra: group.ra,
+          dec: group.dec,
+          s_fov: representativeFov,
+        });
+
+        sources.push(source);
+        validCoords.push({
+          ra: group.ra,
+          dec: group.dec,
+        });
+      });
+
+      resultsCatalog.addSources(sources); // Add all sources at once
+      console.log(
+        `Added ${sources.length} sky positions representing ` +
+        `${overlays.length} observations.`
+      );
+
+
+      // Auto-zoom if we have valid coordinates
+      if (shouldAutoZoom && validCoords.length > 0) {
         autoZoom(validCoords);
-    } else {
-        // Reset zoom/position if no data?
-        // aladinInstance.current.gotoRaDec(0, 0);
-        // aladinInstance.current.setFov(60);
+      }
+    } finally {
+      isRefreshingRef.current = false;
     }
   };
 
@@ -221,10 +407,10 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [], onSelectIds = () =>
     const margin = 15; // Margin in degrees
 
     // Compute bounding box of the COORDINATES themselves
-    let minRaRaw = Math.min(...raValues);
-    let maxRaRaw = Math.max(...raValues);
-    let minDecRaw = Math.min(...decValues);
-    let maxDecRaw = Math.max(...decValues);
+    const minRaRaw = Math.min(...raValues);
+    const maxRaRaw = Math.max(...raValues);
+    const minDecRaw = Math.min(...decValues);
+    const maxDecRaw = Math.max(...decValues);
 
     // Apply the margin to the raw coordinate bounds
     let minRa = minRaRaw - margin;
@@ -281,9 +467,110 @@ const AladinLiteViewer = ({ overlays = [], selectedIds = [], onSelectIds = () =>
   };
 
   return (
-    <div className="aladin-lite-container" style={{ width: '100%', height: '100%', overflow: 'hidden' }} ref={aladinRef}>
-    </div>
-  );
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          minHeight: 0,
+          position: "relative",
+        }}
+      >
+        <div
+          className="aladin-lite-container"
+          style={{
+            width: "100%",
+            height: "100%",
+            overflow: "hidden",
+          }}
+          ref={aladinRef}
+        />
+
+        {lastClickedPosition && (
+          <button
+            type="button"
+            className="btn btn-sm btn-light border"
+            style={{
+              position: "absolute",
+              top: 48,
+              right: 8,
+              zIndex: 10,
+            }}
+            onClick={() => setActivePosition(lastClickedPosition)}
+          >
+            <i className="bi bi-info-circle me-1" />
+            {" "}
+            Details
+          </button>
+        )}
+
+        {activePosition && (
+          <div
+            className="card shadow-sm"
+            style={{
+              position: "absolute",
+              top: 84,
+              right: 8,
+              zIndex: 10,
+              width: "min(300px, calc(100% - 16px))",
+            }}
+          >
+            <div className="card-header d-flex justify-content-between align-items-center py-1">
+              <strong className="small">Position details</strong>
+
+              <button
+                type="button"
+                className="btn-close"
+                aria-label="Close"
+                onClick={() => setActivePosition(null)}
+              />
+            </div>
+
+            <div className="card-body small py-2">
+              <div>
+                <strong>
+                  {activePosition.count === 1
+                    ? "Observation ID:"
+                    : "Observations:"}
+                </strong>{" "}
+                {activePosition.count === 1
+                  ? activePosition.ids[0]
+                  : activePosition.count}
+              </div>
+
+              {activePosition.count > 1 && (
+                <div className="text-muted text-truncate">
+                  {activePosition.ids.slice(0, 3).join(", ")}
+                  {activePosition.count > 3
+                    ? ` and ${activePosition.count - 3} more`
+                    : ""}
+                </div>
+              )}
+
+              <div className="mt-1">
+                <strong>RA:</strong>{" "}
+                {Number.isFinite(activePosition.ra)
+                  ? activePosition.ra.toFixed(6)
+                  : "N/A"}
+              </div>
+
+              <div>
+                <strong>Dec:</strong>{" "}
+                {Number.isFinite(activePosition.dec)
+                  ? activePosition.dec.toFixed(6)
+                  : "N/A"}
+              </div>
+
+              {Number.isFinite(activePosition.sFov) && (
+                <div>
+                  <strong>FoV:</strong>{" "}
+                  {activePosition.sFov.toFixed(3)}°
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
 };
 
 export default AladinLiteViewer;
