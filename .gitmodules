@@ -1,0 +1,3 @@
+[submodule "aiv-toolkit"]
+	path = aiv-toolkit
+	url = ../../../../common/aiv-toolkit
