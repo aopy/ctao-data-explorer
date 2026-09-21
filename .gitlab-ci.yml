@@ -1,6 +1,6 @@
 include:
   - project: cta-computing/common/aiv-toolkit
-    ref: fd778100794138efc3c068c8fd8d4053f05e72f3
+    ref: cfa3a563c868801d4fc667fe3445bbe836802b55
     file: ci-functions.yml
   - aiv-config.yml
 
@@ -126,6 +126,7 @@ unit-tests-frontend:
     paths:
       - js/node_modules/
   variables:
+    JEST_JUNIT_ADD_FILE_ATTRIBUTE: "true"
     JEST_JUNIT_OUTPUT_DIR: coverage
     JEST_JUNIT_OUTPUT_NAME: report.xml
   before_script:
@@ -187,7 +188,7 @@ k8s-upgrade-integration-tests:
   tags:
     - desy-testcluster-ctao-computing-aiv
   variables:
-    UPGRADE_BASE_REF: "v1.0.0-rc2"
+    UPGRADE_BASE_REF: "v1.0.0-rc8"
 
 
 # the following two jobs can be used to test integration with external services. Currently disabled

@@ -74,7 +74,7 @@ def _resolve_crab_with_sdc_radius(page: Page, radius: str = "40") -> None:
     page.locator("#radiusInput").fill(radius)
 
 
-@pytest.mark.verifies_usecase("SUSS-UC-050-19")
+@pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2648")
 def test_login(page: Page):
     """Authenticate via IAM and verify restricted tabs appear after login.
 
@@ -112,7 +112,7 @@ def test_login(page: Page):
             expect(page.get_by_role("link", name=tab, exact=True)).to_be_visible()
 
 
-@pytest.mark.verifies_usecase("SUSS-UC-050-20")
+@pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2649")
 def test_logout(page: Page):
     """Log out and verify restricted tabs are no longer visible.
 
@@ -158,7 +158,7 @@ def test_logout(page: Page):
         )
 
 
-@pytest.mark.verifies_usecase("SUSS-UC-050-19")
+@pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2648")
 def test_csrf_cookie_set_after_login(page: Page):
     """Check that the XSRF-TOKEN cookie is absent before login and set afterwards.
 
@@ -185,7 +185,6 @@ def test_csrf_cookie_set_after_login(page: Page):
         assert len(xsrf[0]["value"]) > 0, "XSRF-TOKEN must be non-empty"
 
 
-@pytest.mark.verifies_usecase("SUSS-UC-050-11")
 def test_authenticated_basket_add(page: Page):
     """Login, search for target, create an active basket, add to it, and verify.
 
@@ -246,7 +245,7 @@ def test_authenticated_basket_add(page: Page):
         expect(page.get_by_text(re.compile(r"Obs\. id:"), exact=False).first).to_be_visible()
 
 
-@pytest.mark.verifies_usecase("SUSS-UC-050-01")
+@pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2645")
 def test_query_by_object_name(page: Page):
     """Query observations by astronomical object name and verify results are shown.
 
@@ -310,7 +309,7 @@ def test_query_by_object_name(page: Page):
         )
 
 
-@pytest.mark.verifies_usecase("SUSS-UC-050-01")
+@pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2645")
 def test_resolve_coordinates_by_ned(page: Page):
     """Resolve coordinates for an object name via NED and verify both deg and hms/dms formats.
     Steps:
@@ -349,7 +348,7 @@ def test_resolve_coordinates_by_ned(page: Page):
         expect(coord2_input).to_have_value(re.compile(r"^\+39 45 [\d.]+"))
 
 
-@pytest.mark.verifies_usecase("SUSS-UC-050-02")
+@pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2645")
 def test_query_by_sky_coordinates(page: Page):
     """Query observations by sky coordinates and verify results appear in the data table.
 
@@ -382,7 +381,7 @@ def test_query_by_sky_coordinates(page: Page):
         expect(page.locator(".rdt_TableRow")).not_to_have_count(0, timeout=60000)
 
 
-@pytest.mark.verifies_usecase("SUSS-UC-050-06")
+@pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2646")
 def test_no_results_warning(page: Page):
     """Search with coordinates that match no observations and verify the warning message.
 
@@ -411,7 +410,7 @@ def test_no_results_warning(page: Page):
         expect(alert).to_contain_text("No results were found for the given search criteria.")
 
 
-@pytest.mark.verifies_usecase("SUSS-UC-050-14")
+@pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2647")
 def test_direct_download_visible(page: Page):
     """Verify download buttons are rendered in the results table after a search.
 
@@ -462,7 +461,7 @@ def test_direct_download_visible(page: Page):
         )
 
 
-@pytest.mark.verifies_usecase("SUSS-UC-050-14")
+@pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2647")
 def test_download_file(page: Page, mock_dcache):
     """Click the download button and verify the UI alert confirms the request.
 
@@ -519,7 +518,7 @@ def test_download_file(page: Page, mock_dcache):
         )
 
 
-@pytest.mark.verifies_usecase("SUSS-UC-050-21")
+@pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2650")
 def test_view_user_profile(page: Page):
     """Log in and verify the user profile page displays correct user information.
 
@@ -551,7 +550,7 @@ def test_view_user_profile(page: Page):
         expect(page.get_by_text(re.compile(r"Email:\s*sdc@test\.example"))).to_be_visible()
 
 
-@pytest.mark.verifies_usecase("SUSS-UC-050-14")
+@pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2647")
 def test_download_file_mock_storage(page: Page, mock_dcache):
     """Validate the server-side token exchange pipeline against a mock storage backend.
 
@@ -645,7 +644,7 @@ def test_download_file_mock_storage(page: Page, mock_dcache):
         )
 
 
-@pytest.mark.verifies_usecase("SUSS-UC-050-14")
+@pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2647")
 def test_download_file_without_login(page: Page):
     """Verify the unauthenticated download button prompts the user to log in.
 
@@ -688,7 +687,7 @@ def test_download_file_without_login(page: Page):
         )
 
 
-@pytest.mark.verifies_usecase("SUSS-UC-050-14")
+@pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2647")
 def test_download_file_button_reset(page: Page):
     """Click download, then verify the button resets to enabled "Download" state.
 
@@ -743,7 +742,7 @@ def test_download_file_button_reset(page: Page):
         )
 
 
-@pytest.mark.verifies_usecase("SUSS-UC-050-14")
+@pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2647")
 def test_download_file_loading_state(page: Page):
     """Click download and verify the button transitions through loading states.
 
@@ -812,7 +811,7 @@ def test_download_file_loading_state(page: Page):
         )
 
 
-@pytest.mark.verifies_usecase("SUSS-UC-050-14")
+@pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2647")
 def test_download_multiple_files(page: Page):
     """Click Download on two different result rows and verify both trigger alerts.
 
