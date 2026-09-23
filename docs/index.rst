@@ -16,7 +16,7 @@ A web platform to **search, visualize, and analyze** high‑energy (gamma‑ray)
 
 .. note::
 
-   **Production**: https://padc-ctao-data-explorer.obspm.fr/
+   A staging deployment is available upon request for testing.
 
 ----
 

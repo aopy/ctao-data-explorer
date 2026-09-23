@@ -2,7 +2,7 @@
 
 This project is a web application to access, visualize, and analyze Cherenkov data, in the perspective of the **Cherenkov Telescope Array Observatory (CTAO)**. It combines a **React** frontend with a **FastAPI** backend. Users can search the archive, curate results, explore interactive visualizations, and submit selected items as preview jobs to the [OPUS](https://voparis-uws-test.obspm.fr/client/) service. The application adopts standards from the [International Virtual Observatory Alliance (IVOA)](https://ivoa.net/) to ensure interoperability and broad accessibility of astronomical data.
 
-Documentation is [here](http://ctao-data-explorer-a09d9e.gitlab-pages.cta-observatory.org/).
+Documentation is [here](https://cta-computing.gitlab-pages.cta-observatory.org/suss/scienceportal/prototypes/ctao-data-explorer).
 
 ## Table of Contents
 
@@ -62,11 +62,10 @@ Legacy setups (directly on host) are documented in the [Legacy deployment guide]
 ## Usage
 
 > **Warning**
-> This deployment is hosted by the Paris Astronomical Data Center (PADC).
-> It is not the official production server; features and APIs may change.
+> A staging deployment is available upon request for testing.
 
 1. **Open the site:**
-   <https://padc-ctao-data-explorer.obspm.fr/> → you land on **Search**.
+   When opening the site you land on **Search**.
 
 2. **Build a query (Search page)**
    - **Sky position:** choose a system (Equatorial deg, Equatorial hms/dms, or Galactic l/b). Enter RA/Dec (or l/b) and **Radius** (default **5°**). Optionally type an object name, click **Simbad/NED**, then pick from the dropdown to autofill coordinates.
