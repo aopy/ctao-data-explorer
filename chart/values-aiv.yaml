@@ -206,6 +206,12 @@ backend:
     # DATALINK_TEST_DOWNLOAD_URL: "https://globe-door.ifh.de:2880/pnfs/ifh.de/acs/cta/diskonly/oidc-test-bas/public/test-file.txt"
     DATALINK_TEST_DOWNLOAD_URL: "https://localhost:9999/test-file.txt"
 
+mockTap:
+  enabled: true
+
+loadTest:
+  enabled: false
+
 # Ingress
 
 ingress:

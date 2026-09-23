@@ -27,6 +27,6 @@ variables:
 
   ENABLE_INGRESS: true
 
-  ALLOWED_IMAGE_PREFIXES: docker,postgres,redis,registry.k8s.io
+  ALLOWED_IMAGE_PREFIXES: docker,postgres,redis,registry.k8s.io,grafana
 
   APPLY_PRE_UPGRADE_URL: https://gitlab.cta-observatory.org/cta-computing/common/gcert-issuer/-/raw/main/chart/crds/gcert-request.yaml

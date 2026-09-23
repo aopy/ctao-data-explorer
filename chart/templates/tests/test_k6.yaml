@@ -1,0 +1,117 @@
+{{- if .Values.loadTest.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "ctao-data-explorer-k6"
+  annotations:
+    "helm.sh/hook": test
+spec:
+  activeDeadlineSeconds: {{ .Values.loadTest.activeDeadlineSeconds }}
+  automountServiceAccountToken: false
+  securityContext:
+    {{- toYaml .Values.podSecurityContext | nindent 4 }}
+  volumes:
+    - name: repo
+      hostPath:
+        path: /repo
+    - name: shared
+      emptyDir: {}
+  initContainers:
+    - name: bff-login
+      image: "{{ .Values.global.imageRegistry }}/{{ .Values.dev.test_pod.image.repository }}:{{ .Values.dev.test_pod.image.tag | default .Chart.AppVersion }}"
+      imagePullPolicy: IfNotPresent
+      workingDir: /tmp
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      env:
+        - name: HOME
+          value: /tmp
+        - name: PLAYWRIGHT_BROWSERS_PATH
+          value: /opt/ms-playwright
+        - name: FRONTEND_URL
+          value: "https://{{ (index .Values.ingress.hosts 0).host }}"
+        - name: LOAD_TEST_BFF_BOOTSTRAP
+          value: "1"
+        - name: BFF_SESSION_FILE
+          value: /shared/bff-session.json
+        - name: TEST_USER
+          valueFrom:
+            secretKeyRef:
+              name: "{{ .Release.Name }}-secrets"
+              key: testUser
+        - name: TEST_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: "{{ .Release.Name }}-secrets"
+              key: testPassword
+      command: ["/bin/bash", "-c"]
+      args:
+        - >-
+          set -euo pipefail;
+          git config --global --add safe.directory /repo;
+          python -m venv --system-site-packages /tmp/venv;
+          uv pip install --python /tmp/venv/bin/python '/repo[test]';
+          /tmp/venv/bin/python -m pytest /repo/tests/test_load_login.py --browser=firefox
+      volumeMounts:
+        - name: repo
+          mountPath: /repo
+          readOnly: false
+        - name: shared
+          mountPath: /shared
+  containers:
+    - name: k6
+      image: "{{ .Values.global.imageRegistry }}/{{ .Values.loadTest.k6.image }}:{{ .Values.loadTest.k6.tag }}"
+      imagePullPolicy: IfNotPresent
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      env:
+        - name: FRONTEND_URL
+          value: "https://{{ (index .Values.ingress.hosts 0).host }}"
+        - name: BFF_SESSION_FILE
+          value: /shared/bff-session.json
+        - name: MOCK_TAP_RECORD_COUNT
+          value: {{ .Values.mockTap.recordCount | quote }}
+        - name: K6_PROFILE
+          value: {{ .Values.loadTest.profile | quote }}
+      command: ["/bin/sh", "-c"]
+      args:
+        - >-
+          set -uo pipefail;
+          attempt=0; until test -f /shared/mock-storage-ready;
+          do attempt=$((attempt + 1)); test "$attempt" -lt 60 || { echo 1 > /shared/k6-exit; touch /shared/k6-done; exit 1; }; sleep 1; done;
+          K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_PORT=-1 K6_WEB_DASHBOARD_EXPORT=/repo/k6-summary.html k6 run --summary-export=/shared/k6-summary.json /repo/load_tests/download.js;
+          code=$?; cp /shared/k6-summary.json /repo/k6-summary.json; echo "$code" > /shared/k6-exit; touch /shared/k6-done; exit "$code"
+      volumeMounts:
+        - name: repo
+          mountPath: /repo
+          readOnly: false
+        - name: shared
+          mountPath: /shared
+      resources:
+        {{- toYaml .Values.loadTest.resources | nindent 8 }}
+    - name: mock-storage
+      image: "{{ .Values.global.imageRegistry }}/{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
+      imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+      command: ["/bin/sh", "-c"]
+      args:
+        - >-
+          python -m api.mock_storage & pid=$!;
+          attempt=0; until python -c "import ssl, urllib.request; urllib.request.urlopen('https://127.0.0.1:9999/health', context=ssl._create_unverified_context(), timeout=1).read()" >/dev/null 2>&1;
+          do attempt=$((attempt + 1)); test "$attempt" -lt 60 || { echo 1 > /shared/k6-exit; touch /shared/k6-done; exit 1; }; sleep 1; done;
+          touch /shared/mock-storage-ready;
+          until test -f /shared/k6-done; do sleep 1; done;
+          kill "$pid"; wait "$pid" || true
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      volumeMounts:
+        - name: shared
+          mountPath: /shared
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 250m
+          memory: 256Mi
+  restartPolicy: Never
+{{- end }}
