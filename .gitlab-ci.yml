@@ -189,6 +189,7 @@ k8s-upgrade-integration-tests:
     - desy-testcluster-ctao-computing-aiv
   variables:
     UPGRADE_BASE_REF: "v1.0.0-rc8"
+    BASE_REF_PATCH_FILES: "pre-upgrade-patches/v1.0.0-rc8-playwright.patch"
 
 
 # the following two jobs can be used to test integration with external services. Currently disabled
