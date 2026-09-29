@@ -25,7 +25,7 @@ pylint:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
       when: never
-    - when: on_success
+    - !reference [.documentation-only, rules]
   script:
     - pylint --fail-under 5.0 api auth_service
       --output-format=json2:pylint.json,colorized
@@ -66,7 +66,7 @@ hadolint:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
       when: never
-    - when: on_success
+    - !reference [.documentation-only, rules]
   script:
     - hadolint Dockerfile.auth Dockerfile.backend Dockerfile.download
       Dockerfile.frontend
@@ -146,25 +146,43 @@ build-python-dist:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
       when: never
-    - when: on_success
+    - !reference [.documentation-only, rules]
 
 publish-chart:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
       when: never
-    - when: on_success
+    - !reference [.documentation-only, rules]
 
 sonarqube:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
       when: never
-    - when: on_success
+    - !reference [.documentation-only, rules]
 
 build-test-report:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
       when: never
-    - when: on_success
+    - !reference [.documentation-only, rules]
+
+test-report-pdf:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - !reference [.documentation-only, rules]
+
+build-vp:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - !reference [.documentation-only, rules]
+
+vp-pdf:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - !reference [.documentation-only, rules]
 
 check-changelog:
   rules:
@@ -177,7 +195,7 @@ unit-tests-backend:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
       when: never
-    - when: on_success
+    - !reference [.documentation-only, rules]
   image: harbor.cta-observatory.org/proxy_cache/astral/uv:0.11-python3.12-trixie
   services:
     - name: redis:7-alpine
@@ -217,7 +235,7 @@ unit-tests-frontend:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
       when: never
-    - when: on_success
+    - !reference [.documentation-only, rules]
   image: harbor.cta-observatory.org/proxy_cache/node:24.2-alpine
   cache:
     key:
@@ -251,7 +269,7 @@ k8s-integration-tests:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
       when: never
-    - when: on_success
+    - !reference [.documentation-only, rules]
   tags:
     - desy-testcluster-ctao-computing-aiv
   artifacts:
@@ -292,7 +310,7 @@ k8s-upgrade-integration-tests:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
       when: never
-    - when: on_success
+    - !reference [.documentation-only, rules]
   tags:
     - desy-testcluster-ctao-computing-aiv
   variables:
@@ -314,6 +332,8 @@ k8s-load-smoke:
       --set loadTest.profile=smoke
       --set mockTap.recordCount=1000"
   rules:
+    - if: '$DOCUMENTATION_ONLY == "true"'
+      when: never
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
   artifacts:
     when: always
@@ -376,7 +396,7 @@ collect-test-artifacts:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
       when: never
-    - when: on_success
+    - !reference [.documentation-only, rules]
   image: $PYTHON_IMAGE
   needs:
     # can add more jobs to combine
@@ -411,7 +431,7 @@ collect-manual-tests:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
       when: never
-    - when: on_success
+    - !reference [.documentation-only, rules]
 
 pypi:
   rules:
