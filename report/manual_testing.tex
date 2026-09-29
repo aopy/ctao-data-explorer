@@ -1,0 +1,57 @@
+The manual demonstrations used the SDC Portal staging deployment on the AIV
+cluster, the IAM test instance, and the dCache storage service at PIC. All
+cases below verify requirement CTAO\_-CTAO\_REQ-2647.
+
+\begin{longtblr}[
+  caption={Manual download verification cases},
+  label={tab:manual-download}
+]{
+  colspec={X[3,l] X[3,l] X[1,l]},
+  rowhead=1,
+  row{1}={bg=galaxyblue,fg=white,font={\bfseries\hypersetup{linkcolor=white}}},
+  hlines, vlines
+}
+Test Case ID & Test Steps & Status \\
+MT-01: Unauthenticated user download denied
+& \textbf{Preconditions:} No active session; the query matches at least one
+  observation. \newline
+  \textbf{Steps:} Open portal; search; select the first result; click Download.
+  \newline
+  \textbf{Pass criteria:} The portal shows ``Please log in to download this
+  file'' and saves no file. A separate unauthenticated download API request
+  returns HTTP 401.
+& \textbf{Pass.} The portal blocked the download. The separate API status was
+  not recorded. \\
+MT-02: Download denied for authenticated user without data access permission
+& \textbf{Preconditions:} An authenticated account lacks the required IAM
+  group or storage scope; the dataset contains a file. \newline
+  \textbf{Steps:} Open portal; sign in; search; select a file; attempt to
+  download. \newline
+  \textbf{Pass criteria:} No file is saved; the portal explains the permission
+  failure; the Download Service returns HTTP 403.
+& \textbf{Pass.} The account with a different scope could not download.
+  The exact message and HTTP status were not recorded. \\
+MT-03: Single file download by an authenticated SDC participant
+& \textbf{Preconditions:} A valid participant account and at least one
+  observation file are available. \newline
+  \textbf{Steps:} Open portal; sign in; search; select one file; click Download.
+  \newline
+  \textbf{Pass criteria:} The browser saves the file with the expected name,
+  extension, and size; the storage request returns HTTP 200.
+& \textbf{Pass.} Microsoft Entra ID login and a download from PIC dCache
+  succeeded. File details and HTTP status were not recorded. \\
+MT-04: Bulk download by an authenticated SDC participant
+& \textbf{Preconditions:} A valid participant account and at least two
+  observation files are available. \newline
+  \textbf{Steps:} Open portal; sign in; search; select at least two rows;
+  trigger bulk download. \newline
+  \textbf{Pass criteria:} One request per row resolves its LFN through the
+  Download Service; all requests return HTTP 200 and the corresponding files
+  are saved.
+& \textbf{Skipped.} Bulk download through the portal is not implemented. \\
+\end{longtblr}
+
+\ManualTestCase{CTAO_-CTAO_REQ-2647}{passed}{Unauthenticated user download is blocked.}
+\ManualTestCase{CTAO_-CTAO_REQ-2647}{passed}{Authenticated user without the required scope could not download.}
+\ManualTestCase{CTAO_-CTAO_REQ-2647}{passed}{IAM login and single file download from PIC dCache succeeded.}
+% The manual JUnit reader does not recognize a skipped status attribute.
