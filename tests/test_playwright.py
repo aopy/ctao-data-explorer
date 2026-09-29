@@ -75,6 +75,7 @@ def _resolve_crab_with_sdc_radius(page: Page, radius: str = "40") -> None:
 
 
 @pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2648")
+@allure.title("Successful IAM login displays restricted navigation tabs")
 def test_login(page: Page):
     """Authenticate via IAM and verify restricted tabs appear after login.
 
@@ -113,6 +114,7 @@ def test_login(page: Page):
 
 
 @pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2649")
+@allure.title("Logout hides restricted navigation tabs")
 def test_logout(page: Page):
     """Log out and verify restricted tabs are no longer visible.
 
@@ -159,6 +161,7 @@ def test_logout(page: Page):
 
 
 @pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2648")
+@allure.title("Login sets a non-empty XSRF token")
 def test_csrf_cookie_set_after_login(page: Page):
     """Check that the XSRF-TOKEN cookie is absent before login and set afterwards.
 
@@ -185,6 +188,7 @@ def test_csrf_cookie_set_after_login(page: Page):
         assert len(xsrf[0]["value"]) > 0, "XSRF-TOKEN must be non-empty"
 
 
+@allure.title("Authenticated user can add a search result to the active basket")
 def test_authenticated_basket_add(page: Page):
     """Login, search for target, create an active basket, add to it, and verify.
 
@@ -246,6 +250,7 @@ def test_authenticated_basket_add(page: Page):
 
 
 @pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2645")
+@allure.title("Object name search displays matching observations")
 def test_query_by_object_name(page: Page):
     """Query observations by astronomical object name and verify results are shown.
 
@@ -310,6 +315,7 @@ def test_query_by_object_name(page: Page):
 
 
 @pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2645")
+@allure.title("NED resolves object names to decimal and sexagesimal coordinates")
 def test_resolve_coordinates_by_ned(page: Page):
     """Resolve coordinates for an object name via NED and verify both deg and hms/dms formats.
     Steps:
@@ -349,6 +355,7 @@ def test_resolve_coordinates_by_ned(page: Page):
 
 
 @pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2645")
+@allure.title("Sky coordinate search displays matching observations")
 def test_query_by_sky_coordinates(page: Page):
     """Query observations by sky coordinates and verify results appear in the data table.
 
@@ -382,6 +389,7 @@ def test_query_by_sky_coordinates(page: Page):
 
 
 @pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2646")
+@allure.title("Search with no matching observations displays a warning")
 def test_no_results_warning(page: Page):
     """Search with coordinates that match no observations and verify the warning message.
 
@@ -411,6 +419,7 @@ def test_no_results_warning(page: Page):
 
 
 @pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2647")
+@allure.title("Search results display download buttons")
 def test_direct_download_visible(page: Page):
     """Verify download buttons are rendered in the results table after a search.
 
@@ -462,6 +471,7 @@ def test_direct_download_visible(page: Page):
 
 
 @pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2647")
+@allure.title("Download request displays a confirmation alert")
 def test_download_file(page: Page, mock_dcache):
     """Click the download button and verify the UI alert confirms the request.
 
@@ -519,6 +529,7 @@ def test_download_file(page: Page, mock_dcache):
 
 
 @pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2650")
+@allure.title("User profile displays the authenticated user's name and email")
 def test_view_user_profile(page: Page):
     """Log in and verify the user profile page displays correct user information.
 
@@ -551,6 +562,7 @@ def test_view_user_profile(page: Page):
 
 
 @pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2647")
+@allure.title("Download token exchange grants access to mock storage")
 def test_download_file_mock_storage(page: Page, mock_dcache):
     """Validate the server-side token exchange pipeline against a mock storage backend.
 
@@ -645,6 +657,7 @@ def test_download_file_mock_storage(page: Page, mock_dcache):
 
 
 @pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2647")
+@allure.title("Unauthenticated download prompts the user to log in")
 def test_download_file_without_login(page: Page):
     """Verify the unauthenticated download button prompts the user to log in.
 
@@ -688,6 +701,7 @@ def test_download_file_without_login(page: Page):
 
 
 @pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2647")
+@allure.title("Download button returns to its enabled state after a request")
 def test_download_file_button_reset(page: Page):
     """Click download, then verify the button resets to enabled "Download" state.
 
@@ -743,6 +757,7 @@ def test_download_file_button_reset(page: Page):
 
 
 @pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2647")
+@allure.title("Download button shows loading state until the request completes")
 def test_download_file_loading_state(page: Page):
     """Click download and verify the button transitions through loading states.
 
@@ -812,6 +827,7 @@ def test_download_file_loading_state(page: Page):
 
 
 @pytest.mark.verifies_requirement("CTAO_-CTAO_REQ-2647")
+@allure.title("Downloads from two result rows each display a confirmation alert")
 def test_download_multiple_files(page: Page):
     """Click Download on two different result rows and verify both trigger alerts.
 
