@@ -13,7 +13,7 @@ variables:
   JAMA_PROJECT_ID: 14  # backyard project
   APPLICATION_VERSION_FOR_VP: "1.0.0"
   JAMA_RELEASE_TAG: "SDC Portal 1.0.0"
-  DISABLE_JUNIT_TEST_PARSING: false
+  DISABLE_JUNIT_TEST_PARSING: true
   RELEASE_PLAN_FROM_JAMA: true
 
   AIV_DEPLOY_HELM_TEST_FILTER: name=ctao-data-explorer-pytest
