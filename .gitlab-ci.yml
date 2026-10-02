@@ -1,6 +1,6 @@
 include:
   - project: cta-computing/common/aiv-toolkit
-    ref: 52c381df193cc2a42c2a48468c92c1820ba4ec33
+    ref: 03a79a43c7a7002d64a2e2144f4fd9316e8a4c38
     file: ci-functions.yml
   - aiv-config.yml
 
@@ -399,9 +399,6 @@ collect-test-artifacts:
     - !reference [.documentation-only, rules]
   image: $PYTHON_IMAGE
   needs:
-    # can add more jobs to combine
-    - job: collect-manual-tests
-      artifacts: true
     - job: k8s-integration-tests
       artifacts: true
     - job: unit-tests-frontend
@@ -411,27 +408,23 @@ collect-test-artifacts:
   before_script:
     - !reference [.install-kit, script]
   script:
-    - find . -name "report.xml" -o -name "coverage.xml" | sort
-    - aiv-report -v merge-junit */report.xml js/coverage/report.xml --output
-      report.xml
+    - mkdir -pv allure-results
+    - for fn in */allure.tar.gz; do tar -xzf "$fn" -C allure-results; done
+    - tar -cvzf allure.tar.gz -C allure-results .
+    - cp -fv test-in-k8s/report.xml report.xml
     - cp -fv test/coverage.xml coverage.xml
   artifacts:
     paths:
       - report.xml
+      - test/report.xml
+      - js/coverage/report.xml
+      - test-in-k8s/report.xml
       - coverage.xml
       # this is a temporary before https://gitlab.cta-observatory.org/cta-computing/common/aiv-toolkit/-/merge_requests/165
       - "*/coverage.xml"
       - js/coverage/cobertura-coverage.xml
       - js/coverage/lcov.info
       - allure.tar.gz
-    reports:
-      junit: report.xml
-
-collect-manual-tests:
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "schedule"'
-      when: never
-    - !reference [.documentation-only, rules]
 
 pypi:
   rules:
