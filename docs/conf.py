@@ -37,7 +37,12 @@ source_suffix = {
 }
 
 templates_path = ["_templates"]
-exclude_patterns = ["_build", "**.ipynb_checkpoints", "changes"]
+exclude_patterns = [
+    "_build",
+    "**.ipynb_checkpoints",
+    "changes",
+    "diagrams/README.md",
+]
 
 nb_execution_mode = os.environ.get("NB_EXECUTION_MODE", "off")
 nb_execution_timeout = 120
