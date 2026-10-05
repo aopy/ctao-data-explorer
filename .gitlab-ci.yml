@@ -314,8 +314,8 @@ k8s-upgrade-integration-tests:
   tags:
     - desy-testcluster-ctao-computing-aiv
   variables:
-    UPGRADE_BASE_REF: "v1.0.0-rc8"
-    BASE_REF_PATCH_FILES: "pre-upgrade-patches/v1.0.0-rc8-playwright.patch"
+    UPGRADE_BASE_REF: "v1.0.0-rc9"
+    BASE_REF_PATCH_FILES: "pre-upgrade-patches/v1.0.0-rc9-playwright.patch"
 
 k8s-load-smoke:
   extends: .test-in-k8s
