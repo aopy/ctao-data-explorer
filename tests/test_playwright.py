@@ -56,14 +56,26 @@ def _login(page: Page):
     page.screenshot(path=f"{SCREENSHOTS_DIR}/login_after_redirect.png")
 
 
-def _resolve_crab_with_sdc_radius(page: Page, radius: str = "40") -> None:
-    source_input = page.locator("#objectNameInput")
-    expect(source_input).to_be_visible()
-    source_input.fill("crab")
-
+def _resolve_object(page: Page, name: str) -> None:
+    page.locator("#objectNameInput").fill(name)
     resolve_button = page.get_by_role("button", name="Resolve", exact=True)
     expect(resolve_button).to_be_visible()
-    resolve_button.click()
+    with page.expect_response(
+        lambda response: (
+            response.url.endswith("/object_resolve") and response.request.method == "POST"
+        ),
+        timeout=30000,
+    ) as resolution:
+        resolve_button.click()
+    response = resolution.value
+    assert response.ok, f"Object resolution HTTP {response.status}: {response.text()}"
+    assert response.json().get("results"), (
+        f"Object resolution returned no results: {response.text()}"
+    )
+
+
+def _resolve_crab_with_sdc_radius(page: Page, radius: str = "40") -> None:
+    _resolve_object(page, "crab")
 
     expect(page.locator("#coord1Input")).not_to_have_value("")
     expect(page.locator("#coord2Input")).not_to_have_value("")
@@ -332,10 +344,7 @@ def test_resolve_coordinates_by_ned(page: Page):
         page.locator("#useNedCheck").check()
 
     with allure.step('Enter "Mrk 501" and resolve via NED'):
-        page.locator("#objectNameInput").fill("Mrk 501")
-        resolve_button = page.get_by_role("button", name="Resolve", exact=True)
-        expect(resolve_button).to_be_visible()
-        resolve_button.click()
+        _resolve_object(page, "Mrk 501")
 
     with allure.step("Assert decimal-degree coordinates"):
         coord1_input = page.locator("#coord1Input")
