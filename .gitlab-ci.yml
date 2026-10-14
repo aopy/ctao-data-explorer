@@ -27,7 +27,7 @@ pylint:
       when: never
     - !reference [.documentation-only, rules]
   script:
-    - pylint --fail-under 5.0 api auth_service
+    - pylint --fail-under 5.0 api auth_service download_service
       --output-format=json2:pylint.json,colorized
 
 kubeconform:
