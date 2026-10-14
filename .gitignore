@@ -70,9 +70,9 @@ Chart.lock
 junit.xml
 allure.tar.gz
 allure-report.html
-k6-allure-report.html
-k6-allure.tar.gz
-k6-summary.json
+k6*.json*
+k6*.html*
+artifacts*
 
 # Playwright test screenshots
 *.png
