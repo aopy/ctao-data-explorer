@@ -73,7 +73,7 @@ hadolint:
 
 build:
   tags:
-    - desy-test-cluster
+    - desy-testcluster-ctao-computing-aiv
   parallel:
     matrix:
       - IMAGE: ["frontend", "backend", "auth", "download"]
