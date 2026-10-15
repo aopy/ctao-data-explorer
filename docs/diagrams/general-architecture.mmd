@@ -1,0 +1,51 @@
+flowchart LR
+  subgraph DEVICE["User device"]
+    B["Browser / React"]
+    P["Local Python script"]
+    F["User filesystem"]
+  end
+  subgraph PORTAL["Portal backend"]
+    A["Auth Service<br/>OIDC login and request relay"]
+    D["Download Service<br/>LFN mapping, URL validation, script generation"]
+    API["FastAPI backend<br/>Public search and private basket API"]
+    S[("Redis (sessions)<br/>UAT, ID token, encrypted RT")]
+    subgraph STORES["Portal application stores"]
+      C[("Redis (query cache)")]
+      DB[("PostgreSQL<br/>Users and baskets")]
+    end
+  end
+  subgraph IDENTITY["Identity provider"]
+    IAM["CTAO IAM"]
+  end
+  subgraph META["Metadata services"]
+    TAP["TAP Server<br/>Publishes the ObsCore table"]
+    MDB[("Metadata DB")]
+  end
+  subgraph STORAGE["Intermediate DL3 data storage - dCache"]
+    DOOR["dCache door"]
+    POOL["dCache pools"]
+  end
+  B <-->|"OIDC redirects; SID cookie; XSRF on configured requests"| A
+  A <-->|"Code / refresh exchange; auth-client credentials"| IAM
+  A <--> S
+  A <-->|"User records"| DB
+  A -->|"UAT; no SID; forwarded XSRF pair"| API
+  B <-->|"Public search / DataLink; no UAT attached"| API
+  API <--> DB
+  API <--> C
+  API <-->|"ADQL queries / metadata"| TAP
+  MDB -->|"ObsCore ingestion / publication"| TAP
+  A -->|"UAT and file references"| D
+  D <-->|"RFC 8693 exchange; download-client credentials; SAT response"| IAM
+  D -->|"URL + SAT + expiry, or script; via Auth Service"| B
+  B -->|"Save sensitive script"| F
+  F -->|"Execute saved script"| P
+  B <-->|"HTTPS GET + SAT; direct file bytes; browser CORS"| DOOR
+  P <-->|"HTTPS GET + SAT; direct file bytes"| DOOR
+  DOOR -.->|"Optional redirect: client follows transfer URL"| POOL
+  B <-->|"Redirected transfer; browser redirect / CORS rules"| POOL
+  P <-->|"Redirected transfer; remove bearer if host / port changes"| POOL
+  P -->|"Archive-named files and redacted JSON report"| F
+  %% Redis roles do not imply separate deployed Redis servers.
+  %% Auth relay is functionality of Auth Service, not a separate service.
+  %% SAT scopes depend on IAM/configuration; exchanges per file do not imply file-limited scope.

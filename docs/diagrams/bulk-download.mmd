@@ -1,0 +1,84 @@
+sequenceDiagram
+  autonumber
+  box rgb(240, 245, 251) User device
+    participant B as Browser / React
+    participant F as User / filesystem
+    participant P as Local Python script
+  end
+  box rgb(239, 247, 243) Portal backend
+    participant A as Auth Service
+    participant R as Redis (sessions)
+    participant API as FastAPI backend
+    participant D as Download Service
+  end
+  box rgb(252, 246, 234) Identity provider
+    participant I as CTAO IAM
+  end
+  box rgb(252, 246, 234) Intermediate DL3 data storage - dCache
+    participant S as dCache door
+    participant Q as dCache pool
+  end
+  rect rgb(242, 247, 252)
+    Note over B,I: 1. Sign in - OpenID Connect authorization-code flow
+    B->>A: Start login
+    A-->>B: Set temporary OIDC state cookie, redirect to IAM
+    B->>I: Authenticate
+    I-->>B: Redirect to callback with code + state
+    B->>A: Callback: code + state + temporary OIDC cookie
+    A->>A: Validate state
+    A->>I: Exchange code + auth-client credentials
+    I-->>A: UAT + ID token + optional RT
+    A->>A: Validate ID token / nonce
+    A->>R: Store session, RT encrypted
+    A-->>B: Set HttpOnly SID cookie
+    B->>A: GET /auth/me + SID
+    A-->>B: Profile, XSRF cookie if missing (no UAT)
+    Note over A,R: Still-valid UAT near expiry may be refreshed using RT.<br/>Already-expired UAT requires login again for relay requests.
+    Note over A,I: Client secrets remain server-side.
+  end
+  rect rgb(248, 250, 252)
+    Note over B,API: 2. Select the active basket
+    B->>A: Read / update basket + SID, mutations include XSRF cookie + header
+    A->>R: Resolve session and UAT
+    R-->>A: Session data
+    A->>API: Bearer UAT, forward XSRF pair for mutations
+    API->>API: Validate UAT and basket ownership, validate XSRF on mutations
+    API-->>A: Owned basket observations
+    A-->>B: Basket data
+    B->>B: Select active basket, resolve and deduplicate file references
+  end
+  rect rgb(242, 247, 252)
+    Note over B,I: 3. Generate and save the script
+    B->>A: POST /auth/download/download-script, file refs + SID + XSRF pair
+    A->>R: Resolve session and UAT
+    R-->>A: Session data
+    A->>D: Bearer UAT + file references (no SID)
+    D->>D: Map LFNs, check allowed HTTPS hosts
+    loop Each file reference
+      D->>I: Token exchange: UAT + download-client credentials
+      I-->>D: SAT + expiry, or preparation error
+    end
+    D->>D: Build Python script with file manifest
+    D-->>A: Script source + expiry / errors, Cache-Control: no-store
+    A-->>B: Generated script response
+    B->>F: Save ctao-download-YYYYMMDD-HHMMSS.py (UTC timestamp)
+    Note over B,D: Script contains URLs + SATs, no SID, UAT, RT or client secret.<br/>Per-file exchanges do not guarantee file-limited scopes.<br/>XSRF is sent, but Auth Service relay and download routes have no explicit CSRF validation.
+  end
+  rect rgb(248, 250, 252)
+    Note over F,Q: 4. Run locally - Python 3.9+
+    F->>P: python3 [saved-script-name].py --output-dir ./ctao-data
+    loop Each non-conflicting archive filename
+      P->>S: HTTPS GET + Bearer SAT
+      alt Door returns data directly
+        S-->>P: Stream file bytes
+      else Door redirects to a pool
+        S-->>P: HTTPS pool transfer URL
+        P->>Q: Follow URL, remove bearer if host / port changes
+        Q-->>P: Stream file bytes
+      end
+      P->>F: Save data using archive basename, never overwrite an existing file
+    end
+    P->>F: Redacted JSON report: script_name, executed_at (UTC), results
+    Note over F,Q: Local execution contacts storage only: no app session, IAM call, token refresh or browser CORS.<br/>Keep script private, regenerate when credentials expire.<br/>Browser logout alone does not revoke exported SATs.
+  end
+  Note over B,I: SID = session cookie ID, UAT = user access token,<br/>SAT = storage access token, RT = refresh token.

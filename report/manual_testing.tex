@@ -1,0 +1,51 @@
+The manual demonstrations used the SDC Portal staging deployment on the AIV
+cluster, the IAM test instance, and the dCache storage service at PIC to verify
+end-to-end user workflows.
+
+\begin{longtblr}[
+  label={tab:manual-download}
+]{
+  colspec={X[3,l] X[3,l] X[1,l]},
+  rowhead=1,
+  row{1}={bg=galaxyblue,fg=white,font={\bfseries\hypersetup{linkcolor=white}}},
+  hlines, vlines
+}
+Test Case ID & Test Steps & Status \\
+\ManualTestCase{CTAO_-CTAO_REQ-2647}{passed}{Unauthenticated user download is blocked.}:
+  Unauthenticated user download is blocked.
+& \textbf{Preconditions:} No active session; the query matches at least one
+  observation. \newline
+  \textbf{Steps:} Open portal; search; select the first result; click Download.
+  \newline
+  \textbf{Pass criteria:} The portal shows ``Please log in to download this
+  file'' and saves no file. A separate unauthenticated download API request
+  returns HTTP 401.
+& passed\\
+\ManualTestCase{CTAO_-CTAO_REQ-2647}{passed}{Authenticated user without the required scope could not download.}:
+  Authenticated user without the required scope could not download.
+& \textbf{Preconditions:} An authenticated account lacks the required IAM
+  group or storage scope; the dataset contains a file. \newline
+  \textbf{Steps:} Open portal; sign in; search; select a file; attempt to
+  download. \newline
+  \textbf{Pass criteria:} No file is saved; the portal explains the permission
+  failure; the Download Service returns HTTP 403.
+& passed\\
+\ManualTestCase{CTAO_-CTAO_REQ-2647}{passed}{IAM login and single file download from PIC dCache succeeded.}:
+  IAM login and single file download from PIC dCache succeeded.
+& \textbf{Preconditions:} A valid participant account and at least one
+  observation file are available. \newline
+  \textbf{Steps:} Open portal; sign in; search; select one file; click Download.
+  \newline
+  \textbf{Pass criteria:} The browser saves the file with the expected name,
+  extension, and size; the storage request returns HTTP 200.
+& passed\\
+\ManualTestCase{CTAO_-CTAO_REQ-2647}{skipped}{IAM login and bulk download from PIC dCache succeeded.}:
+  IAM login and bulk download from PIC dCache succeeded.
+& \textbf{Preconditions:} A valid participant account and at least two
+  observation files are available. \newline
+  \textbf{Steps:} Open portal; sign in; search; select at least two rows;
+  add them to the active basket; trigger bulk download via script. \newline
+  \textbf{Pass criteria:} All requests return HTTP 200 and the corresponding files
+  are saved.
+& \textbf{Skipped}\\
+\end{longtblr}
