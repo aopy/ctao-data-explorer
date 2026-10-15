@@ -1,0 +1,64 @@
+sequenceDiagram
+  autonumber
+  box rgb(240, 245, 251) User device
+    participant B as Browser / React
+  end
+  box rgb(239, 247, 243) Portal backend
+    participant A as Auth Service
+    participant R as Redis (sessions)
+    participant API as FastAPI backend
+    participant D as Download Service
+  end
+  box rgb(252, 246, 234) Identity provider
+    participant I as CTAO IAM
+  end
+  box rgb(252, 246, 234) Metadata services
+    participant T as TAP Server
+  end
+  box rgb(252, 246, 234) Intermediate DL3 data storage - dCache
+    participant S as dCache door / pools
+  end
+  rect rgb(242, 247, 252)
+    Note over B,I: 1. Sign in - OpenID Connect authorization-code flow
+    B->>A: Start login
+    A-->>B: Set temporary OIDC state cookie, redirect to IAM
+    B->>I: Authenticate
+    I-->>B: Redirect to callback with code + state
+    B->>A: Callback: code + state + temporary OIDC cookie
+    A->>A: Validate state
+    A->>I: Exchange code + auth-client credentials
+    I-->>A: UAT + ID token + optional RT
+    A->>A: Validate ID token / nonce
+    A->>R: Store session, RT encrypted
+    A-->>B: Set HttpOnly SID cookie
+    B->>A: GET /auth/me + SID
+    A-->>B: Profile, XSRF cookie if missing (no UAT)
+    Note over A,R: Still-valid UAT near expiry may be refreshed using RT.<br/>Already-expired UAT requires login again for relay requests.
+    Note over A,I: Client secrets remain server-side.
+  end
+  rect rgb(248, 250, 252)
+    Note over B,T: 2. Search and choose an observation
+    B->>API: GET /api/search_coords, no user bearer attached
+    API->>T: ADQL query on ObsCore table (results may be cached in Redis)
+    T-->>API: Observation metadata
+    API-->>B: Results
+    B->>B: Select primary file reference (LFN / URL)
+  end
+  rect rgb(242, 247, 252)
+    Note over B,S: 3. Prepare and download the file
+    B->>A: POST /auth/download/signed-urls + SID
+    A->>R: Resolve session and UAT
+    R-->>A: Session data
+    A->>D: File reference + Bearer UAT (no SID)
+    D->>D: Map LFN prefix, check allowed HTTPS host
+    D->>I: RFC 8693 exchange: UAT + download-client credentials
+    I-->>D: SAT + expiry
+    D-->>A: Storage URL + separate SAT + expiry
+    A-->>B: Storage descriptor
+    Note over B,D: The URL itself is not a signed URL.<br/>Download routes have no explicit CSRF validation.
+    B->>S: CORS preflight, HTTPS GET + Bearer SAT
+    Note over B,S: Optional door-to-pool redirect follows browser redirect / CORS rules.<br/>Cross-origin Authorization is stripped, SID and UAT are not sent to storage.
+    S-->>B: File bytes
+    B->>B: Save browser Blob as file
+  end
+  Note over B,I: SID = session cookie ID, UAT = user access token,<br/>SAT = storage access token, RT = refresh token.

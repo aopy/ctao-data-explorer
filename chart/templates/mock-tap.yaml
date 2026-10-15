@@ -1,0 +1,63 @@
+{{- if .Values.mockTap.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ctao-data-explorer.fullname" . }}-mock-tap
+  labels:
+    {{- include "ctao-data-explorer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mock-tap
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "ctao-data-explorer.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: mock-tap
+  template:
+    metadata:
+      labels:
+        {{- include "ctao-data-explorer.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: mock-tap
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: mock-tap
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.mockTap.image.repository }}:{{ .Values.mockTap.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.mockTap.image.pullPolicy }}
+          command: ["uvicorn", "api.load_testing:tap_app", "--host", "0.0.0.0", "--port", "8080", "--no-access-log"]
+          env:
+            - name: MOCK_TAP_RECORD_COUNT
+              value: {{ .Values.mockTap.recordCount | quote }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+          resources:
+            {{- toYaml .Values.mockTap.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ctao-data-explorer.fullname" . }}-mock-tap
+  labels:
+    {{- include "ctao-data-explorer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mock-tap
+spec:
+  ports:
+    - name: http
+      port: {{ .Values.mockTap.service.port }}
+      targetPort: http
+  selector:
+    {{- include "ctao-data-explorer.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: mock-tap
+{{- end }}

@@ -1,6 +1,6 @@
 include:
   - project: cta-computing/common/aiv-toolkit
-    ref: fd778100794138efc3c068c8fd8d4053f05e72f3
+    ref: 8dc4975420b8ead5154d82eb838e551505e900b6
     file: ci-functions.yml
   - aiv-config.yml
 
@@ -15,20 +15,27 @@ stages:
   - build
   - sign
   - tests
+  - load
   - sonarqube
   - publish
   - report
   - changelog
 
 pylint:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - !reference [.documentation-only, rules]
   script:
-    - pylint --fail-under 5.0 api auth_service
+    - pylint --fail-under 5.0 api auth_service download_service
       --output-format=json2:pylint.json,colorized
 
 kubeconform:
   stage: lint
   image: harbor.cta-observatory.org/proxy_cache/alpine/helm:${HELM_VERSION}
   rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
     - exists:
         - $CHART_LOCATION/Chart.yaml
   before_script:
@@ -43,6 +50,10 @@ kubeconform:
       iam.enabled=false --set gcert-issuer.enabled=false | ./kubeconform
       -summary -verbose -strict  -output pretty -ignore-missing-schemas
 pre-commit-hooks:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - when: on_success
   before_script:
     - apt update && apt install -y --no-install-recommends git
     - python --version
@@ -52,13 +63,17 @@ pre-commit-hooks:
     - uv run prek run --all-files
 
 hadolint:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - !reference [.documentation-only, rules]
   script:
     - hadolint Dockerfile.auth Dockerfile.backend Dockerfile.download
       Dockerfile.frontend
 
 build:
   tags:
-    - desy-test-cluster
+    - desy-testcluster-ctao-computing-aiv
   parallel:
     matrix:
       - IMAGE: ["frontend", "backend", "auth", "download"]
@@ -80,8 +95,107 @@ build:
     KUBERNETES_MEMORY_REQUEST: "16Gi"
     KUBERNETES_MEMORY_LIMIT: "64Gi"
 
+helm-lint:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - exists:
+        - "$CHART_LOCATION/Chart.yaml"
+
+kube-lint:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - exists:
+        - "$CHART_LOCATION/Chart.yaml"
+
+kube-score:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - exists:
+        - "$CHART_LOCATION/Chart.yaml"
+
+list-images:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - exists:
+        - "$CHART_LOCATION/Chart.yaml"
+
+build-docs:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - when: on_success
+
+deploy_docs_env:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+pages:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+
+build-python-dist:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - !reference [.documentation-only, rules]
+
+publish-chart:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - !reference [.documentation-only, rules]
+
+sonarqube:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - !reference [.documentation-only, rules]
+
+build-test-report:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - !reference [.documentation-only, rules]
+
+test-report-pdf:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - !reference [.documentation-only, rules]
+
+build-vp:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - !reference [.documentation-only, rules]
+
+vp-pdf:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - !reference [.documentation-only, rules]
+
+check-changelog:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
 unit-tests-backend:
   stage: tests
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - !reference [.documentation-only, rules]
   image: harbor.cta-observatory.org/proxy_cache/astral/uv:0.11-python3.12-trixie
   services:
     - name: redis:7-alpine
@@ -118,6 +232,10 @@ unit-tests-backend:
 
 unit-tests-frontend:
   stage: tests
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - !reference [.documentation-only, rules]
   image: harbor.cta-observatory.org/proxy_cache/node:24.2-alpine
   cache:
     key:
@@ -126,6 +244,7 @@ unit-tests-frontend:
     paths:
       - js/node_modules/
   variables:
+    JEST_JUNIT_ADD_FILE_ATTRIBUTE: "true"
     JEST_JUNIT_OUTPUT_DIR: coverage
     JEST_JUNIT_OUTPUT_NAME: report.xml
   before_script:
@@ -147,6 +266,10 @@ unit-tests-frontend:
         path: js/coverage/cobertura-coverage.xml
 
 k8s-integration-tests:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - !reference [.documentation-only, rules]
   tags:
     - desy-testcluster-ctao-computing-aiv
   artifacts:
@@ -184,10 +307,73 @@ k8s-integration-tests:
 
 k8s-upgrade-integration-tests:
   extends: .test-in-k8s
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - !reference [.documentation-only, rules]
   tags:
     - desy-testcluster-ctao-computing-aiv
   variables:
-    UPGRADE_BASE_REF: "v1.0.0-rc2"
+    UPGRADE_BASE_REF: "v1.0.0-rc9"
+    BASE_REF_PATCH_FILES: "pre-upgrade-patches/v1.0.0-rc9-playwright.patch"
+
+k8s-load-smoke:
+  extends: .test-in-k8s
+  stage: load
+  tags:
+    - desy-testcluster-ctao-computing-aiv
+  variables:
+    AIV_DEPLOY_HELM_TEST_FILTER: name=ctao-data-explorer-k6
+    AIV_DEPLOY_HELM_UPGRADE_CHART_EXTRA_VALUES: " --set auth.secrets.clientId=suss-test-client
+      --set auth.secrets.clientSecret=secret
+      --set auth.secrets.sessionSecretKeyOidc=${SESSION_SECRET_KEY_OIDC}
+      --set auth.secrets.refreshTokenEncryptionKey=${REFRESH_TOKEN_ENCRYPTION_KEY}
+      --set loadTest.enabled=true
+      --set loadTest.profile=smoke
+      --set mockTap.recordCount=1000"
+  rules:
+    - if: '$DOCUMENTATION_ONLY == "true"'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+  artifacts:
+    when: always
+    paths:
+      - test-in-k8s/
+      - k6-summary.json
+      - k6-summary.html
+      - .toolkit/stats/pull-images-statistics.json
+      - .toolkit/stats/testkit-helm-upgrade-statistics.json
+    reports:
+      junit: test-in-k8s/report.xml
+
+k8s-load-full:
+  extends: .test-in-k8s
+  stage: load
+  tags:
+    - desy-testcluster-ctao-computing-aiv
+  variables:
+    HELM_TEST_TIMEOUT: 45m
+    AIV_DEPLOY_HELM_TEST_FILTER: name=ctao-data-explorer-k6
+    AIV_DEPLOY_HELM_UPGRADE_CHART_EXTRA_VALUES: " --set auth.secrets.clientId=suss-test-client
+      --set auth.secrets.clientSecret=secret
+      --set auth.secrets.sessionSecretKeyOidc=${SESSION_SECRET_KEY_OIDC}
+      --set auth.secrets.refreshTokenEncryptionKey=${REFRESH_TOKEN_ENCRYPTION_KEY}
+      --set loadTest.enabled=true
+      --set loadTest.profile=full
+      --set loadTest.activeDeadlineSeconds=2700
+      --set mockTap.recordCount=50000"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+  artifacts:
+    when: always
+    paths:
+      - test-in-k8s/
+      - k6-summary.json
+      - k6-summary.html
+      - .toolkit/stats/pull-images-statistics.json
+      - .toolkit/stats/testkit-helm-upgrade-statistics.json
+    reports:
+      junit: test-in-k8s/report.xml
 
 
 # the following two jobs can be used to test integration with external services. Currently disabled
@@ -207,11 +393,12 @@ k8s-upgrade-integration-tests-with-external-iam-dcache:
 
 collect-test-artifacts:
   stage: tests
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - !reference [.documentation-only, rules]
   image: $PYTHON_IMAGE
   needs:
-    # can add more jobs to combine
-    - job: collect-manual-tests
-      artifacts: true
     - job: k8s-integration-tests
       artifacts: true
     - job: unit-tests-frontend
@@ -221,21 +408,23 @@ collect-test-artifacts:
   before_script:
     - !reference [.install-kit, script]
   script:
-    - find . -name "report.xml" -o -name "coverage.xml" | sort
-    - aiv-report -v merge-junit */report.xml js/coverage/report.xml --output
-      report.xml
+    - mkdir -pv allure-results
+    - for fn in */allure.tar.gz; do tar -xzf "$fn" -C allure-results; done
+    - tar -cvzf allure.tar.gz -C allure-results .
+    - cp -fv test-in-k8s/report.xml report.xml
     - cp -fv test/coverage.xml coverage.xml
   artifacts:
     paths:
       - report.xml
+      - test/report.xml
+      - js/coverage/report.xml
+      - test-in-k8s/report.xml
       - coverage.xml
       # this is a temporary before https://gitlab.cta-observatory.org/cta-computing/common/aiv-toolkit/-/merge_requests/165
       - "*/coverage.xml"
       - js/coverage/cobertura-coverage.xml
       - js/coverage/lcov.info
       - allure.tar.gz
-    reports:
-      junit: report.xml
 
 pypi:
   rules:

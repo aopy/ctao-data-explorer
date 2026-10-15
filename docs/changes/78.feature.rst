@@ -1,0 +1,1 @@
+Add k6 smoke and scheduled load tests for observation searches and authenticated downloads.

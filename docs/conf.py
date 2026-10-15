@@ -37,7 +37,12 @@ source_suffix = {
 }
 
 templates_path = ["_templates"]
-exclude_patterns = ["_build", "**.ipynb_checkpoints", "changes"]
+exclude_patterns = [
+    "_build",
+    "**.ipynb_checkpoints",
+    "changes",
+    "diagrams/README.md",
+]
 
 nb_execution_mode = os.environ.get("NB_EXECUTION_MODE", "off")
 nb_execution_timeout = 120
@@ -56,7 +61,7 @@ html_theme_options = {
     "navigation_with_keys": False,
     # setup for displaying multiple versions, also see setup in .gitlab-ci.yml
     "switcher": {
-        "json_url": "http://cta-computing.gitlab-pages.cta-observatory.org/suss/scienceportal/prototypes/ctao-data-explorer/versions.json",
+        "json_url": "https://cta-computing.gitlab-pages.cta-observatory.org/suss/scienceportal/prototypes/ctao-data-explorer/versions.json",
         "version_match": "latest" if ".dev" in version else f"v{version}",
     },
     "navbar_center": ["version-switcher", "navbar-nav"],

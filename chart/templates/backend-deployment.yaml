@@ -116,8 +116,15 @@ spec:
               {{ end }}
 
             {{- range $key, $value := .Values.backend.env }}
+            {{- if not (and $.Values.mockTap.enabled (eq $key "DEFAULT_TAP_URL")) }}
             - name: {{ $key }}
               value: {{ $value | quote }}
+            {{- end }}
+            {{- end }}
+
+            {{- if .Values.mockTap.enabled }}
+            - name: DEFAULT_TAP_URL
+              value: {{ printf "http://%s-mock-tap:%d/tap" (include "ctao-data-explorer.fullname" .) (.Values.mockTap.service.port | int) | quote }}
             {{- end }}
 
           {{- with .Values.backend.envFrom }}
@@ -174,8 +181,15 @@ spec:
               value: {{ include "ctao-data-explorer.redisUrl" . | quote }}
 
             {{- range $key, $value := .Values.backend.env }}
+            {{- if not (and $.Values.mockTap.enabled (eq $key "DEFAULT_TAP_URL")) }}
             - name: {{ $key }}
               value: {{ $value | quote }}
+            {{- end }}
+            {{- end }}
+
+            {{- if .Values.mockTap.enabled }}
+            - name: DEFAULT_TAP_URL
+              value: {{ printf "http://%s-mock-tap:%d/tap" (include "ctao-data-explorer.fullname" .) (.Values.mockTap.service.port | int) | quote }}
             {{- end }}
 
             {{- if .Values.iam_external.enabled }}

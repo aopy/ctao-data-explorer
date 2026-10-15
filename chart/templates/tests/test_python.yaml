@@ -68,7 +68,8 @@ spec:
 
           allure awesome --single-file allure-results/ -o allure-report
 
-          tar -czf allure.tar.gz allure-report allure-results
+          tar -czf allure.tar.gz -C allure-results .
+          curl -T allure.tar.gz http://testkit:8000/allure.tar.gz
           curl -T allure-report/index.html http://testkit:8000/allure-report.html
           cp -fv allure-report/index.html /repo/allure-report.html
           cp -fv allure.tar.gz /repo/allure.tar.gz

@@ -8,6 +8,8 @@ Technical documentation for developers working on or deploying the CTAO Data Exp
    :maxdepth: 1
 
    architecture
+   download-flows
+   bulk-download
    configuration
    api
    deployment/index

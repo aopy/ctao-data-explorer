@@ -1,0 +1,1 @@
+Update architecture documentation for general and download views with new diagrams and downloadable mermaid files.
